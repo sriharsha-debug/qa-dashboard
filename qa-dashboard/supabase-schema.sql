@@ -1,59 +1,93 @@
--- QA Dashboard schema
--- Run this in Supabase: Project → SQL Editor → New Query → paste → Run
+-- ==========================
+-- QA Dashboard Database Schema
+-- ==========================
 
-create extension if not exists "pgcrypto";
+create extension if not exists pgcrypto;
+
+-------------------------------------------------------
+-- Statuses
+-------------------------------------------------------
 
 create table if not exists statuses (
-  id uuid primary key default gen_random_uuid(),
-  name text not null unique,
-  color text not null default '#12747D',
-  sort_order integer not null default 0,
-  created_at timestamptz not null default now()
+    id uuid primary key default gen_random_uuid(),
+    name text unique not null,
+    color text not null default '#12747D',
+    sort_order integer not null default 0,
+    created_at timestamptz default now()
 );
 
-insert into statuses (name, color, sort_order) values
-  ('Not Started', '#6B7280', 0),
-  ('In Progress', '#A9761E', 1),
-  ('Blocked', '#A63D26', 2),
-  ('Done', '#1F7A6C', 3)
+insert into statuses (name, color, sort_order)
+values
+('Not Started','#6B7280',0),
+('In Progress','#A9761E',1),
+('Blocked','#A63D26',2),
+('Done','#1F7A6C',3)
 on conflict (name) do nothing;
 
+-------------------------------------------------------
+-- Projects
+-------------------------------------------------------
+
 create table if not exists projects (
-  id uuid primary key default gen_random_uuid(),
-  name text not null,
-  status text not null default 'Not Started',
-  start_date date,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+    id uuid primary key default gen_random_uuid(),
+    name text not null,
+    status text not null default 'Not Started',
+    created_at timestamptz default now(),
+    updated_at timestamptz default now()
 );
+
+-- Add missing columns if table already exists
+alter table projects
+add column if not exists start_date date;
+
+alter table projects
+add column if not exists status text default 'Not Started';
+
+alter table projects
+add column if not exists created_at timestamptz default now();
+
+alter table projects
+add column if not exists updated_at timestamptz default now();
+
+-------------------------------------------------------
+-- Daily Reports
+-------------------------------------------------------
 
 create table if not exists daily_reports (
-  id uuid primary key default gen_random_uuid(),
-  project_id uuid not null references projects(id) on delete cascade,
-  report_date date not null default current_date,
-  project_manager text,
-  bugsheet text,
-  test_cases integer default 0,
-  ui_bugs integer default 0,
-  functionality_bugs integer default 0,
-  remarks text,
-  sign_off boolean not null default false,
-  notes text,
-  created_at timestamptz not null default now()
+    id uuid primary key default gen_random_uuid(),
+    project_id uuid not null references projects(id) on delete cascade,
+    report_date date default current_date,
+    project_manager text,
+    bugsheet text,
+    test_cases integer default 0,
+    ui_bugs integer default 0,
+    functionality_bugs integer default 0,
+    remarks text,
+    sign_off boolean default false,
+    notes text,
+    created_at timestamptz default now()
 );
 
-create index if not exists idx_daily_reports_project on daily_reports(project_id);
-create index if not exists idx_daily_reports_date on daily_reports(report_date desc);
+-------------------------------------------------------
+-- Indexes
+-------------------------------------------------------
 
--- Row Level Security: locked down entirely.
--- The browser never receives a Supabase key at all — only the Netlify
--- Functions (using the service role key, kept as a server-side secret)
--- talk to this database. RLS below is defense-in-depth in case the
--- anon/public key is ever used directly.
+create index if not exists idx_daily_reports_project
+on daily_reports(project_id);
+
+create index if not exists idx_daily_reports_date
+on daily_reports(report_date desc);
+
+-------------------------------------------------------
+-- Row Level Security
+-------------------------------------------------------
+
 alter table projects enable row level security;
 alter table daily_reports enable row level security;
 alter table statuses enable row level security;
 
--- No policies are created, so with RLS on, the anon/public key can read
--- or write nothing. Only the service_role key (used only inside Netlify
--- Functions, never shipped to the browser) can bypass RLS.
+-------------------------------------------------------
+-- Reload Schema Cache
+-------------------------------------------------------
+
+notify pgrst, 'reload schema';
