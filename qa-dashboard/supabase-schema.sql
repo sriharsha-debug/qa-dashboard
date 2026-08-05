@@ -3,11 +3,26 @@
 
 create extension if not exists "pgcrypto";
 
+create table if not exists statuses (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique,
+  color text not null default '#12747D',
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now()
+);
+
+insert into statuses (name, color, sort_order) values
+  ('Not Started', '#6B7280', 0),
+  ('In Progress', '#A9761E', 1),
+  ('Blocked', '#A63D26', 2),
+  ('Done', '#1F7A6C', 3)
+on conflict (name) do nothing;
+
 create table if not exists projects (
   id uuid primary key default gen_random_uuid(),
   name text not null,
-  status text not null default 'Not Started'
-    check (status in ('Not Started', 'In Progress', 'Blocked', 'Done')),
+  status text not null default 'Not Started',
+  start_date date,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -37,6 +52,7 @@ create index if not exists idx_daily_reports_date on daily_reports(report_date d
 -- anon/public key is ever used directly.
 alter table projects enable row level security;
 alter table daily_reports enable row level security;
+alter table statuses enable row level security;
 
 -- No policies are created, so with RLS on, the anon/public key can read
 -- or write nothing. Only the service_role key (used only inside Netlify

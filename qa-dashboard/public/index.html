@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css" />
+<link rel="icon" type="image/svg+xml" href="favicon.svg" />
 <script defer src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
 </head>
 <body>
@@ -48,12 +49,8 @@
         </div>
         <form id="project-form" class="inline-form">
           <input type="text" id="new-project-name" placeholder="Project name" required />
-          <select id="new-project-status">
-            <option>Not Started</option>
-            <option>In Progress</option>
-            <option>Blocked</option>
-            <option>Done</option>
-          </select>
+          <input type="date" id="new-project-date" title="Start date" />
+          <select id="new-project-status"></select>
           <button type="submit" class="btn btn-primary">Add project</button>
         </form>
       </div>
@@ -69,13 +66,33 @@
               <th class="col-idx">No.</th>
               <th>Project</th>
               <th>Status</th>
-              <th>Added</th>
+              <th>Start date</th>
               <th class="col-idx"></th>
             </tr>
           </thead>
           <tbody id="projects-tbody"></tbody>
         </table>
         <p class="empty-state" id="projects-empty">No projects yet — add one above to start the ledger.</p>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Manage statuses</h2>
+          <span class="count">Edit the options used in the Status dropdown</span>
+        </div>
+        <form id="status-form" class="inline-form">
+          <input type="text" id="new-status-name" placeholder="Status name" required />
+          <select id="new-status-color">
+            <option value="#12747D">Teal</option>
+            <option value="#1F7A6C">Green</option>
+            <option value="#A9761E">Amber</option>
+            <option value="#A63D26">Red</option>
+            <option value="#5B5FA6">Purple</option>
+            <option value="#6B7280">Gray</option>
+          </select>
+          <button type="submit" class="btn btn-primary">Add status</button>
+        </form>
+        <div id="statuses-list" class="statuses-list"></div>
       </div>
     </section>
 

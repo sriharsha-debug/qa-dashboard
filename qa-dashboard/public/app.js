@@ -6,6 +6,7 @@ const whoEmail = document.getElementById('who-email');
 
 let currentUser = null;
 let projectsCache = [];
+let statusesCache = [];
 
 // ---------- Auth ----------
 
@@ -37,7 +38,7 @@ function onLogin(user) {
   whoEmail.textContent = user.email;
   gate.classList.add('hidden');
   app.classList.remove('hidden');
-  loadProjects();
+  loadStatuses().then(loadProjects);
   loadReports();
 }
 
@@ -81,15 +82,18 @@ const projectsEmpty = document.getElementById('projects-empty');
 const projectCount = document.getElementById('project-count');
 const rProjectSelect = document.getElementById('r-project');
 const filterProjectSelect = document.getElementById('filter-project');
+const newProjectStatusSelect = document.getElementById('new-project-status');
 
 projectForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const name = document.getElementById('new-project-name').value.trim();
   const status = document.getElementById('new-project-status').value;
+  const start_date = document.getElementById('new-project-date').value || null;
   if (!name) return;
   try {
-    await api('projects', { method: 'POST', body: JSON.stringify({ name, status }) });
+    await api('projects', { method: 'POST', body: JSON.stringify({ name, status, start_date }) });
     document.getElementById('new-project-name').value = '';
+    document.getElementById('new-project-date').value = '';
     loadProjects();
   } catch (err) {
     alert(err.message);
@@ -107,8 +111,13 @@ async function loadProjects() {
   }
 }
 
-function statusClass(status) {
-  return 'pill-' + status.toLowerCase().replace(/\s+/g, '-');
+function statusColor(name) {
+  const s = statusesCache.find((x) => x.name === name);
+  return (s && s.color) || '#7FA0A6';
+}
+
+function pillStyle(hex) {
+  return `background:${hex}22;color:${hex};border-color:${hex};`;
 }
 
 function renderProjects(projects) {
@@ -116,21 +125,24 @@ function renderProjects(projects) {
   projectCount.textContent = projects.length ? `${projects.length} total` : '';
   projectsEmpty.style.display = projects.length ? 'none' : 'block';
 
+  const statusOptions = statusesCache
+    .map((s) => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`)
+    .join('');
+
   projects.forEach((p, i) => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td class="col-idx">${String(i + 1).padStart(2, '0')}</td>
       <td>${escapeHtml(p.name)}</td>
       <td>
-        <select class="status-select" data-id="${p.id}">
-          ${['Not Started', 'In Progress', 'Blocked', 'Done']
-            .map((s) => `<option value="${s}" ${s === p.status ? 'selected' : ''}>${s}</option>`)
-            .join('')}
+        <select class="status-select pill" style="${pillStyle(statusColor(p.status))}" data-id="${p.id}">
+          ${statusOptions}
         </select>
       </td>
-      <td>${new Date(p.created_at).toLocaleDateString()}</td>
+      <td>${p.start_date ? new Date(p.start_date + 'T00:00:00').toLocaleDateString() : '—'}</td>
       <td><button class="icon-btn" data-delete="${p.id}">remove</button></td>
     `;
+    tr.querySelector('.status-select').value = p.status;
     projectsTbody.appendChild(tr);
   });
 
@@ -167,6 +179,115 @@ function renderProjectSelects(projects) {
   rProjectSelect.innerHTML = opts || '<option value="">Add a project first</option>';
   filterProjectSelect.innerHTML =
     '<option value="">All projects</option>' + opts;
+}
+
+// ---------- Status manager ----------
+
+const statusForm = document.getElementById('status-form');
+const statusesListEl = document.getElementById('statuses-list');
+
+statusForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = document.getElementById('new-status-name').value.trim();
+  const color = document.getElementById('new-status-color').value;
+  if (!name) return;
+  try {
+    await api('statuses', { method: 'POST', body: JSON.stringify({ name, color }) });
+    document.getElementById('new-status-name').value = '';
+    await loadStatuses();
+    loadProjects();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+async function loadStatuses() {
+  try {
+    const { statuses } = await api('statuses');
+    statusesCache = statuses;
+    renderStatusOptionsForNewProject(statuses);
+    renderStatusManager(statuses);
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+function renderStatusOptionsForNewProject(statuses) {
+  newProjectStatusSelect.innerHTML = statuses
+    .map((s) => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`)
+    .join('');
+}
+
+const colorSwatches = ['#12747D', '#1F7A6C', '#A9761E', '#A63D26', '#5B5FA6', '#6B7280'];
+
+function renderStatusManager(statuses) {
+  statusesListEl.innerHTML = '';
+  statuses.forEach((s) => {
+    const row = document.createElement('div');
+    row.className = 'status-row';
+    row.innerHTML = `
+      <span class="status-swatch" style="background:${s.color}"></span>
+      <input type="text" value="${escapeHtml(s.name)}" data-id="${s.id}" class="status-name-input" />
+      <select class="status-color-select" data-id="${s.id}">
+        ${colorSwatches
+          .map((c) => `<option value="${c}" ${c === s.color ? 'selected' : ''}>${colorName(c)}</option>`)
+          .join('')}
+      </select>
+      <button class="icon-btn" data-delete-status="${s.id}">remove</button>
+    `;
+    statusesListEl.appendChild(row);
+  });
+
+  statusesListEl.querySelectorAll('.status-name-input').forEach((input) => {
+    input.addEventListener('change', async () => {
+      try {
+        await api('statuses', {
+          method: 'PUT',
+          body: JSON.stringify({ id: input.dataset.id, name: input.value.trim() }),
+        });
+        await loadStatuses();
+        loadProjects();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+  });
+
+  statusesListEl.querySelectorAll('.status-color-select').forEach((sel) => {
+    sel.addEventListener('change', async () => {
+      try {
+        await api('statuses', {
+          method: 'PUT',
+          body: JSON.stringify({ id: sel.dataset.id, color: sel.value }),
+        });
+        await loadStatuses();
+        loadProjects();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+  });
+
+  statusesListEl.querySelectorAll('[data-delete-status]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Remove this status? Projects using it will keep the label but lose its color.')) return;
+      try {
+        await api('statuses', { method: 'DELETE', body: JSON.stringify({ id: btn.dataset.deleteStatus }) });
+        await loadStatuses();
+        loadProjects();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+  });
+}
+
+function colorName(hex) {
+  const map = {
+    '#12747D': 'Teal', '#1F7A6C': 'Green', '#A9761E': 'Amber',
+    '#A63D26': 'Red', '#5B5FA6': 'Purple', '#6B7280': 'Gray',
+  };
+  return map[hex] || hex;
 }
 
 // ---------- Daily reports ----------

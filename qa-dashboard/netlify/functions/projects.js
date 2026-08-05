@@ -22,7 +22,11 @@ exports.handler = async (event, context) => {
     }
     const { data, error } = await supabase
       .from('projects')
-      .insert({ name: body.name.trim(), status: body.status || 'Not Started' })
+      .insert({
+        name: body.name.trim(),
+        status: body.status || 'Not Started',
+        start_date: body.start_date || null,
+      })
       .select()
       .single();
     if (error) return json(500, { error: error.message });
@@ -35,6 +39,7 @@ exports.handler = async (event, context) => {
     const updates = { updated_at: new Date().toISOString() };
     if (body.status) updates.status = body.status;
     if (body.name) updates.name = body.name.trim();
+    if (body.start_date !== undefined) updates.start_date = body.start_date || null;
     const { data, error } = await supabase
       .from('projects')
       .update(updates)
