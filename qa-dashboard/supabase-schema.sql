@@ -1,0 +1,43 @@
+-- QA Dashboard schema
+-- Run this in Supabase: Project → SQL Editor → New Query → paste → Run
+
+create extension if not exists "pgcrypto";
+
+create table if not exists projects (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  status text not null default 'Not Started'
+    check (status in ('Not Started', 'In Progress', 'Blocked', 'Done')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists daily_reports (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects(id) on delete cascade,
+  report_date date not null default current_date,
+  project_manager text,
+  bugsheet text,
+  test_cases integer default 0,
+  ui_bugs integer default 0,
+  functionality_bugs integer default 0,
+  remarks text,
+  sign_off boolean not null default false,
+  notes text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_daily_reports_project on daily_reports(project_id);
+create index if not exists idx_daily_reports_date on daily_reports(report_date desc);
+
+-- Row Level Security: locked down entirely.
+-- The browser never receives a Supabase key at all — only the Netlify
+-- Functions (using the service role key, kept as a server-side secret)
+-- talk to this database. RLS below is defense-in-depth in case the
+-- anon/public key is ever used directly.
+alter table projects enable row level security;
+alter table daily_reports enable row level security;
+
+-- No policies are created, so with RLS on, the anon/public key can read
+-- or write nothing. Only the service_role key (used only inside Netlify
+-- Functions, never shipped to the browser) can bypass RLS.

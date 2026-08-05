@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Inspection Ledger — QA Daily Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+<script defer src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
+</head>
+<body>
+
+  <!-- Gate: shown until the user is signed in -->
+  <div id="gate" class="gate">
+    <div class="gate-card">
+      <p class="eyebrow">QA Daily Log</p>
+      <h1>Inspection Ledger</h1>
+      <p class="gate-copy">Sign in with your email and password to open the ledger.</p>
+      <button id="gate-login" class="btn btn-primary">Sign in</button>
+      <p class="gate-hint">First time here? Ask the site owner to invite your email, then check your inbox for the invite link.</p>
+    </div>
+  </div>
+
+  <!-- App: shown once signed in -->
+  <div id="app" class="app hidden">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">QA Daily Log</p>
+        <h1>Inspection Ledger</h1>
+      </div>
+      <div class="who">
+        <span id="who-email" class="who-email"></span>
+        <button id="logout" class="btn btn-ghost">Sign out</button>
+      </div>
+    </header>
+
+    <nav class="tabs">
+      <button class="tab active" data-tab="projects">Projects</button>
+      <button class="tab" data-tab="daily">Daily Log</button>
+    </nav>
+
+    <!-- PROJECTS TAB -->
+    <section id="tab-projects" class="tab-panel active">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Add a project</h2>
+        </div>
+        <form id="project-form" class="inline-form">
+          <input type="text" id="new-project-name" placeholder="Project name" required />
+          <select id="new-project-status">
+            <option>Not Started</option>
+            <option>In Progress</option>
+            <option>Blocked</option>
+            <option>Done</option>
+          </select>
+          <button type="submit" class="btn btn-primary">Add project</button>
+        </form>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Projects</h2>
+          <span class="count" id="project-count"></span>
+        </div>
+        <table class="ledger" id="projects-table">
+          <thead>
+            <tr>
+              <th class="col-idx">No.</th>
+              <th>Project</th>
+              <th>Status</th>
+              <th>Added</th>
+              <th class="col-idx"></th>
+            </tr>
+          </thead>
+          <tbody id="projects-tbody"></tbody>
+        </table>
+        <p class="empty-state" id="projects-empty">No projects yet — add one above to start the ledger.</p>
+      </div>
+    </section>
+
+    <!-- DAILY LOG TAB -->
+    <section id="tab-daily" class="tab-panel">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>New daily entry</h2>
+        </div>
+        <form id="report-form" class="grid-form">
+          <label>Date
+            <input type="date" id="r-date" required />
+          </label>
+          <label>Project
+            <select id="r-project" required></select>
+          </label>
+          <label>Project manager
+            <input type="text" id="r-pm" placeholder="Name" />
+          </label>
+          <label>Bugsheet
+            <input type="text" id="r-bugsheet" placeholder="Link or reference" />
+          </label>
+          <label>Test cases
+            <input type="number" id="r-testcases" min="0" value="0" />
+          </label>
+          <label>UI bugs
+            <input type="number" id="r-uibugs" min="0" value="0" />
+          </label>
+          <label>Functionality bugs
+            <input type="number" id="r-funcbugs" min="0" value="0" />
+          </label>
+          <label class="signoff-field">
+            <span>Sign off</span>
+            <span class="toggle">
+              <input type="checkbox" id="r-signoff" />
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+            </span>
+          </label>
+          <label class="span-2">Remarks
+            <input type="text" id="r-remarks" placeholder="Short remark" />
+          </label>
+          <label class="span-2">Notes
+            <textarea id="r-notes" rows="2" placeholder="Additional notes"></textarea>
+          </label>
+          <div class="span-2 form-actions">
+            <button type="submit" class="btn btn-primary">Save entry</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>History</h2>
+          <div class="filters">
+            <select id="filter-project">
+              <option value="">All projects</option>
+            </select>
+            <input type="date" id="filter-date" />
+            <button id="filter-clear" class="btn btn-ghost">Clear</button>
+          </div>
+        </div>
+        <div id="reports-list" class="reports-list"></div>
+        <p class="empty-state" id="reports-empty">No entries yet.</p>
+      </div>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
