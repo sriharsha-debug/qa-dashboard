@@ -141,6 +141,7 @@ function renderProjects(projects) {
         </select>
       </td>
       <td>${project.bugsheet_link? `<a href="${project.bugsheet_link}" target="_blank">Open</a>`: "-"}
+
 </td>
       <td>${p.start_date ? new Date(p.start_date + 'T00:00:00').toLocaleDateString() : '—'}</td>
       <td><button class="icon-btn" data-delete="${p.id}">remove</button></td>
