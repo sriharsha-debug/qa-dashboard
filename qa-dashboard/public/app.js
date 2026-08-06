@@ -81,6 +81,7 @@ async function loadProjects() {
   projectsCache = data;
   renderProjects(data);
   renderProjectSelects(data);
+  renderDetailsSelect();
 }
 
 function statusColor(name) {
@@ -382,6 +383,171 @@ editDeleteBtn.addEventListener('click', async () => {
   loadProjects();
   loadReports();
 });
+
+// ---------- Project Details tab ----------
+
+const detailsSelect = document.getElementById('details-project-select');
+const detailsEmpty = document.getElementById('details-empty');
+const detailsContent = document.getElementById('details-content');
+const detailsName = document.getElementById('details-name');
+const detailsFields = document.getElementById('details-fields');
+const detailsEditBtn = document.getElementById('details-edit-btn');
+const apkForm = document.getElementById('apk-form');
+const apkList = document.getElementById('apk-list');
+const apkEmpty = document.getElementById('apk-empty');
+const apkCount = document.getElementById('apk-count');
+
+document.getElementById('apk-date').valueAsDate = new Date();
+
+const detailFieldGroups = [
+  { label: 'Group', span2: true, isHeader: true, title: 'Overview' },
+  { key: 'status', label: 'Status' },
+  { key: 'project_manager', label: 'Project manager' },
+  { key: 'bugsheet', label: 'Bugsheet', isLink: true },
+  { isHeader: true, title: 'Timeline' },
+  { key: 'start_date', label: 'Start date', isDate: true },
+  { key: 'end_date', label: 'End date', isDate: true },
+  { key: 'kt_date', label: 'KT date', isDate: true },
+  { key: 'sign_off_date', label: 'Sign off date', isDate: true },
+  { isHeader: true, title: 'Testing schedule' },
+  { key: 'ui_testing_start_date', label: 'UI testing start', isDate: true },
+  { key: 'ui_testing_end_date', label: 'UI testing end', isDate: true },
+  { key: 'functional_testing_start_date', label: 'Functional testing start', isDate: true },
+  { key: 'functional_testing_end_date', label: 'Functional testing end', isDate: true },
+  { isHeader: true, title: 'Team' },
+  { key: 'mobile_app_developers', label: 'Mobile app developers' },
+  { key: 'web_developers', label: 'Web developers' },
+  { key: 'backend_developers', label: 'Backend developers', span2: true },
+  { isHeader: true, title: 'Review' },
+  { key: 'clients_review', label: 'Clients review', span2: true },
+  { key: 'remarks', label: 'Remarks', span2: true },
+];
+
+function renderDetailsSelect() {
+  const opts = projectsCache.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+  detailsSelect.innerHTML = opts;
+  if (!projectsCache.length) {
+    detailsEmpty.classList.remove('hidden');
+    detailsContent.classList.add('hidden');
+    return;
+  }
+  detailsEmpty.classList.add('hidden');
+  const keep = projectsCache.find((p) => p.id === detailsSelect.dataset.current);
+  const targetId = keep ? keep.id : projectsCache[0].id;
+  detailsSelect.value = targetId;
+  showProjectDetails(targetId);
+}
+
+detailsSelect.addEventListener('change', () => showProjectDetails(detailsSelect.value));
+
+function showProjectDetails(id) {
+  const p = projectsCache.find((x) => x.id === id);
+  if (!p) return;
+  detailsSelect.dataset.current = id;
+  detailsContent.classList.remove('hidden');
+  detailsName.textContent = p.name;
+
+  let html = '';
+  detailFieldGroups.forEach((f) => {
+    if (f.isHeader) {
+      html += `<p class="span-2 section-label" style="grid-column:span 2;">${escapeHtml(f.title)}</p>`;
+      return;
+    }
+    const raw = p[f.key];
+    let valueHtml;
+    if (!raw) {
+      valueHtml = `<span class="detail-value empty">Not set</span>`;
+    } else if (f.isDate) {
+      valueHtml = `<span class="detail-value">${fmtDate(raw)}</span>`;
+    } else if (f.isLink) {
+      valueHtml = `<a class="bugsheet-link" href="${escapeHtml(raw)}" target="_blank" rel="noopener">${escapeHtml(raw)}</a>`;
+    } else {
+      valueHtml = `<span class="detail-value">${escapeHtml(raw)}</span>`;
+    }
+    html += `
+      <div class="detail-item${f.span2 ? ' span-2' : ''}">
+        <span class="detail-label">${escapeHtml(f.label)}</span>
+        ${valueHtml}
+      </div>
+    `;
+  });
+  detailsFields.innerHTML = html;
+
+  detailsEditBtn.onclick = () => openEditModal(id);
+
+  loadApkShares(id);
+}
+
+// ---------- APK shares ----------
+
+apkForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const project_id = detailsSelect.value;
+  if (!project_id) return;
+  const payload = {
+    project_id,
+    version: document.getElementById('apk-version').value.trim() || null,
+    apk_link: document.getElementById('apk-link').value.trim() || null,
+    shared_date: document.getElementById('apk-date').value,
+    shared_by: document.getElementById('apk-shared-by').value.trim() || null,
+    notes: document.getElementById('apk-notes').value.trim() || null,
+  };
+  const { error } = await sb.from('apk_shares').insert(payload);
+  if (error) {
+    alert(error.message);
+    return;
+  }
+  apkForm.reset();
+  document.getElementById('apk-date').valueAsDate = new Date();
+  loadApkShares(project_id);
+});
+
+async function loadApkShares(projectId) {
+  const { data, error } = await sb
+    .from('apk_shares')
+    .select('*')
+    .eq('project_id', projectId)
+    .order('shared_date', { ascending: false })
+    .order('created_at', { ascending: false });
+  if (error) {
+    console.error(error);
+    return;
+  }
+  renderApkShares(data);
+}
+
+function renderApkShares(shares) {
+  apkList.innerHTML = '';
+  apkCount.textContent = shares.length ? `${shares.length} logged` : '';
+  apkEmpty.style.display = shares.length ? 'none' : 'block';
+
+  shares.forEach((a) => {
+    const row = document.createElement('div');
+    row.className = 'apk-row';
+    row.innerHTML = `
+      <div class="apk-row-main">
+        <div class="apk-row-top">
+          <span class="apk-version">${escapeHtml(a.version || 'Build')}</span>
+          <span>${fmtDate(a.shared_date)}</span>
+          ${a.shared_by ? `<span>by ${escapeHtml(a.shared_by)}</span>` : ''}
+        </div>
+        ${a.apk_link ? `<a class="bugsheet-link" href="${escapeHtml(a.apk_link)}" target="_blank" rel="noopener">Download / link</a>` : ''}
+        ${a.notes ? `<div class="apk-row-notes">${escapeHtml(a.notes)}</div>` : ''}
+      </div>
+      <button class="icon-btn" data-apk-delete="${a.id}">remove</button>
+    `;
+    row.querySelector('[data-apk-delete]').addEventListener('click', async () => {
+      if (!confirm('Remove this APK log entry?')) return;
+      const { error } = await sb.from('apk_shares').delete().eq('id', a.id);
+      if (error) {
+        alert(error.message);
+        return;
+      }
+      loadApkShares(detailsSelect.value);
+    });
+    apkList.appendChild(row);
+  });
+}
 
 // ---------- Daily reports ----------
 

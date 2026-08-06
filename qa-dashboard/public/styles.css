@@ -475,8 +475,56 @@ input:focus, select:focus, textarea:focus {
 }
 .span-2.section-label:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
 
+.details-select { width: 100%; max-width: 420px; }
+
+.details-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px 24px;
+}
+.detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.detail-item.span-2 { grid-column: span 2; }
+.detail-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.detail-value { font-size: 14px; color: var(--ink); }
+.detail-value.empty { color: var(--ink-soft); font-style: italic; }
+
+.apk-list { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+.apk-row {
+  border: 1px solid var(--line-strong);
+  background: var(--panel-2);
+  border-radius: 6px;
+  padding: 12px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.apk-row-main { display: flex; flex-direction: column; gap: 3px; }
+.apk-row-top {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.apk-row-top .apk-version { font-family: var(--font-body); font-weight: 600; font-size: 14px; color: var(--ink); }
+.apk-row-notes { font-size: 13px; color: var(--ink-soft); }
+
 @media (max-width: 640px) {
   .grid-form { grid-template-columns: 1fr; }
   .span-2 { grid-column: span 1; }
   .topbar { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .details-grid { grid-template-columns: 1fr; }
+  .detail-item.span-2 { grid-column: span 1; }
 }

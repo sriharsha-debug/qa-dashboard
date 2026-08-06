@@ -41,6 +41,19 @@ create table if not exists projects (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists apk_shares (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects(id) on delete cascade,
+  version text,
+  apk_link text,
+  shared_date date not null default current_date,
+  shared_by text,
+  notes text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_apk_shares_project on apk_shares(project_id);
+
 create table if not exists daily_reports (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references projects(id) on delete cascade,
@@ -66,6 +79,12 @@ create index if not exists idx_daily_reports_date on daily_reports(report_date d
 alter table projects enable row level security;
 alter table daily_reports enable row level security;
 alter table statuses enable row level security;
+alter table apk_shares enable row level security;
+
+create policy "apk_shares_authenticated_only" on apk_shares
+  for all
+  using (auth.role() = 'authenticated')
+  with check (auth.role() = 'authenticated');
 
 create policy "projects_authenticated_only" on projects
   for all
