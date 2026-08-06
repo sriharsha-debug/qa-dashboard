@@ -173,13 +173,21 @@ const statusesListEl = document.getElementById('statuses-list');
 
 statusForm.addEventListener('submit', async (e) => {
   e.preventDefault();
+  clearFormError('status-error');
   const name = document.getElementById('new-status-name').value.trim();
   const color = document.getElementById('new-status-color').value;
-  if (!name) return;
+  if (!name || name.length < 2) {
+    showFormError('status-error', 'Status name must be at least 2 characters.');
+    return;
+  }
+  if (statusesCache.some((s) => s.name.toLowerCase() === name.toLowerCase())) {
+    showFormError('status-error', 'A status with that name already exists.');
+    return;
+  }
   const { count } = await sb.from('statuses').select('*', { count: 'exact', head: true });
   const { error } = await sb.from('statuses').insert({ name, color, sort_order: count || 0 });
   if (error) {
-    alert(error.message);
+    showFormError('status-error', error.message);
     return;
   }
   document.getElementById('new-status-name').value = '';
@@ -289,6 +297,7 @@ const modalFieldIds = {
   status: 'edit-status',
   project_manager: 'edit-pm',
   bugsheet: 'edit-bugsheet',
+  project_document: 'edit-project-document',
   start_date: 'edit-start-date',
   end_date: 'edit-end-date',
   kt_date: 'edit-kt-date',
@@ -305,6 +314,7 @@ const modalFieldIds = {
 };
 
 function openEditModal(id) {
+  clearFormError('edit-error');
   editStatusSelect.innerHTML = statusesCache
     .map((s) => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`)
     .join('');
@@ -339,6 +349,7 @@ editModal.addEventListener('click', (e) => {
 
 editForm.addEventListener('submit', async (e) => {
   e.preventDefault();
+  clearFormError('edit-error');
   const id = document.getElementById('edit-id').value;
 
   const payload = {};
@@ -346,23 +357,46 @@ editForm.addEventListener('submit', async (e) => {
     const val = document.getElementById(elId).value.trim();
     payload[key] = val || null;
   });
-  if (!payload.name) {
-    alert('Project name is required.');
+
+  // ---- Validation ----
+  if (!payload.name || payload.name.length < 2) {
+    showFormError('edit-error', 'Project name must be at least 2 characters.');
     return;
   }
+  if (!isValidUrl(payload.bugsheet)) {
+    showFormError('edit-error', 'Bugsheet link must be a valid http(s) URL, or leave it blank.');
+    return;
+  }
+  if (!isValidUrl(payload.project_document)) {
+    showFormError('edit-error', 'Project document must be a valid http(s) URL, or leave it blank.');
+    return;
+  }
+  if (!isValidDateRange(payload.start_date, payload.end_date)) {
+    showFormError('edit-error', 'End date cannot be before start date.');
+    return;
+  }
+  if (!isValidDateRange(payload.ui_testing_start_date, payload.ui_testing_end_date)) {
+    showFormError('edit-error', 'UI testing end date cannot be before its start date.');
+    return;
+  }
+  if (!isValidDateRange(payload.functional_testing_start_date, payload.functional_testing_end_date)) {
+    showFormError('edit-error', 'Functional testing end date cannot be before its start date.');
+    return;
+  }
+
   if (!payload.status) payload.status = statusesCache[0] ? statusesCache[0].name : 'Not Started';
 
   if (id) {
     payload.updated_at = new Date().toISOString();
     const { error } = await sb.from('projects').update(payload).eq('id', id);
     if (error) {
-      alert(error.message);
+      showFormError('edit-error', error.message);
       return;
     }
   } else {
     const { error } = await sb.from('projects').insert(payload);
     if (error) {
-      alert(error.message);
+      showFormError('edit-error', error.message);
       return;
     }
   }
@@ -404,6 +438,7 @@ const detailFieldGroups = [
   { key: 'status', label: 'Status' },
   { key: 'project_manager', label: 'Project manager' },
   { key: 'bugsheet', label: 'Bugsheet', isLink: true },
+  { key: 'project_document', label: 'Project document', isLink: true, span2: true },
   { isHeader: true, title: 'Timeline' },
   { key: 'start_date', label: 'Start date', isDate: true },
   { key: 'end_date', label: 'End date', isDate: true },
@@ -513,19 +548,32 @@ async function showProjectDetails(id) {
 
 apkForm.addEventListener('submit', async (e) => {
   e.preventDefault();
+  clearFormError('apk-error');
   const project_id = detailsSelect.value;
   if (!project_id) return;
+
+  const sharedDate = document.getElementById('apk-date').value;
+  if (!sharedDate) {
+    showFormError('apk-error', 'Shared date is required.');
+    return;
+  }
+  const apkLinkVal = document.getElementById('apk-link').value.trim();
+  if (!isValidUrl(apkLinkVal)) {
+    showFormError('apk-error', 'APK link must be a valid http(s) URL, or leave it blank.');
+    return;
+  }
+
   const payload = {
     project_id,
     version: document.getElementById('apk-version').value.trim() || null,
-    apk_link: document.getElementById('apk-link').value.trim() || null,
-    shared_date: document.getElementById('apk-date').value,
+    apk_link: apkLinkVal || null,
+    shared_date: sharedDate,
     shared_by: document.getElementById('apk-shared-by').value.trim() || null,
     notes: document.getElementById('apk-notes').value.trim() || null,
   };
   const { error } = await sb.from('apk_shares').insert(payload);
   if (error) {
-    alert(error.message);
+    showFormError('apk-error', error.message);
     return;
   }
   apkForm.reset();
@@ -590,26 +638,48 @@ document.getElementById('r-date').valueAsDate = new Date();
 
 reportForm.addEventListener('submit', async (e) => {
   e.preventDefault();
+  clearFormError('report-error');
   const project_id = document.getElementById('r-project').value;
   if (!project_id) {
-    alert('Add a project first.');
+    showFormError('report-error', 'Select a project first (add one on the Projects tab if the list is empty).');
     return;
   }
+  const reportDate = document.getElementById('r-date').value;
+  if (!reportDate) {
+    showFormError('report-error', 'Date is required.');
+    return;
+  }
+  const bugsheetVal = document.getElementById('r-bugsheet').value.trim();
+  const testCases = document.getElementById('r-testcases').value;
+  const uiBugs = document.getElementById('r-uibugs').value;
+  const funcBugs = document.getElementById('r-funcbugs').value;
+  const numericFields = [
+    ['Test cases', testCases],
+    ['UI bugs', uiBugs],
+    ['Functionality bugs', funcBugs],
+  ];
+  for (const [label, val] of numericFields) {
+    if (val === '' || Number(val) < 0 || !Number.isInteger(Number(val))) {
+      showFormError('report-error', `${label} must be a whole number, 0 or higher.`);
+      return;
+    }
+  }
+
   const payload = {
-    report_date: document.getElementById('r-date').value,
+    report_date: reportDate,
     project_id,
     project_manager: document.getElementById('r-pm').value.trim() || null,
-    bugsheet: document.getElementById('r-bugsheet').value.trim() || null,
-    test_cases: Number(document.getElementById('r-testcases').value) || 0,
-    ui_bugs: Number(document.getElementById('r-uibugs').value) || 0,
-    functionality_bugs: Number(document.getElementById('r-funcbugs').value) || 0,
+    bugsheet: bugsheetVal || null,
+    test_cases: Number(testCases),
+    ui_bugs: Number(uiBugs),
+    functionality_bugs: Number(funcBugs),
     remarks: document.getElementById('r-remarks').value.trim() || null,
     sign_off: document.getElementById('r-signoff').checked,
     notes: document.getElementById('r-notes').value.trim() || null,
   };
   const { error } = await sb.from('daily_reports').insert(payload);
   if (error) {
-    alert(error.message);
+    showFormError('report-error', error.message);
     return;
   }
 
@@ -701,4 +771,35 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str ?? '';
   return div.innerHTML;
+}
+
+// ---------- Validation helpers ----------
+
+function isValidUrl(str) {
+  if (!str) return true; // empty is fine, these fields are optional
+  try {
+    const u = new URL(str);
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function isValidDateRange(startVal, endVal) {
+  if (!startVal || !endVal) return true; // only check when both are set
+  return new Date(endVal) >= new Date(startVal);
+}
+
+function showFormError(elId, message) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.textContent = message;
+  el.classList.remove('hidden');
+}
+
+function clearFormError(elId) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.textContent = '';
+  el.classList.add('hidden');
 }

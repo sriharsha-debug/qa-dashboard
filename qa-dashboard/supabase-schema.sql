@@ -25,6 +25,7 @@ create table if not exists projects (
   start_date date,
   end_date date,
   bugsheet text,
+  project_document text,
   project_manager text,
   kt_date date,
   ui_testing_start_date date,

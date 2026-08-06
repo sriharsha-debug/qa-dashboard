@@ -96,6 +96,7 @@
           </select>
           <button type="submit" class="btn btn-primary">Add status</button>
         </form>
+        <p id="status-error" class="login-error hidden"></p>
         <div id="statuses-list" class="statuses-list"></div>
       </div>
     </section>
@@ -129,24 +130,25 @@
           </div>
           <form id="apk-form" class="grid-form">
             <label>Version / label
-              <input type="text" id="apk-version" placeholder="e.g. v1.4.2" />
+              <input type="text" id="apk-version" placeholder="e.g. v1.4.2" maxlength="60" />
             </label>
             <label>Shared date
               <input type="date" id="apk-date" required />
             </label>
             <label class="span-2">APK link
-              <input type="text" id="apk-link" placeholder="https://..." />
+              <input type="url" id="apk-link" placeholder="https://..." maxlength="500" />
             </label>
             <label>Shared by
-              <input type="text" id="apk-shared-by" placeholder="Developer name" />
+              <input type="text" id="apk-shared-by" placeholder="Developer name" maxlength="80" />
             </label>
             <label class="span-2">Notes
-              <input type="text" id="apk-notes" placeholder="What changed in this build" />
+              <input type="text" id="apk-notes" placeholder="What changed in this build" maxlength="500" />
             </label>
             <div class="span-2 form-actions">
               <button type="submit" class="btn btn-primary">Log APK</button>
             </div>
           </form>
+          <p id="apk-error" class="login-error hidden"></p>
           <div id="apk-list" class="apk-list"></div>
           <p class="empty-state" id="apk-empty">No APKs logged yet for this project.</p>
         </div>
@@ -167,19 +169,19 @@
             <select id="r-project" required></select>
           </label>
           <label>Project manager
-            <input type="text" id="r-pm" placeholder="Name" />
+            <input type="text" id="r-pm" placeholder="Name" maxlength="80" />
           </label>
           <label>Bugsheet
-            <input type="text" id="r-bugsheet" placeholder="Link or reference" />
+            <input type="text" id="r-bugsheet" placeholder="Link or reference" maxlength="500" />
           </label>
           <label>Test cases
-            <input type="number" id="r-testcases" min="0" value="0" />
+            <input type="number" id="r-testcases" min="0" max="100000" step="1" value="0" required />
           </label>
           <label>UI bugs
-            <input type="number" id="r-uibugs" min="0" value="0" />
+            <input type="number" id="r-uibugs" min="0" max="100000" step="1" value="0" required />
           </label>
           <label>Functionality bugs
-            <input type="number" id="r-funcbugs" min="0" value="0" />
+            <input type="number" id="r-funcbugs" min="0" max="100000" step="1" value="0" required />
           </label>
           <label class="signoff-field">
             <span>Sign off</span>
@@ -189,15 +191,16 @@
             </span>
           </label>
           <label class="span-2">Remarks
-            <input type="text" id="r-remarks" placeholder="Short remark" />
+            <input type="text" id="r-remarks" placeholder="Short remark" maxlength="300" />
           </label>
           <label class="span-2">Notes
-            <textarea id="r-notes" rows="2" placeholder="Additional notes"></textarea>
+            <textarea id="r-notes" rows="2" placeholder="Additional notes" maxlength="1000"></textarea>
           </label>
           <div class="span-2 form-actions">
             <button type="submit" class="btn btn-primary">Save entry</button>
           </div>
         </form>
+        <p id="report-error" class="login-error hidden"></p>
       </div>
 
       <div class="panel">
@@ -226,18 +229,22 @@
       </div>
       <form id="edit-form" class="grid-form">
         <input type="hidden" id="edit-id" />
+        <p id="edit-error" class="login-error hidden span-2"></p>
 
         <label class="span-2">Project name
-          <input type="text" id="edit-name" required />
+          <input type="text" id="edit-name" required minlength="2" maxlength="120" />
         </label>
         <label>Status
-          <select id="edit-status"></select>
+          <select id="edit-status" required></select>
         </label>
         <label>Project manager
-          <input type="text" id="edit-pm" placeholder="Name" />
+          <input type="text" id="edit-pm" placeholder="Name" maxlength="80" />
         </label>
         <label class="span-2">Bugsheet link
-          <input type="text" id="edit-bugsheet" placeholder="https://..." />
+          <input type="text" id="edit-bugsheet" placeholder="https://..." maxlength="500" />
+        </label>
+        <label class="span-2">Project document
+          <input type="url" id="edit-project-document" placeholder="https://... (spec, SRS, requirements doc)" maxlength="500" />
         </label>
 
         <p class="span-2 section-label">Timeline</p>
@@ -270,21 +277,21 @@
 
         <p class="span-2 section-label">Team</p>
         <label>Mobile app developers
-          <input type="text" id="edit-mobile-devs" placeholder="Names" />
+          <input type="text" id="edit-mobile-devs" placeholder="Names" maxlength="200" />
         </label>
         <label>Web developers
-          <input type="text" id="edit-web-devs" placeholder="Names" />
+          <input type="text" id="edit-web-devs" placeholder="Names" maxlength="200" />
         </label>
         <label class="span-2">Backend developers
-          <input type="text" id="edit-backend-devs" placeholder="Names" />
+          <input type="text" id="edit-backend-devs" placeholder="Names" maxlength="200" />
         </label>
 
         <p class="span-2 section-label">Review</p>
         <label class="span-2">Clients review
-          <textarea id="edit-clients-review" rows="2" placeholder="Client feedback / review status"></textarea>
+          <textarea id="edit-clients-review" rows="2" placeholder="Client feedback / review status" maxlength="1000"></textarea>
         </label>
         <label class="span-2">Remarks
-          <textarea id="edit-remarks" rows="2" placeholder="Additional remarks"></textarea>
+          <textarea id="edit-remarks" rows="2" placeholder="Additional remarks" maxlength="1000"></textarea>
         </label>
 
         <div class="span-2 form-actions">
