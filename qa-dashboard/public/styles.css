@@ -445,6 +445,11 @@ input:focus, select:focus, textarea:focus {
   max-width: 480px;
   padding: 22px 24px;
 }
+.modal-large {
+  max-width: 640px;
+  max-height: 88vh;
+  overflow-y: auto;
+}
 .modal-head {
   display: flex;
   justify-content: space-between;
@@ -452,7 +457,23 @@ input:focus, select:focus, textarea:focus {
   margin-bottom: 16px;
   padding-bottom: 10px;
   border-bottom: 1px dashed var(--line-strong);
+  position: sticky;
+  top: -22px;
+  background: var(--panel);
+  padding-top: 4px;
+  z-index: 1;
 }
+.section-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 10px 0 -4px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+}
+.span-2.section-label:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
 
 @media (max-width: 640px) {
   .grid-form { grid-template-columns: 1fr; }

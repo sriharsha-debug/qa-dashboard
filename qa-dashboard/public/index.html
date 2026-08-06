@@ -53,13 +53,8 @@
         <div class="panel-head">
           <h2>Add a project</h2>
         </div>
-        <form id="project-form" class="inline-form">
-          <input type="text" id="new-project-name" placeholder="Project name" required />
-          <input type="date" id="new-project-date" title="Start date" />
-          <input type="text" id="new-project-bugsheet" placeholder="Bugsheet link (optional)" />
-          <select id="new-project-status"></select>
-          <button type="submit" class="btn btn-primary">Add project</button>
-        </form>
+        <p class="gate-copy" style="margin:0 0 14px;text-align:left;">Fill in full project details — timeline, testing dates, team, sign off — in one place.</p>
+        <button id="open-add-modal" class="btn btn-primary">+ Add project</button>
       </div>
 
       <div class="panel">
@@ -73,8 +68,8 @@
               <th class="col-idx">No.</th>
               <th>Project</th>
               <th>Status</th>
-              <th>Start date</th>
-              <th>Bugsheet</th>
+              <th>PM</th>
+              <th>Start – End</th>
               <th class="col-idx"></th>
             </tr>
           </thead>
@@ -168,30 +163,79 @@
     </section>
   </div>
 
-  <!-- Edit project modal -->
+  <!-- Add / Edit project modal -->
   <div id="edit-modal" class="modal-overlay hidden">
-    <div class="modal">
+    <div class="modal modal-large">
       <div class="modal-head">
-        <h2>Edit project</h2>
+        <h2 id="modal-title">Add project</h2>
         <button id="edit-close" class="icon-btn">close</button>
       </div>
       <form id="edit-form" class="grid-form">
         <input type="hidden" id="edit-id" />
+
         <label class="span-2">Project name
           <input type="text" id="edit-name" required />
-        </label>
-        <label>Start date
-          <input type="date" id="edit-date" />
         </label>
         <label>Status
           <select id="edit-status"></select>
         </label>
+        <label>Project manager
+          <input type="text" id="edit-pm" placeholder="Name" />
+        </label>
         <label class="span-2">Bugsheet link
           <input type="text" id="edit-bugsheet" placeholder="https://..." />
         </label>
+
+        <p class="span-2 section-label">Timeline</p>
+        <label>Start date
+          <input type="date" id="edit-start-date" />
+        </label>
+        <label>End date
+          <input type="date" id="edit-end-date" />
+        </label>
+        <label>KT date
+          <input type="date" id="edit-kt-date" />
+        </label>
+        <label>Sign off date
+          <input type="date" id="edit-signoff-date" />
+        </label>
+
+        <p class="span-2 section-label">Testing schedule</p>
+        <label>UI testing start
+          <input type="date" id="edit-ui-start" />
+        </label>
+        <label>UI testing end
+          <input type="date" id="edit-ui-end" />
+        </label>
+        <label>Functional testing start
+          <input type="date" id="edit-func-start" />
+        </label>
+        <label>Functional testing end
+          <input type="date" id="edit-func-end" />
+        </label>
+
+        <p class="span-2 section-label">Team</p>
+        <label>Mobile app developers
+          <input type="text" id="edit-mobile-devs" placeholder="Names" />
+        </label>
+        <label>Web developers
+          <input type="text" id="edit-web-devs" placeholder="Names" />
+        </label>
+        <label class="span-2">Backend developers
+          <input type="text" id="edit-backend-devs" placeholder="Names" />
+        </label>
+
+        <p class="span-2 section-label">Review</p>
+        <label class="span-2">Clients review
+          <textarea id="edit-clients-review" rows="2" placeholder="Client feedback / review status"></textarea>
+        </label>
+        <label class="span-2">Remarks
+          <textarea id="edit-remarks" rows="2" placeholder="Additional remarks"></textarea>
+        </label>
+
         <div class="span-2 form-actions">
           <button type="button" id="edit-delete" class="btn btn-ghost">Remove project</button>
-          <button type="submit" class="btn btn-primary">Save changes</button>
+          <button type="submit" class="btn btn-primary">Save project</button>
         </div>
       </form>
     </div>

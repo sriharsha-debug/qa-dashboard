@@ -61,31 +61,13 @@ document.querySelectorAll('.tab').forEach((tab) => {
 
 // ---------- Projects ----------
 
-const projectForm = document.getElementById('project-form');
 const projectsTbody = document.getElementById('projects-tbody');
 const projectsEmpty = document.getElementById('projects-empty');
 const projectCount = document.getElementById('project-count');
 const rProjectSelect = document.getElementById('r-project');
 const filterProjectSelect = document.getElementById('filter-project');
-const newProjectStatusSelect = document.getElementById('new-project-status');
 
-projectForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const name = document.getElementById('new-project-name').value.trim();
-  const status = document.getElementById('new-project-status').value;
-  const start_date = document.getElementById('new-project-date').value || null;
-  const bugsheet = document.getElementById('new-project-bugsheet').value.trim() || null;
-  if (!name) return;
-  const { error } = await sb.from('projects').insert({ name, status, start_date, bugsheet });
-  if (error) {
-    alert(error.message);
-    return;
-  }
-  document.getElementById('new-project-name').value = '';
-  document.getElementById('new-project-date').value = '';
-  document.getElementById('new-project-bugsheet').value = '';
-  loadProjects();
-});
+document.getElementById('open-add-modal').addEventListener('click', () => openEditModal(null));
 
 async function loadProjects() {
   const { data, error } = await sb
@@ -110,6 +92,10 @@ function pillStyle(hex) {
   return `background:${hex}22;color:${hex};border-color:${hex};`;
 }
 
+function fmtDate(d) {
+  return d ? new Date(d + 'T00:00:00').toLocaleDateString() : '—';
+}
+
 function renderProjects(projects) {
   projectsTbody.innerHTML = '';
   projectCount.textContent = projects.length ? `${projects.length} total` : '';
@@ -129,8 +115,8 @@ function renderProjects(projects) {
           ${statusOptions}
         </select>
       </td>
-      <td>${p.start_date ? new Date(p.start_date + 'T00:00:00').toLocaleDateString() : '—'}</td>
-      <td>${p.bugsheet ? `<a class="bugsheet-link" href="${escapeHtml(p.bugsheet)}" target="_blank" rel="noopener">open</a>` : '<span class="no-link">—</span>'}</td>
+      <td>${p.project_manager ? escapeHtml(p.project_manager) : '<span class="no-link">—</span>'}</td>
+      <td>${fmtDate(p.start_date)} – ${fmtDate(p.end_date)}</td>
       <td class="row-actions">
         <button class="icon-btn" data-edit-btn="${p.id}">edit</button>
         <button class="icon-btn" data-delete="${p.id}">remove</button>
@@ -210,14 +196,7 @@ async function loadStatuses() {
     return;
   }
   statusesCache = data;
-  renderStatusOptionsForNewProject(data);
   renderStatusManager(data);
-}
-
-function renderStatusOptionsForNewProject(statuses) {
-  newProjectStatusSelect.innerHTML = statuses
-    .map((s) => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`)
-    .join('');
 }
 
 const colorSwatches = ['#12747D', '#1F7A6C', '#A9761E', '#A63D26', '#5B5FA6', '#6B7280'];
@@ -296,23 +275,55 @@ function colorName(hex) {
   return map[hex] || hex;
 }
 
-// ---------- Edit project modal ----------
+// ---------- Add / Edit project modal ----------
 
 const editModal = document.getElementById('edit-modal');
 const editForm = document.getElementById('edit-form');
 const editStatusSelect = document.getElementById('edit-status');
+const modalTitle = document.getElementById('modal-title');
+const editDeleteBtn = document.getElementById('edit-delete');
+
+const modalFieldIds = {
+  name: 'edit-name',
+  status: 'edit-status',
+  project_manager: 'edit-pm',
+  bugsheet: 'edit-bugsheet',
+  start_date: 'edit-start-date',
+  end_date: 'edit-end-date',
+  kt_date: 'edit-kt-date',
+  sign_off_date: 'edit-signoff-date',
+  ui_testing_start_date: 'edit-ui-start',
+  ui_testing_end_date: 'edit-ui-end',
+  functional_testing_start_date: 'edit-func-start',
+  functional_testing_end_date: 'edit-func-end',
+  mobile_app_developers: 'edit-mobile-devs',
+  web_developers: 'edit-web-devs',
+  backend_developers: 'edit-backend-devs',
+  clients_review: 'edit-clients-review',
+  remarks: 'edit-remarks',
+};
 
 function openEditModal(id) {
-  const p = projectsCache.find((x) => x.id === id);
-  if (!p) return;
-  document.getElementById('edit-id').value = p.id;
-  document.getElementById('edit-name').value = p.name;
-  document.getElementById('edit-date').value = p.start_date || '';
-  document.getElementById('edit-bugsheet').value = p.bugsheet || '';
   editStatusSelect.innerHTML = statusesCache
     .map((s) => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`)
     .join('');
-  editStatusSelect.value = p.status;
+
+  if (id) {
+    const p = projectsCache.find((x) => x.id === id);
+    if (!p) return;
+    document.getElementById('edit-id').value = p.id;
+    modalTitle.textContent = 'Edit project';
+    editDeleteBtn.classList.remove('hidden');
+    Object.entries(modalFieldIds).forEach(([key, elId]) => {
+      document.getElementById(elId).value = p[key] || '';
+    });
+  } else {
+    document.getElementById('edit-id').value = '';
+    modalTitle.textContent = 'Add project';
+    editDeleteBtn.classList.add('hidden');
+    editForm.reset();
+    editStatusSelect.value = statusesCache[0] ? statusesCache[0].name : '';
+  }
   editModal.classList.remove('hidden');
 }
 
@@ -328,24 +339,39 @@ editModal.addEventListener('click', (e) => {
 editForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const id = document.getElementById('edit-id').value;
-  const payload = {
-    name: document.getElementById('edit-name').value.trim(),
-    status: editStatusSelect.value,
-    start_date: document.getElementById('edit-date').value || null,
-    bugsheet: document.getElementById('edit-bugsheet').value.trim() || null,
-    updated_at: new Date().toISOString(),
-  };
-  const { error } = await sb.from('projects').update(payload).eq('id', id);
-  if (error) {
-    alert(error.message);
+
+  const payload = {};
+  Object.entries(modalFieldIds).forEach(([key, elId]) => {
+    const val = document.getElementById(elId).value.trim();
+    payload[key] = val || null;
+  });
+  if (!payload.name) {
+    alert('Project name is required.');
     return;
+  }
+  if (!payload.status) payload.status = statusesCache[0] ? statusesCache[0].name : 'Not Started';
+
+  if (id) {
+    payload.updated_at = new Date().toISOString();
+    const { error } = await sb.from('projects').update(payload).eq('id', id);
+    if (error) {
+      alert(error.message);
+      return;
+    }
+  } else {
+    const { error } = await sb.from('projects').insert(payload);
+    if (error) {
+      alert(error.message);
+      return;
+    }
   }
   closeEditModal();
   loadProjects();
 });
 
-document.getElementById('edit-delete').addEventListener('click', async () => {
+editDeleteBtn.addEventListener('click', async () => {
   const id = document.getElementById('edit-id').value;
+  if (!id) return;
   if (!confirm('Remove this project and all its daily entries?')) return;
   const { error } = await sb.from('projects').delete().eq('id', id);
   if (error) {
