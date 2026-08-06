@@ -131,14 +131,17 @@ function renderProjects(projects) {
       </td>
       <td>${p.start_date ? new Date(p.start_date + 'T00:00:00').toLocaleDateString() : '—'}</td>
       <td>${p.bugsheet ? `<a class="bugsheet-link" href="${escapeHtml(p.bugsheet)}" target="_blank" rel="noopener">open</a>` : '<span class="no-link">—</span>'}</td>
-      <td><button class="icon-btn" data-delete="${p.id}">remove</button></td>
+      <td class="row-actions">
+        <button class="icon-btn" data-edit-btn="${p.id}">edit</button>
+        <button class="icon-btn" data-delete="${p.id}">remove</button>
+      </td>
     `;
     tr.querySelector('.status-select').value = p.status;
     projectsTbody.appendChild(tr);
   });
 
-  projectsTbody.querySelectorAll('[data-edit]').forEach((btn) => {
-    btn.addEventListener('click', () => openEditModal(btn.dataset.edit));
+  projectsTbody.querySelectorAll('[data-edit], [data-edit-btn]').forEach((btn) => {
+    btn.addEventListener('click', () => openEditModal(btn.dataset.edit || btn.dataset.editBtn));
   });
 
   projectsTbody.querySelectorAll('.status-select').forEach((sel) => {
