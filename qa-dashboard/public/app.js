@@ -440,16 +440,47 @@ function renderDetailsSelect() {
 
 detailsSelect.addEventListener('change', () => showProjectDetails(detailsSelect.value));
 
-function showProjectDetails(id) {
+async function showProjectDetails(id) {
   const p = projectsCache.find((x) => x.id === id);
   if (!p) return;
   detailsSelect.dataset.current = id;
   detailsContent.classList.remove('hidden');
   detailsName.textContent = p.name;
 
+  const { data: latestRows } = await sb
+    .from('apk_shares')
+    .select('*')
+    .eq('project_id', id)
+    .order('shared_date', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(1);
+  const latestApk = latestRows && latestRows[0];
+  const latestApkHtml = latestApk
+    ? `
+      <div class="detail-item span-2">
+        <span class="detail-label">Latest APK</span>
+        <span class="detail-value">
+          ${escapeHtml(latestApk.version || 'Build')} — shared ${fmtDate(latestApk.shared_date)}
+          ${latestApk.shared_by ? ` by ${escapeHtml(latestApk.shared_by)}` : ''}
+          ${latestApk.apk_link ? ` — <a class="bugsheet-link" href="${escapeHtml(latestApk.apk_link)}" target="_blank" rel="noopener">open link</a>` : ''}
+        </span>
+      </div>
+    `
+    : `
+      <div class="detail-item span-2">
+        <span class="detail-label">Latest APK</span>
+        <span class="detail-value empty">None shared yet</span>
+      </div>
+    `;
+
   let html = '';
+  let insertedApk = false;
   detailFieldGroups.forEach((f) => {
     if (f.isHeader) {
+      if (f.title === 'Timeline' && !insertedApk) {
+        html += latestApkHtml;
+        insertedApk = true;
+      }
       html += `<p class="span-2 section-label" style="grid-column:span 2;">${escapeHtml(f.title)}</p>`;
       return;
     }
@@ -499,7 +530,7 @@ apkForm.addEventListener('submit', async (e) => {
   }
   apkForm.reset();
   document.getElementById('apk-date').valueAsDate = new Date();
-  loadApkShares(project_id);
+  showProjectDetails(project_id);
 });
 
 async function loadApkShares(projectId) {
@@ -543,7 +574,7 @@ function renderApkShares(shares) {
         alert(error.message);
         return;
       }
-      loadApkShares(detailsSelect.value);
+      showProjectDetails(detailsSelect.value);
     });
     apkList.appendChild(row);
   });
@@ -581,9 +612,22 @@ reportForm.addEventListener('submit', async (e) => {
     alert(error.message);
     return;
   }
+
+  // Keep the project record in sync with the latest daily update
+  const projectUpdates = {};
+  if (payload.project_manager) projectUpdates.project_manager = payload.project_manager;
+  if (payload.bugsheet) projectUpdates.bugsheet = payload.bugsheet;
+  if (payload.remarks) projectUpdates.remarks = payload.remarks;
+  if (payload.sign_off) projectUpdates.sign_off_date = payload.report_date;
+  if (Object.keys(projectUpdates).length) {
+    projectUpdates.updated_at = new Date().toISOString();
+    await sb.from('projects').update(projectUpdates).eq('id', project_id);
+  }
+
   reportForm.reset();
   document.getElementById('r-date').valueAsDate = new Date();
   loadReports();
+  loadProjects();
 });
 
 document.getElementById('filter-project').addEventListener('change', loadReports);
