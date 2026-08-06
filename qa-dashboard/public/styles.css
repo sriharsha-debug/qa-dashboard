@@ -86,6 +86,20 @@ h2 {
   margin-top: 18px;
   line-height: 1.5;
 }
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: left;
+}
+.login-form input {
+  width: 100%;
+}
+.login-error {
+  color: var(--blocked);
+  font-size: 13px;
+  margin-top: 12px;
+}
 
 /* Buttons */
 .btn {

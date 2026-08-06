@@ -8,7 +8,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css" />
 <link rel="icon" type="image/svg+xml" href="favicon.svg" />
-<script defer src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
 </head>
 <body>
 
@@ -18,8 +19,13 @@
       <p class="eyebrow">QA Daily Log</p>
       <h1>Inspection Ledger</h1>
       <p class="gate-copy">Sign in with your email and password to open the ledger.</p>
-      <button id="gate-login" class="btn btn-primary">Sign in</button>
-      <p class="gate-hint">First time here? Ask the site owner to invite your email, then check your inbox for the invite link.</p>
+      <form id="login-form" class="login-form">
+        <input type="email" id="login-email" placeholder="Email" required autocomplete="username" />
+        <input type="password" id="login-password" placeholder="Password" required autocomplete="current-password" />
+        <button type="submit" class="btn btn-primary">Sign in</button>
+      </form>
+      <p id="login-error" class="login-error hidden"></p>
+      <p class="gate-hint">Access is invite-only — accounts are created by the site owner in Supabase.</p>
     </div>
   </div>
 

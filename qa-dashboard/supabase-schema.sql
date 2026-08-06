@@ -46,15 +46,25 @@ create table if not exists daily_reports (
 create index if not exists idx_daily_reports_project on daily_reports(project_id);
 create index if not exists idx_daily_reports_date on daily_reports(report_date desc);
 
--- Row Level Security: locked down entirely.
--- The browser never receives a Supabase key at all — only the Netlify
--- Functions (using the service role key, kept as a server-side secret)
--- talk to this database. RLS below is defense-in-depth in case the
--- anon/public key is ever used directly.
+-- Row Level Security: the browser talks to Supabase directly using the
+-- public "anon" key (safe to expose). These policies make sure only a
+-- signed-in user (via Supabase Auth, email + password) can read or write
+-- anything at all.
 alter table projects enable row level security;
 alter table daily_reports enable row level security;
 alter table statuses enable row level security;
 
--- No policies are created, so with RLS on, the anon/public key can read
--- or write nothing. Only the service_role key (used only inside Netlify
--- Functions, never shipped to the browser) can bypass RLS.
+create policy "projects_authenticated_only" on projects
+  for all
+  using (auth.role() = 'authenticated')
+  with check (auth.role() = 'authenticated');
+
+create policy "daily_reports_authenticated_only" on daily_reports
+  for all
+  using (auth.role() = 'authenticated')
+  with check (auth.role() = 'authenticated');
+
+create policy "statuses_authenticated_only" on statuses
+  for all
+  using (auth.role() = 'authenticated')
+  with check (auth.role() = 'authenticated');

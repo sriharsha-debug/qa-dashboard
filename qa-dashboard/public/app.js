@@ -1,40 +1,41 @@
-/* global netlifyIdentity */
-
 const gate = document.getElementById('gate');
 const app = document.getElementById('app');
 const whoEmail = document.getElementById('who-email');
+const loginForm = document.getElementById('login-form');
+const loginError = document.getElementById('login-error');
 
-let currentUser = null;
 let projectsCache = [];
 let statusesCache = [];
 
-// ---------- Auth ----------
+// ---------- Supabase client + Auth ----------
 
-netlifyIdentity.on('init', (user) => {
-  if (user) onLogin(user);
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+sb.auth.onAuthStateChange((_event, session) => {
+  if (session && session.user) {
+    onLogin(session.user);
+  } else {
+    onLogout();
+  }
 });
 
-netlifyIdentity.on('login', (user) => {
-  onLogin(user);
-  netlifyIdentity.close();
-});
-
-netlifyIdentity.on('logout', () => {
-  currentUser = null;
-  gate.classList.remove('hidden');
-  app.classList.add('hidden');
-});
-
-document.getElementById('gate-login').addEventListener('click', () => {
-  netlifyIdentity.open('login');
+loginForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  loginError.classList.add('hidden');
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) {
+    loginError.textContent = error.message;
+    loginError.classList.remove('hidden');
+  }
 });
 
 document.getElementById('logout').addEventListener('click', () => {
-  netlifyIdentity.logout();
+  sb.auth.signOut();
 });
 
 function onLogin(user) {
-  currentUser = user;
   whoEmail.textContent = user.email;
   gate.classList.add('hidden');
   app.classList.remove('hidden');
@@ -42,25 +43,9 @@ function onLogin(user) {
   loadReports();
 }
 
-netlifyIdentity.init();
-
-// ---------- API helper ----------
-
-async function api(path, options = {}) {
-  const token = currentUser && currentUser.token && currentUser.token.access_token;
-  const res = await fetch(`/.netlify/functions/${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-      ...(options.headers || {}),
-    },
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Request failed (${res.status})`);
-  }
-  return res.json();
+function onLogout() {
+  gate.classList.remove('hidden');
+  app.classList.add('hidden');
 }
 
 // ---------- Tabs ----------
@@ -91,26 +76,29 @@ projectForm.addEventListener('submit', async (e) => {
   const start_date = document.getElementById('new-project-date').value || null;
   const bugsheet = document.getElementById('new-project-bugsheet').value.trim() || null;
   if (!name) return;
-  try {
-    await api('projects', { method: 'POST', body: JSON.stringify({ name, status, start_date, bugsheet }) });
-    document.getElementById('new-project-name').value = '';
-    document.getElementById('new-project-date').value = '';
-    document.getElementById('new-project-bugsheet').value = '';
-    loadProjects();
-  } catch (err) {
-    alert(err.message);
+  const { error } = await sb.from('projects').insert({ name, status, start_date, bugsheet });
+  if (error) {
+    alert(error.message);
+    return;
   }
+  document.getElementById('new-project-name').value = '';
+  document.getElementById('new-project-date').value = '';
+  document.getElementById('new-project-bugsheet').value = '';
+  loadProjects();
 });
 
 async function loadProjects() {
-  try {
-    const { projects } = await api('projects');
-    projectsCache = projects;
-    renderProjects(projects);
-    renderProjectSelects(projects);
-  } catch (err) {
-    console.error(err);
+  const { data, error } = await sb
+    .from('projects')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) {
+    console.error(error);
+    return;
   }
+  projectsCache = data;
+  renderProjects(data);
+  renderProjectSelects(data);
 }
 
 function statusColor(name) {
@@ -155,28 +143,28 @@ function renderProjects(projects) {
 
   projectsTbody.querySelectorAll('.status-select').forEach((sel) => {
     sel.addEventListener('change', async () => {
-      try {
-        await api('projects', {
-          method: 'PUT',
-          body: JSON.stringify({ id: sel.dataset.id, status: sel.value }),
-        });
-        loadProjects();
-      } catch (err) {
-        alert(err.message);
+      const { error } = await sb
+        .from('projects')
+        .update({ status: sel.value, updated_at: new Date().toISOString() })
+        .eq('id', sel.dataset.id);
+      if (error) {
+        alert(error.message);
+        return;
       }
+      loadProjects();
     });
   });
 
   projectsTbody.querySelectorAll('[data-delete]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       if (!confirm('Remove this project and all its daily entries?')) return;
-      try {
-        await api('projects', { method: 'DELETE', body: JSON.stringify({ id: btn.dataset.delete }) });
-        loadProjects();
-        loadReports();
-      } catch (err) {
-        alert(err.message);
+      const { error } = await sb.from('projects').delete().eq('id', btn.dataset.delete);
+      if (error) {
+        alert(error.message);
+        return;
       }
+      loadProjects();
+      loadReports();
     });
   });
 }
@@ -198,25 +186,29 @@ statusForm.addEventListener('submit', async (e) => {
   const name = document.getElementById('new-status-name').value.trim();
   const color = document.getElementById('new-status-color').value;
   if (!name) return;
-  try {
-    await api('statuses', { method: 'POST', body: JSON.stringify({ name, color }) });
-    document.getElementById('new-status-name').value = '';
-    await loadStatuses();
-    loadProjects();
-  } catch (err) {
-    alert(err.message);
+  const { count } = await sb.from('statuses').select('*', { count: 'exact', head: true });
+  const { error } = await sb.from('statuses').insert({ name, color, sort_order: count || 0 });
+  if (error) {
+    alert(error.message);
+    return;
   }
+  document.getElementById('new-status-name').value = '';
+  await loadStatuses();
+  loadProjects();
 });
 
 async function loadStatuses() {
-  try {
-    const { statuses } = await api('statuses');
-    statusesCache = statuses;
-    renderStatusOptionsForNewProject(statuses);
-    renderStatusManager(statuses);
-  } catch (err) {
-    console.error(err);
+  const { data, error } = await sb
+    .from('statuses')
+    .select('*')
+    .order('sort_order', { ascending: true });
+  if (error) {
+    console.error(error);
+    return;
   }
+  statusesCache = data;
+  renderStatusOptionsForNewProject(data);
+  renderStatusManager(data);
 }
 
 function renderStatusOptionsForNewProject(statuses) {
@@ -247,44 +239,48 @@ function renderStatusManager(statuses) {
 
   statusesListEl.querySelectorAll('.status-name-input').forEach((input) => {
     input.addEventListener('change', async () => {
-      try {
-        await api('statuses', {
-          method: 'PUT',
-          body: JSON.stringify({ id: input.dataset.id, name: input.value.trim() }),
-        });
-        await loadStatuses();
-        loadProjects();
-      } catch (err) {
-        alert(err.message);
+      const newName = input.value.trim();
+      const { data: existing } = await sb.from('statuses').select('name').eq('id', input.dataset.id).single();
+      if (existing && existing.name !== newName) {
+        await sb.from('projects').update({ status: newName }).eq('status', existing.name);
       }
+      const { error } = await sb.from('statuses').update({ name: newName }).eq('id', input.dataset.id);
+      if (error) {
+        alert(error.message);
+        return;
+      }
+      await loadStatuses();
+      loadProjects();
     });
   });
 
   statusesListEl.querySelectorAll('.status-color-select').forEach((sel) => {
     sel.addEventListener('change', async () => {
-      try {
-        await api('statuses', {
-          method: 'PUT',
-          body: JSON.stringify({ id: sel.dataset.id, color: sel.value }),
-        });
-        await loadStatuses();
-        loadProjects();
-      } catch (err) {
-        alert(err.message);
+      const { error } = await sb.from('statuses').update({ color: sel.value }).eq('id', sel.dataset.id);
+      if (error) {
+        alert(error.message);
+        return;
       }
+      await loadStatuses();
+      loadProjects();
     });
   });
 
   statusesListEl.querySelectorAll('[data-delete-status]').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      if (!confirm('Remove this status? Projects using it will keep the label but lose its color.')) return;
-      try {
-        await api('statuses', { method: 'DELETE', body: JSON.stringify({ id: btn.dataset.deleteStatus }) });
-        await loadStatuses();
-        loadProjects();
-      } catch (err) {
-        alert(err.message);
+      const { count } = await sb.from('statuses').select('*', { count: 'exact', head: true });
+      if ((count || 0) <= 1) {
+        alert('Keep at least one status.');
+        return;
       }
+      if (!confirm('Remove this status? Projects using it will keep the label but lose its color.')) return;
+      const { error } = await sb.from('statuses').delete().eq('id', btn.dataset.deleteStatus);
+      if (error) {
+        alert(error.message);
+        return;
+      }
+      await loadStatuses();
+      loadProjects();
     });
   });
 }
@@ -330,32 +326,32 @@ editForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const id = document.getElementById('edit-id').value;
   const payload = {
-    id,
     name: document.getElementById('edit-name').value.trim(),
     status: editStatusSelect.value,
     start_date: document.getElementById('edit-date').value || null,
     bugsheet: document.getElementById('edit-bugsheet').value.trim() || null,
+    updated_at: new Date().toISOString(),
   };
-  try {
-    await api('projects', { method: 'PUT', body: JSON.stringify(payload) });
-    closeEditModal();
-    loadProjects();
-  } catch (err) {
-    alert(err.message);
+  const { error } = await sb.from('projects').update(payload).eq('id', id);
+  if (error) {
+    alert(error.message);
+    return;
   }
+  closeEditModal();
+  loadProjects();
 });
 
 document.getElementById('edit-delete').addEventListener('click', async () => {
   const id = document.getElementById('edit-id').value;
   if (!confirm('Remove this project and all its daily entries?')) return;
-  try {
-    await api('projects', { method: 'DELETE', body: JSON.stringify({ id }) });
-    closeEditModal();
-    loadProjects();
-    loadReports();
-  } catch (err) {
-    alert(err.message);
+  const { error } = await sb.from('projects').delete().eq('id', id);
+  if (error) {
+    alert(error.message);
+    return;
   }
+  closeEditModal();
+  loadProjects();
+  loadReports();
 });
 
 // ---------- Daily reports ----------
@@ -368,30 +364,31 @@ document.getElementById('r-date').valueAsDate = new Date();
 
 reportForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const payload = {
-    report_date: document.getElementById('r-date').value,
-    project_id: document.getElementById('r-project').value,
-    project_manager: document.getElementById('r-pm').value.trim(),
-    bugsheet: document.getElementById('r-bugsheet').value.trim(),
-    test_cases: document.getElementById('r-testcases').value,
-    ui_bugs: document.getElementById('r-uibugs').value,
-    functionality_bugs: document.getElementById('r-funcbugs').value,
-    remarks: document.getElementById('r-remarks').value.trim(),
-    sign_off: document.getElementById('r-signoff').checked,
-    notes: document.getElementById('r-notes').value.trim(),
-  };
-  if (!payload.project_id) {
+  const project_id = document.getElementById('r-project').value;
+  if (!project_id) {
     alert('Add a project first.');
     return;
   }
-  try {
-    await api('reports', { method: 'POST', body: JSON.stringify(payload) });
-    reportForm.reset();
-    document.getElementById('r-date').valueAsDate = new Date();
-    loadReports();
-  } catch (err) {
-    alert(err.message);
+  const payload = {
+    report_date: document.getElementById('r-date').value,
+    project_id,
+    project_manager: document.getElementById('r-pm').value.trim() || null,
+    bugsheet: document.getElementById('r-bugsheet').value.trim() || null,
+    test_cases: Number(document.getElementById('r-testcases').value) || 0,
+    ui_bugs: Number(document.getElementById('r-uibugs').value) || 0,
+    functionality_bugs: Number(document.getElementById('r-funcbugs').value) || 0,
+    remarks: document.getElementById('r-remarks').value.trim() || null,
+    sign_off: document.getElementById('r-signoff').checked,
+    notes: document.getElementById('r-notes').value.trim() || null,
+  };
+  const { error } = await sb.from('daily_reports').insert(payload);
+  if (error) {
+    alert(error.message);
+    return;
   }
+  reportForm.reset();
+  document.getElementById('r-date').valueAsDate = new Date();
+  loadReports();
 });
 
 document.getElementById('filter-project').addEventListener('change', loadReports);
@@ -403,18 +400,23 @@ document.getElementById('filter-clear').addEventListener('click', () => {
 });
 
 async function loadReports() {
-  const params = new URLSearchParams();
+  let query = sb
+    .from('daily_reports')
+    .select('*, projects(name)')
+    .order('report_date', { ascending: false })
+    .order('created_at', { ascending: false });
+
   const projectId = document.getElementById('filter-project').value;
   const date = document.getElementById('filter-date').value;
-  if (projectId) params.set('project_id', projectId);
-  if (date) params.set('date', date);
+  if (projectId) query = query.eq('project_id', projectId);
+  if (date) query = query.eq('report_date', date);
 
-  try {
-    const { reports } = await api(`reports?${params.toString()}`);
-    renderReports(reports);
-  } catch (err) {
-    console.error(err);
+  const { data, error } = await query;
+  if (error) {
+    console.error(error);
+    return;
   }
+  renderReports(data);
 }
 
 function renderReports(reports) {
@@ -445,12 +447,12 @@ function renderReports(reports) {
     `;
     card.querySelector('[data-delete]').addEventListener('click', async () => {
       if (!confirm('Remove this entry?')) return;
-      try {
-        await api('reports', { method: 'DELETE', body: JSON.stringify({ id: r.id }) });
-        loadReports();
-      } catch (err) {
-        alert(err.message);
+      const { error } = await sb.from('daily_reports').delete().eq('id', r.id);
+      if (error) {
+        alert(error.message);
+        return;
       }
+      loadReports();
     });
     reportsList.appendChild(card);
   });
