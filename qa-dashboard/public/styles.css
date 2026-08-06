@@ -1,18 +1,18 @@
 :root {
-  --paper: #E4ECEE;
-  --panel: #F3F8F9;
-  --ink: #10262B;
-  --ink-soft: #4E6A70;
-  --line: #C1D3D6;
-  --line-strong: #7FA0A6;
-  --pass: #1F7A6C;
-  --pass-bg: #DCEEEA;
-  --blocked: #A63D26;
-  --blocked-bg: #F1DFD6;
-  --pending: #A9761E;
-  --pending-bg: #F1E6CE;
-  --accent: #12747D;
-  --accent-dark: #0E5B63;
+  --paper: #E4F1F1;
+  --panel: #F6FCFC;
+  --ink: #0D2B2E;
+  --ink-soft: #4A7278;
+  --line: #BEE0E0;
+  --line-strong: #7FC4C4;
+  --pass: #1F9C82;
+  --pass-bg: #DBF3EA;
+  --blocked: #D1573C;
+  --blocked-bg: #FBE2DA;
+  --pending: #D99B2B;
+  --pending-bg: #FBEAD0;
+  --accent: #17A6AE;
+  --accent-dark: #0E8990;
   --font-display: 'Space Grotesk', sans-serif;
   --font-body: 'IBM Plex Sans', sans-serif;
   --font-mono: 'IBM Plex Mono', monospace;
@@ -188,7 +188,8 @@ input:focus, select:focus, textarea:focus {
   color: var(--ink-soft);
 }
 .span-2 { grid-column: span 2; }
-.form-actions { display: flex; justify-content: flex-end; }
+.form-actions { display: flex; justify-content: flex-end; gap: 10px; }
+#edit-form .form-actions { justify-content: space-between; }
 
 .signoff-field { flex-direction: row !important; align-items: center; gap: 10px !important; }
 .toggle { position: relative; display: inline-block; }
@@ -359,6 +360,54 @@ input:focus, select:focus, textarea:focus {
   text-align: center;
   padding: 18px 0 4px;
   display: none;
+}
+
+.project-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--ink);
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: underline dotted var(--line-strong);
+}
+.project-link:hover { color: var(--accent-dark); }
+
+.bugsheet-link {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent-dark);
+  text-decoration: underline;
+}
+.no-link { color: var(--ink-soft); font-size: 12px; }
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(13, 43, 46, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 50;
+}
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  box-shadow: 4px 4px 0 var(--accent-dark);
+  width: 100%;
+  max-width: 480px;
+  padding: 22px 24px;
+}
+.modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--line-strong);
 }
 
 @media (max-width: 640px) {

@@ -50,7 +50,7 @@
         <form id="project-form" class="inline-form">
           <input type="text" id="new-project-name" placeholder="Project name" required />
           <input type="date" id="new-project-date" title="Start date" />
-          <input type="url" id="bugsheet_link" placeholder="Bug Sheet Google Sheet Link"/>
+          <input type="text" id="new-project-bugsheet" placeholder="Bugsheet link (optional)" />
           <select id="new-project-status"></select>
           <button type="submit" class="btn btn-primary">Add project</button>
         </form>
@@ -68,7 +68,7 @@
               <th>Project</th>
               <th>Status</th>
               <th>Start date</th>
-              <th>Bug Sheet</th>
+              <th>Bugsheet</th>
               <th class="col-idx"></th>
             </tr>
           </thead>
@@ -160,6 +160,35 @@
         <p class="empty-state" id="reports-empty">No entries yet.</p>
       </div>
     </section>
+  </div>
+
+  <!-- Edit project modal -->
+  <div id="edit-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>Edit project</h2>
+        <button id="edit-close" class="icon-btn">close</button>
+      </div>
+      <form id="edit-form" class="grid-form">
+        <input type="hidden" id="edit-id" />
+        <label class="span-2">Project name
+          <input type="text" id="edit-name" required />
+        </label>
+        <label>Start date
+          <input type="date" id="edit-date" />
+        </label>
+        <label>Status
+          <select id="edit-status"></select>
+        </label>
+        <label class="span-2">Bugsheet link
+          <input type="text" id="edit-bugsheet" placeholder="https://..." />
+        </label>
+        <div class="span-2 form-actions">
+          <button type="button" id="edit-delete" class="btn btn-ghost">Remove project</button>
+          <button type="submit" class="btn btn-primary">Save changes</button>
+        </div>
+      </form>
+    </div>
   </div>
 
   <script defer src="app.js"></script>

@@ -83,18 +83,19 @@ const projectCount = document.getElementById('project-count');
 const rProjectSelect = document.getElementById('r-project');
 const filterProjectSelect = document.getElementById('filter-project');
 const newProjectStatusSelect = document.getElementById('new-project-status');
-bugsheet_link: document.getElementById("bugsheet_link").value,
 
 projectForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const name = document.getElementById('new-project-name').value.trim();
   const status = document.getElementById('new-project-status').value;
   const start_date = document.getElementById('new-project-date').value || null;
+  const bugsheet = document.getElementById('new-project-bugsheet').value.trim() || null;
   if (!name) return;
   try {
-    await api('projects', { method: 'POST', body: JSON.stringify({ name, status, start_date }) });
+    await api('projects', { method: 'POST', body: JSON.stringify({ name, status, start_date, bugsheet }) });
     document.getElementById('new-project-name').value = '';
     document.getElementById('new-project-date').value = '';
+    document.getElementById('new-project-bugsheet').value = '';
     loadProjects();
   } catch (err) {
     alert(err.message);
@@ -134,20 +135,22 @@ function renderProjects(projects) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td class="col-idx">${String(i + 1).padStart(2, '0')}</td>
-      <td>${escapeHtml(p.name)}</td>
+      <td><button class="project-link" data-edit="${p.id}">${escapeHtml(p.name)}</button></td>
       <td>
         <select class="status-select pill" style="${pillStyle(statusColor(p.status))}" data-id="${p.id}">
           ${statusOptions}
         </select>
       </td>
-      <td>${project.bugsheet_link? `<a href="${project.bugsheet_link}" target="_blank">Open</a>`: "-"}
-
-</td>
       <td>${p.start_date ? new Date(p.start_date + 'T00:00:00').toLocaleDateString() : '—'}</td>
+      <td>${p.bugsheet ? `<a class="bugsheet-link" href="${escapeHtml(p.bugsheet)}" target="_blank" rel="noopener">open</a>` : '<span class="no-link">—</span>'}</td>
       <td><button class="icon-btn" data-delete="${p.id}">remove</button></td>
     `;
     tr.querySelector('.status-select').value = p.status;
     projectsTbody.appendChild(tr);
+  });
+
+  projectsTbody.querySelectorAll('[data-edit]').forEach((btn) => {
+    btn.addEventListener('click', () => openEditModal(btn.dataset.edit));
   });
 
   projectsTbody.querySelectorAll('.status-select').forEach((sel) => {
@@ -293,6 +296,67 @@ function colorName(hex) {
   };
   return map[hex] || hex;
 }
+
+// ---------- Edit project modal ----------
+
+const editModal = document.getElementById('edit-modal');
+const editForm = document.getElementById('edit-form');
+const editStatusSelect = document.getElementById('edit-status');
+
+function openEditModal(id) {
+  const p = projectsCache.find((x) => x.id === id);
+  if (!p) return;
+  document.getElementById('edit-id').value = p.id;
+  document.getElementById('edit-name').value = p.name;
+  document.getElementById('edit-date').value = p.start_date || '';
+  document.getElementById('edit-bugsheet').value = p.bugsheet || '';
+  editStatusSelect.innerHTML = statusesCache
+    .map((s) => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`)
+    .join('');
+  editStatusSelect.value = p.status;
+  editModal.classList.remove('hidden');
+}
+
+function closeEditModal() {
+  editModal.classList.add('hidden');
+}
+
+document.getElementById('edit-close').addEventListener('click', closeEditModal);
+editModal.addEventListener('click', (e) => {
+  if (e.target === editModal) closeEditModal();
+});
+
+editForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = document.getElementById('edit-id').value;
+  const payload = {
+    id,
+    name: document.getElementById('edit-name').value.trim(),
+    status: editStatusSelect.value,
+    start_date: document.getElementById('edit-date').value || null,
+    bugsheet: document.getElementById('edit-bugsheet').value.trim() || null,
+  };
+  try {
+    await api('projects', { method: 'PUT', body: JSON.stringify(payload) });
+    closeEditModal();
+    loadProjects();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+document.getElementById('edit-delete').addEventListener('click', async () => {
+  const id = document.getElementById('edit-id').value;
+  if (!confirm('Remove this project and all its daily entries?')) return;
+  try {
+    await api('projects', { method: 'DELETE', body: JSON.stringify({ id }) });
+    closeEditModal();
+    loadProjects();
+    loadReports();
+  } catch (err) {
+    alert(err.message);
+  }
+});
 
 // ---------- Daily reports ----------
 
