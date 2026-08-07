@@ -642,6 +642,8 @@ function buildBatchWhatsAppMessage(reports, dateStr) {
     const projectName = r.projects ? r.projects.name : 'Project';
     msg += `\n*${i + 1}. ${projectName}*\n`;
     if (r.project_manager) msg += `👤 PM: ${r.project_manager}\n`;
+    if (r.assigned_projects) msg += `📌 Assigned Projects: ${r.assigned_projects}\n`;
+    if (r.assigned_tasks) msg += `🧩 Assigned Tasks: ${r.assigned_tasks}\n`;
     msg += `✅ Test Cases: ${r.test_cases}  🐞 UI Bugs: ${r.ui_bugs}  ⚙️ Func Bugs: ${r.functionality_bugs}\n`;
     if (r.bugsheet) msg += `🔗 Bugsheet: ${r.bugsheet}\n`;
     msg += `✔️ Sign Off: ${r.sign_off ? 'Yes' : 'No'}\n`;
@@ -721,6 +723,8 @@ reportForm.addEventListener('submit', async (e) => {
     report_date: reportDate,
     project_id,
     project_manager: document.getElementById('r-pm').value.trim() || null,
+    assigned_projects: document.getElementById('r-assigned-projects').value.trim() || null,
+    assigned_tasks: document.getElementById('r-assigned-tasks').value.trim() || null,
     bugsheet: bugsheetVal || null,
     test_cases: Number(testCases),
     ui_bugs: Number(uiBugs),
@@ -768,6 +772,8 @@ function buildWhatsAppMessage(payload, projectName) {
   msg += `📅 Date: ${dateStr}\n`;
   msg += `📁 Project: ${projectName}\n`;
   if (payload.project_manager) msg += `👤 PM: ${payload.project_manager}\n`;
+  if (payload.assigned_projects) msg += `📌 Assigned Projects: ${payload.assigned_projects}\n`;
+  if (payload.assigned_tasks) msg += `🧩 Assigned Tasks: ${payload.assigned_tasks}\n`;
   msg += `\n`;
   msg += `✅ Test Cases: ${payload.test_cases}\n`;
   msg += `🐞 UI Bugs: ${payload.ui_bugs}\n`;
@@ -853,6 +859,8 @@ function renderReports(reports) {
       <button class="icon-btn report-delete" data-delete="${r.id}">remove</button>
       <button class="icon-btn report-share" data-share="${r.id}">share</button>
       <div class="report-body">
+        ${r.assigned_projects ? `<div><span class="detail-label">Assigned projects:</span> ${escapeHtml(r.assigned_projects)}</div>` : ''}
+        ${r.assigned_tasks ? `<div><span class="detail-label">Assigned tasks:</span> ${escapeHtml(r.assigned_tasks)}</div>` : ''}
         ${r.bugsheet ? `<div>Bugsheet: ${escapeHtml(r.bugsheet)}</div>` : ''}
         <div class="report-metrics">
           <span>Test cases: <b>${r.test_cases}</b></span>

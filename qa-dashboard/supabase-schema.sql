@@ -60,6 +60,8 @@ create table if not exists daily_reports (
   project_id uuid not null references projects(id) on delete cascade,
   report_date date not null default current_date,
   project_manager text,
+  assigned_projects text,
+  assigned_tasks text,
   bugsheet text,
   test_cases integer default 0,
   ui_bugs integer default 0,
