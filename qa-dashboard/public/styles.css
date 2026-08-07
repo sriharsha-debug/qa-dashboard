@@ -152,6 +152,88 @@ h2 {
 .who { display: flex; align-items: center; gap: 12px; }
 .who-email { font-family: var(--font-mono); font-size: 12px; color: var(--ink-soft); }
 
+.role-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  background: rgba(34, 211, 238, 0.08);
+}
+
+.notif-wrap { position: relative; }
+.notif-bell { position: relative; font-size: 16px; padding: 8px 10px; line-height: 1; }
+.notif-badge {
+  position: absolute;
+  top: -6px; right: -6px;
+  background: var(--blocked);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+}
+.notif-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 320px;
+  max-height: 380px;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  box-shadow: var(--glow), 0 20px 50px rgba(0,0,0,0.5);
+  z-index: 40;
+}
+.notif-panel-head {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  padding: 12px 14px;
+  border-bottom: 1px dashed var(--line-strong);
+}
+.notif-list { display: flex; flex-direction: column; }
+.notif-item {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+.notif-item:last-child { border-bottom: none; }
+.notif-item-time {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+  margin-top: 2px;
+}
+
+.team-list { display: flex; flex-direction: column; gap: 10px; }
+.team-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong);
+  background: var(--panel-2);
+  border-radius: 6px;
+}
+.team-row-main { display: flex; flex-direction: column; gap: 2px; }
+.team-row-name { font-weight: 600; }
+.team-row-email { font-family: var(--font-mono); font-size: 12px; color: var(--ink-soft); }
+.team-role-select { font-size: 12px; padding: 5px 8px; }
+
 .tabs {
   display: flex;
   gap: 2px;

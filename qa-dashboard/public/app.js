@@ -6,6 +6,9 @@ const loginError = document.getElementById('login-error');
 
 let projectsCache = [];
 let statusesCache = [];
+let currentUser = null;
+let currentProfile = null;
+let notifPollTimer = null;
 
 // ---------- Supabase client + Auth ----------
 
@@ -32,20 +35,200 @@ loginForm.addEventListener('submit', async (e) => {
 });
 
 document.getElementById('logout').addEventListener('click', () => {
+  if (notifPollTimer) clearInterval(notifPollTimer);
   sb.auth.signOut();
 });
 
-function onLogin(user) {
+async function onLogin(user) {
+  currentUser = user;
   whoEmail.textContent = user.email;
   gate.classList.add('hidden');
   app.classList.remove('hidden');
+  await ensureProfile(user);
   loadStatuses().then(loadProjects);
   loadReports();
+  loadTeam();
+  refreshNotifications();
+  if (notifPollTimer) clearInterval(notifPollTimer);
+  notifPollTimer = setInterval(refreshNotifications, 25000);
 }
 
 function onLogout() {
   gate.classList.remove('hidden');
   app.classList.add('hidden');
+  currentUser = null;
+  currentProfile = null;
+  if (notifPollTimer) clearInterval(notifPollTimer);
+}
+
+// ---------- Profile / roles ----------
+
+async function ensureProfile(user) {
+  const { data: existing } = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle();
+  if (existing) {
+    currentProfile = existing;
+  } else {
+    // First person to ever sign in becomes the leader automatically.
+    const { count } = await sb.from('profiles').select('*', { count: 'exact', head: true });
+    const role = (count || 0) === 0 ? 'leader' : 'member';
+    const { data: created, error } = await sb
+      .from('profiles')
+      .insert({ id: user.id, email: user.email, display_name: user.email.split('@')[0], role })
+      .select()
+      .single();
+    if (error) {
+      console.error(error);
+      return;
+    }
+    currentProfile = created;
+  }
+  const roleBadge = document.getElementById('who-role');
+  roleBadge.textContent = currentProfile.role;
+  roleBadge.classList.remove('hidden');
+}
+
+function isLeader() {
+  return currentProfile && currentProfile.role === 'leader';
+}
+
+function actorLabel() {
+  if (currentProfile && currentProfile.display_name) return currentProfile.display_name;
+  if (currentUser) return currentUser.email;
+  return 'Someone';
+}
+
+// ---------- Notifications ----------
+
+async function notify(message, entityType, action) {
+  if (!currentUser) return;
+  try {
+    await sb.from('notifications').insert({
+      actor_id: currentUser.id,
+      actor_email: currentUser.email,
+      message,
+      entity_type: entityType,
+      action,
+    });
+  } catch (err) {
+    console.error(err);
+  }
+  refreshNotifications();
+}
+
+async function refreshNotifications() {
+  const { data, error } = await sb
+    .from('notifications')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(30);
+  if (error) {
+    console.error(error);
+    return;
+  }
+  renderNotifications(data);
+
+  const since = currentProfile ? currentProfile.last_seen_notifications_at : null;
+  const unread = data.filter((n) => n.actor_id !== (currentUser && currentUser.id) && (!since || new Date(n.created_at) > new Date(since)));
+  const badge = document.getElementById('notif-badge');
+  if (unread.length) {
+    badge.textContent = unread.length > 9 ? '9+' : String(unread.length);
+    badge.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
+  }
+}
+
+function timeAgo(dateStr) {
+  const diffMs = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
+function renderNotifications(items) {
+  const list = document.getElementById('notif-list');
+  const empty = document.getElementById('notif-empty');
+  list.innerHTML = '';
+  empty.style.display = items.length ? 'none' : 'block';
+  items.forEach((n) => {
+    const row = document.createElement('div');
+    row.className = 'notif-item';
+    row.innerHTML = `
+      <div>${escapeHtml(n.message)}</div>
+      <span class="notif-item-time">${escapeHtml(n.actor_email || '')} · ${timeAgo(n.created_at)}</span>
+    `;
+    list.appendChild(row);
+  });
+}
+
+const notifBell = document.getElementById('notif-bell');
+const notifPanel = document.getElementById('notif-panel');
+
+notifBell.addEventListener('click', async (e) => {
+  e.stopPropagation();
+  notifPanel.classList.toggle('hidden');
+  if (!notifPanel.classList.contains('hidden') && currentUser) {
+    const nowIso = new Date().toISOString();
+    await sb.from('profiles').update({ last_seen_notifications_at: nowIso }).eq('id', currentUser.id);
+    if (currentProfile) currentProfile.last_seen_notifications_at = nowIso;
+    document.getElementById('notif-badge').classList.add('hidden');
+  }
+});
+document.addEventListener('click', (e) => {
+  if (!notifPanel.contains(e.target) && e.target !== notifBell) {
+    notifPanel.classList.add('hidden');
+  }
+});
+
+// ---------- Team tab ----------
+
+async function loadTeam() {
+  const { data, error } = await sb.from('profiles').select('*').order('created_at', { ascending: true });
+  if (error) {
+    console.error(error);
+    return;
+  }
+  renderTeam(data);
+}
+
+function renderTeam(members) {
+  const list = document.getElementById('team-list');
+  const count = document.getElementById('team-count');
+  count.textContent = members.length ? `${members.length} member${members.length === 1 ? '' : 's'}` : '';
+  list.innerHTML = '';
+  members.forEach((m) => {
+    const row = document.createElement('div');
+    row.className = 'team-row';
+    const canEdit = isLeader() && currentUser && m.id !== currentUser.id;
+    row.innerHTML = `
+      <div class="team-row-main">
+        <span class="team-row-name">${escapeHtml(m.display_name || m.email)}</span>
+        <span class="team-row-email">${escapeHtml(m.email)}</span>
+      </div>
+      ${canEdit
+        ? `<select class="team-role-select" data-id="${m.id}">
+             <option value="member" ${m.role === 'member' ? 'selected' : ''}>Member</option>
+             <option value="leader" ${m.role === 'leader' ? 'selected' : ''}>Leader</option>
+           </select>`
+        : `<span class="role-badge">${escapeHtml(m.role)}</span>`}
+    `;
+    list.appendChild(row);
+  });
+
+  list.querySelectorAll('.team-role-select').forEach((sel) => {
+    sel.addEventListener('change', async () => {
+      const { error } = await sb.from('profiles').update({ role: sel.value }).eq('id', sel.dataset.id);
+      if (error) {
+        alert(error.message);
+        return;
+      }
+      loadTeam();
+    });
+  });
 }
 
 // ---------- Tabs ----------
@@ -133,26 +316,34 @@ function renderProjects(projects) {
 
   projectsTbody.querySelectorAll('.status-select').forEach((sel) => {
     sel.addEventListener('change', async () => {
+      const p = projectsCache.find((x) => x.id === sel.dataset.id);
       const { error } = await sb
         .from('projects')
-        .update({ status: sel.value, updated_at: new Date().toISOString() })
+        .update({
+          status: sel.value,
+          updated_at: new Date().toISOString(),
+          updated_by_email: currentUser ? currentUser.email : null,
+        })
         .eq('id', sel.dataset.id);
       if (error) {
         alert(error.message);
         return;
       }
+      notify(`${actorLabel()} changed "${p ? p.name : 'a project'}" status to ${sel.value}`, 'project', 'status_change');
       loadProjects();
     });
   });
 
   projectsTbody.querySelectorAll('[data-delete]').forEach((btn) => {
     btn.addEventListener('click', async () => {
+      const p = projectsCache.find((x) => x.id === btn.dataset.delete);
       if (!confirm('Remove this project and all its daily entries?')) return;
       const { error } = await sb.from('projects').delete().eq('id', btn.dataset.delete);
       if (error) {
         alert(error.message);
         return;
       }
+      notify(`${actorLabel()} removed project "${p ? p.name : ''}"`, 'project', 'delete');
       loadProjects();
       loadReports();
     });
@@ -388,17 +579,21 @@ editForm.addEventListener('submit', async (e) => {
 
   if (id) {
     payload.updated_at = new Date().toISOString();
+    payload.updated_by_email = currentUser ? currentUser.email : null;
     const { error } = await sb.from('projects').update(payload).eq('id', id);
     if (error) {
       showFormError('edit-error', error.message);
       return;
     }
+    notify(`${actorLabel()} updated project "${payload.name}"`, 'project', 'update');
   } else {
+    payload.created_by_email = currentUser ? currentUser.email : null;
     const { error } = await sb.from('projects').insert(payload);
     if (error) {
       showFormError('edit-error', error.message);
       return;
     }
+    notify(`${actorLabel()} added a new project: "${payload.name}"`, 'project', 'create');
   }
   closeEditModal();
   loadProjects();
@@ -407,12 +602,14 @@ editForm.addEventListener('submit', async (e) => {
 editDeleteBtn.addEventListener('click', async () => {
   const id = document.getElementById('edit-id').value;
   if (!id) return;
+  const p = projectsCache.find((x) => x.id === id);
   if (!confirm('Remove this project and all its daily entries?')) return;
   const { error } = await sb.from('projects').delete().eq('id', id);
   if (error) {
     alert(error.message);
     return;
   }
+  notify(`${actorLabel()} removed project "${p ? p.name : ''}"`, 'project', 'delete');
   closeEditModal();
   loadProjects();
   loadReports();
@@ -456,6 +653,8 @@ const detailFieldGroups = [
   { isHeader: true, title: 'Review' },
   { key: 'clients_review', label: 'Clients review', span2: true },
   { key: 'remarks', label: 'Remarks', span2: true },
+  { key: 'created_by_email', label: 'Created by' },
+  { key: 'updated_by_email', label: 'Last updated by' },
 ];
 
 function renderDetailsSelect() {
@@ -570,12 +769,15 @@ apkForm.addEventListener('submit', async (e) => {
     shared_date: sharedDate,
     shared_by: document.getElementById('apk-shared-by').value.trim() || null,
     notes: document.getElementById('apk-notes').value.trim() || null,
+    logged_by_email: currentUser ? currentUser.email : null,
   };
   const { error } = await sb.from('apk_shares').insert(payload);
   if (error) {
     showFormError('apk-error', error.message);
     return;
   }
+  const proj = projectsCache.find((p) => p.id === project_id);
+  notify(`${actorLabel()} shared an APK (${payload.version || 'build'}) for "${proj ? proj.name : 'a project'}"`, 'apk', 'create');
   apkForm.reset();
   document.getElementById('apk-date').valueAsDate = new Date();
   showProjectDetails(project_id);
@@ -783,12 +985,16 @@ reportForm.addEventListener('submit', async (e) => {
     remarks: document.getElementById('r-remarks').value.trim() || null,
     sign_off: document.getElementById('r-signoff').checked,
     notes: document.getElementById('r-notes').value.trim() || null,
+    logged_by_email: currentUser ? currentUser.email : null,
   };
   const { error } = await sb.from('daily_reports').insert(payload);
   if (error) {
     showFormError('report-error', error.message);
     return;
   }
+
+  const project = projectsCache.find((p) => p.id === project_id);
+  notify(`${actorLabel()} logged a daily update for "${project ? project.name : 'a project'}"`, 'daily_report', 'create');
 
   // Keep the project record in sync with the latest daily update
   const projectUpdates = {};
@@ -798,6 +1004,7 @@ reportForm.addEventListener('submit', async (e) => {
   if (payload.sign_off) projectUpdates.sign_off_date = payload.report_date;
   if (Object.keys(projectUpdates).length) {
     projectUpdates.updated_at = new Date().toISOString();
+    projectUpdates.updated_by_email = currentUser ? currentUser.email : null;
     await sb.from('projects').update(projectUpdates).eq('id', project_id);
   }
 
@@ -807,7 +1014,6 @@ reportForm.addEventListener('submit', async (e) => {
   loadReports();
   loadProjects();
 
-  const project = projectsCache.find((p) => p.id === project_id);
   openWhatsAppModal(payload, project ? project.name : 'Project');
 });
 
@@ -906,6 +1112,7 @@ function renderReports(reports) {
         <span class="proj-name">${escapeHtml(r.projects ? r.projects.name : 'Unknown project')}</span>
         <span>${r.report_date}</span>
         ${r.project_manager ? `<span>PM: ${escapeHtml(r.project_manager)}</span>` : ''}
+        ${r.logged_by_email ? `<span>Logged by: ${escapeHtml(r.logged_by_email)}</span>` : ''}
       </div>
       <button class="icon-btn report-delete" data-delete="${r.id}">remove</button>
       <button class="icon-btn report-share" data-share="${r.id}">share</button>

@@ -102,3 +102,39 @@ create policy "statuses_authenticated_only" on statuses
   for all
   using (auth.role() = 'authenticated')
   with check (auth.role() = 'authenticated');
+
+-- Team roles + notifications (see migration-v10.sql for details/comments)
+create table if not exists profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text not null,
+  display_name text,
+  role text not null default 'member' check (role in ('leader', 'member')),
+  last_seen_notifications_at timestamptz not null default now(),
+  created_at timestamptz not null default now()
+);
+alter table profiles enable row level security;
+create policy "profiles_authenticated_all" on profiles
+  for all
+  using (auth.role() = 'authenticated')
+  with check (auth.role() = 'authenticated');
+
+create table if not exists notifications (
+  id uuid primary key default gen_random_uuid(),
+  actor_id uuid references auth.users(id),
+  actor_email text,
+  message text not null,
+  entity_type text,
+  action text,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_notifications_created on notifications(created_at desc);
+alter table notifications enable row level security;
+create policy "notifications_authenticated_all" on notifications
+  for all
+  using (auth.role() = 'authenticated')
+  with check (auth.role() = 'authenticated');
+
+alter table projects add column if not exists created_by_email text;
+alter table projects add column if not exists updated_by_email text;
+alter table daily_reports add column if not exists logged_by_email text;
+alter table apk_shares add column if not exists logged_by_email text;

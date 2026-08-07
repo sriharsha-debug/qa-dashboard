@@ -37,6 +37,15 @@
         <h1>Inspection Ledger</h1>
       </div>
       <div class="who">
+        <span id="who-role" class="role-badge hidden"></span>
+        <div class="notif-wrap">
+          <button id="notif-bell" class="btn btn-ghost notif-bell">🔔<span id="notif-badge" class="notif-badge hidden">0</span></button>
+          <div id="notif-panel" class="notif-panel hidden">
+            <div class="notif-panel-head">Activity</div>
+            <div id="notif-list" class="notif-list"></div>
+            <p class="empty-state" id="notif-empty">No activity yet.</p>
+          </div>
+        </div>
         <span id="who-email" class="who-email"></span>
         <button id="logout" class="btn btn-ghost">Sign out</button>
       </div>
@@ -46,6 +55,7 @@
       <button class="tab active" data-tab="projects">Projects</button>
       <button class="tab" data-tab="details">Project Details</button>
       <button class="tab" data-tab="daily">Daily Log</button>
+      <button class="tab" data-tab="team">Team</button>
     </nav>
 
     <!-- PROJECTS TAB -->
@@ -221,6 +231,23 @@
         </div>
         <div id="reports-list" class="reports-list"></div>
         <p class="empty-state" id="reports-empty">No entries yet.</p>
+      </div>
+    </section>
+
+    <!-- TEAM TAB -->
+    <section id="tab-team" class="tab-panel">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Team members</h2>
+          <span class="count" id="team-count"></span>
+        </div>
+        <p class="gate-copy" style="margin:0 0 14px;text-align:left;">
+          Everyone signed in shares the same projects and daily logs. Roles are just for
+          visibility — the leader can promote or demote anyone here. To add a new
+          teammate, invite their email in Supabase (Authentication → Users); they'll
+          appear in this list the first time they sign in.
+        </p>
+        <div id="team-list" class="team-list"></div>
       </div>
     </section>
   </div>
