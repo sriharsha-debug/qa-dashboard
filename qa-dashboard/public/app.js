@@ -642,8 +642,7 @@ function buildBatchWhatsAppMessage(reports, dateStr) {
     const projectName = r.projects ? r.projects.name : 'Project';
     msg += `\n*${i + 1}. ${projectName}*\n`;
     if (r.project_manager) msg += `👤 PM: ${r.project_manager}\n`;
-    if (r.assigned_projects) msg += `📌 Assigned Projects: ${r.assigned_projects}\n`;
-    if (r.assigned_tasks) msg += `🧩 Assigned Tasks: ${r.assigned_tasks}\n`;
+    if (r.assigned_tasks) msg += `🧩 Assigned Tasks:\n${r.assigned_tasks}\n`;
     msg += `✅ Test Cases: ${r.test_cases}  🐞 UI Bugs: ${r.ui_bugs}  ⚙️ Func Bugs: ${r.functionality_bugs}\n`;
     if (r.bugsheet) msg += `🔗 Bugsheet: ${r.bugsheet}\n`;
     msg += `✔️ Sign Off: ${r.sign_off ? 'Yes' : 'No'}\n`;
@@ -690,6 +689,59 @@ const reportsEmpty = document.getElementById('reports-empty');
 
 document.getElementById('r-date').valueAsDate = new Date();
 
+// ---------- Task list widget ----------
+
+let currentTasks = [''];
+const taskListEl = document.getElementById('task-list');
+
+function renderTaskList() {
+  taskListEl.innerHTML = '';
+  currentTasks.forEach((val, i) => {
+    const row = document.createElement('div');
+    row.className = 'task-row';
+    row.innerHTML = `
+      <span class="task-number">Task ${i + 1}</span>
+      <input type="text" class="task-input" data-idx="${i}" maxlength="200" placeholder="What needs to be done" value="${escapeHtml(val)}" />
+      ${currentTasks.length > 1 ? `<button type="button" class="icon-btn" data-remove-task="${i}">remove</button>` : ''}
+    `;
+    taskListEl.appendChild(row);
+  });
+
+  taskListEl.querySelectorAll('.task-input').forEach((input) => {
+    input.addEventListener('input', () => {
+      currentTasks[Number(input.dataset.idx)] = input.value;
+    });
+  });
+  taskListEl.querySelectorAll('[data-remove-task]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      currentTasks.splice(Number(btn.dataset.removeTask), 1);
+      renderTaskList();
+    });
+  });
+}
+
+document.getElementById('add-task-btn').addEventListener('click', () => {
+  currentTasks.push('');
+  renderTaskList();
+  const inputs = taskListEl.querySelectorAll('.task-input');
+  inputs[inputs.length - 1]?.focus();
+});
+
+function tasksToText() {
+  return currentTasks
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((t, i) => `Task ${i + 1}: ${t}`)
+    .join('\n');
+}
+
+function resetTaskList() {
+  currentTasks = [''];
+  renderTaskList();
+}
+
+renderTaskList();
+
 reportForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   clearFormError('report-error');
@@ -723,8 +775,7 @@ reportForm.addEventListener('submit', async (e) => {
     report_date: reportDate,
     project_id,
     project_manager: document.getElementById('r-pm').value.trim() || null,
-    assigned_projects: document.getElementById('r-assigned-projects').value.trim() || null,
-    assigned_tasks: document.getElementById('r-assigned-tasks').value.trim() || null,
+    assigned_tasks: tasksToText() || null,
     bugsheet: bugsheetVal || null,
     test_cases: Number(testCases),
     ui_bugs: Number(uiBugs),
@@ -752,6 +803,7 @@ reportForm.addEventListener('submit', async (e) => {
 
   reportForm.reset();
   document.getElementById('r-date').valueAsDate = new Date();
+  resetTaskList();
   loadReports();
   loadProjects();
 
@@ -772,8 +824,7 @@ function buildWhatsAppMessage(payload, projectName) {
   msg += `📅 Date: ${dateStr}\n`;
   msg += `📁 Project: ${projectName}\n`;
   if (payload.project_manager) msg += `👤 PM: ${payload.project_manager}\n`;
-  if (payload.assigned_projects) msg += `📌 Assigned Projects: ${payload.assigned_projects}\n`;
-  if (payload.assigned_tasks) msg += `🧩 Assigned Tasks: ${payload.assigned_tasks}\n`;
+  if (payload.assigned_tasks) msg += `🧩 Assigned Tasks:\n${payload.assigned_tasks}\n`;
   msg += `\n`;
   msg += `✅ Test Cases: ${payload.test_cases}\n`;
   msg += `🐞 UI Bugs: ${payload.ui_bugs}\n`;
@@ -859,8 +910,7 @@ function renderReports(reports) {
       <button class="icon-btn report-delete" data-delete="${r.id}">remove</button>
       <button class="icon-btn report-share" data-share="${r.id}">share</button>
       <div class="report-body">
-        ${r.assigned_projects ? `<div><span class="detail-label">Assigned projects:</span> ${escapeHtml(r.assigned_projects)}</div>` : ''}
-        ${r.assigned_tasks ? `<div><span class="detail-label">Assigned tasks:</span> ${escapeHtml(r.assigned_tasks)}</div>` : ''}
+        ${r.assigned_tasks ? `<div class="assigned-tasks"><span class="detail-label">Assigned tasks</span><div>${escapeHtml(r.assigned_tasks).replace(/\n/g, '<br>')}</div></div>` : ''}
         ${r.bugsheet ? `<div>Bugsheet: ${escapeHtml(r.bugsheet)}</div>` : ''}
         <div class="report-metrics">
           <span>Test cases: <b>${r.test_cases}</b></span>
