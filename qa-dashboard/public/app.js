@@ -628,6 +628,58 @@ function renderApkShares(shares) {
   });
 }
 
+function todayStr() {
+  const d = new Date();
+  return d.toISOString().slice(0, 10);
+}
+
+function buildBatchWhatsAppMessage(reports, dateStr) {
+  const niceDate = new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB');
+  let msg = `*QA Daily Updates — ${niceDate}*\n`;
+  msg += `_${reports.length} project${reports.length === 1 ? '' : 's'} updated_\n`;
+
+  reports.forEach((r, i) => {
+    const projectName = r.projects ? r.projects.name : 'Project';
+    msg += `\n*${i + 1}. ${projectName}*\n`;
+    if (r.project_manager) msg += `👤 PM: ${r.project_manager}\n`;
+    msg += `✅ Test Cases: ${r.test_cases}  🐞 UI Bugs: ${r.ui_bugs}  ⚙️ Func Bugs: ${r.functionality_bugs}\n`;
+    if (r.bugsheet) msg += `🔗 Bugsheet: ${r.bugsheet}\n`;
+    msg += `✔️ Sign Off: ${r.sign_off ? 'Yes' : 'No'}\n`;
+    if (r.remarks) msg += `💬 Remarks: ${r.remarks}\n`;
+    if (r.notes) msg += `🗒️ Notes: ${r.notes}\n`;
+  });
+
+  return msg;
+}
+
+document.getElementById('share-day-btn').addEventListener('click', async () => {
+  const dateStr = document.getElementById('filter-date').value || todayStr();
+  const projectId = document.getElementById('filter-project').value;
+
+  let query = sb
+    .from('daily_reports')
+    .select('*, projects(name)')
+    .eq('report_date', dateStr)
+    .order('created_at', { ascending: true });
+  if (projectId) query = query.eq('project_id', projectId);
+
+  const { data, error } = await query;
+  if (error) {
+    alert(error.message);
+    return;
+  }
+  if (!data || !data.length) {
+    alert(`No daily entries found for ${new Date(dateStr + 'T00:00:00').toLocaleDateString()}. Log an entry first, or pick a different date in the filter above.`);
+    return;
+  }
+
+  const message = buildBatchWhatsAppMessage(data, dateStr);
+  whatsappMessageEl.value = message;
+  whatsappOpenLink.href = `https://wa.me/?text=${encodeURIComponent(message)}`;
+  whatsappCopyBtn.textContent = 'Copy message';
+  whatsappModal.classList.remove('hidden');
+});
+
 // ---------- Daily reports ----------
 
 const reportForm = document.getElementById('report-form');
