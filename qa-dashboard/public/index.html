@@ -18,14 +18,20 @@
     <div class="gate-card">
       <p class="eyebrow">QA Daily Log</p>
       <h1>Inspection Ledger</h1>
-      <p class="gate-copy">Sign in with your email and password to open the ledger.</p>
+      <p class="gate-copy" id="gate-copy">Sign in with your email and password to open the ledger.</p>
       <form id="login-form" class="login-form">
         <input type="email" id="login-email" placeholder="Email" required autocomplete="username" />
-        <input type="password" id="login-password" placeholder="Password" required autocomplete="current-password" />
-        <button type="submit" class="btn btn-primary">Sign in</button>
+        <input type="password" id="login-password" placeholder="Password" required autocomplete="current-password" minlength="6" />
+        <input type="password" id="login-password-confirm" placeholder="Confirm password" autocomplete="new-password" class="hidden" />
+        <button type="submit" class="btn btn-primary" id="gate-submit-btn">Sign in</button>
       </form>
       <p id="login-error" class="login-error hidden"></p>
-      <p class="gate-hint">Access is invite-only — accounts are created by the site owner in Supabase.</p>
+      <p id="login-success" class="login-success hidden"></p>
+      <p class="gate-toggle">
+        <span id="gate-toggle-signup">New tester? <button type="button" class="link-btn" id="show-signup">Create an account</button></span>
+        <span id="gate-toggle-signin" class="hidden">Already have an account? <button type="button" class="link-btn" id="show-signin">Sign in</button></span>
+      </p>
+      <p class="gate-hint" id="gate-hint">Your projects and daily logs are private to you — your team lead can view everyone's.</p>
     </div>
   </div>
 
@@ -71,7 +77,10 @@
       <div class="panel">
         <div class="panel-head">
           <h2>Projects</h2>
-          <span class="count" id="project-count"></span>
+          <div class="panel-head-right">
+            <select id="admin-filter-projects" class="hidden"></select>
+            <span class="count" id="project-count"></span>
+          </div>
         </div>
         <table class="ledger" id="projects-table">
           <thead>
@@ -81,6 +90,7 @@
               <th>Status</th>
               <th>PM</th>
               <th>Start – End</th>
+              <th id="owner-col-head" class="hidden">Tester</th>
               <th class="col-idx"></th>
             </tr>
           </thead>
@@ -221,6 +231,7 @@
         <div class="panel-head">
           <h2>History</h2>
           <div class="filters">
+            <select id="admin-filter-reports" class="hidden"></select>
             <select id="filter-project">
               <option value="">All projects</option>
             </select>

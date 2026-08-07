@@ -6,6 +6,7 @@ const loginError = document.getElementById('login-error');
 
 let projectsCache = [];
 let statusesCache = [];
+let teamCache = [];
 let currentUser = null;
 let currentProfile = null;
 let notifPollTimer = null;
@@ -22,15 +23,72 @@ sb.auth.onAuthStateChange((_event, session) => {
   }
 });
 
+let gateMode = 'signin';
+const confirmPasswordInput = document.getElementById('login-password-confirm');
+const gateSubmitBtn = document.getElementById('gate-submit-btn');
+const loginSuccess = document.getElementById('login-success');
+
+function setGateMode(mode) {
+  gateMode = mode;
+  loginError.classList.add('hidden');
+  loginSuccess.classList.add('hidden');
+  if (mode === 'signup') {
+    confirmPasswordInput.classList.remove('hidden');
+    confirmPasswordInput.required = true;
+    gateSubmitBtn.textContent = 'Create account';
+    document.getElementById('gate-toggle-signup').classList.add('hidden');
+    document.getElementById('gate-toggle-signin').classList.remove('hidden');
+    document.getElementById('gate-copy').textContent = 'Create your account to start logging your projects.';
+  } else {
+    confirmPasswordInput.classList.add('hidden');
+    confirmPasswordInput.required = false;
+    confirmPasswordInput.value = '';
+    gateSubmitBtn.textContent = 'Sign in';
+    document.getElementById('gate-toggle-signup').classList.remove('hidden');
+    document.getElementById('gate-toggle-signin').classList.add('hidden');
+    document.getElementById('gate-copy').textContent = 'Sign in with your email and password to open the ledger.';
+  }
+}
+
+document.getElementById('show-signup').addEventListener('click', () => setGateMode('signup'));
+document.getElementById('show-signin').addEventListener('click', () => setGateMode('signin'));
+
 loginForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   loginError.classList.add('hidden');
+  loginSuccess.classList.add('hidden');
   const email = document.getElementById('login-email').value.trim();
   const password = document.getElementById('login-password').value;
-  const { error } = await sb.auth.signInWithPassword({ email, password });
-  if (error) {
-    loginError.textContent = error.message;
-    loginError.classList.remove('hidden');
+
+  if (gateMode === 'signup') {
+    if (password.length < 6) {
+      loginError.textContent = 'Password must be at least 6 characters.';
+      loginError.classList.remove('hidden');
+      return;
+    }
+    if (password !== confirmPasswordInput.value) {
+      loginError.textContent = 'Passwords do not match.';
+      loginError.classList.remove('hidden');
+      return;
+    }
+    const { data, error } = await sb.auth.signUp({ email, password });
+    if (error) {
+      loginError.textContent = error.message;
+      loginError.classList.remove('hidden');
+      return;
+    }
+    if (data.session) {
+      return; // signed in immediately; onAuthStateChange takes over
+    }
+    loginSuccess.textContent = 'Account created! Check your email to confirm it, then sign in.';
+    loginSuccess.classList.remove('hidden');
+    setGateMode('signin');
+  } else {
+    const { error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) {
+      loginError.textContent = error.message;
+      loginError.classList.remove('hidden');
+    }
   }
 });
 
@@ -192,8 +250,34 @@ async function loadTeam() {
     console.error(error);
     return;
   }
+  teamCache = data;
   renderTeam(data);
+  renderAdminFilters(data);
 }
+
+function renderAdminFilters(members) {
+  const projectsFilter = document.getElementById('admin-filter-projects');
+  const reportsFilter = document.getElementById('admin-filter-reports');
+  const ownerColHead = document.getElementById('owner-col-head');
+
+  if (!isLeader()) {
+    projectsFilter.classList.add('hidden');
+    reportsFilter.classList.add('hidden');
+    ownerColHead.classList.add('hidden');
+    return;
+  }
+
+  const opts = '<option value="">All testers</option>' +
+    members.map((m) => `<option value="${escapeHtml(m.email)}">${escapeHtml(m.display_name || m.email)}</option>`).join('');
+  projectsFilter.innerHTML = opts;
+  reportsFilter.innerHTML = opts;
+  projectsFilter.classList.remove('hidden');
+  reportsFilter.classList.remove('hidden');
+  ownerColHead.classList.remove('hidden');
+}
+
+document.getElementById('admin-filter-projects').addEventListener('change', () => renderProjects(projectsCache));
+document.getElementById('admin-filter-reports').addEventListener('change', () => loadReports());
 
 function renderTeam(members) {
   const list = document.getElementById('team-list');
@@ -281,15 +365,22 @@ function fmtDate(d) {
 }
 
 function renderProjects(projects) {
+  const adminFilter = document.getElementById('admin-filter-projects').value;
+  const filtered = isLeader() && adminFilter
+    ? projects.filter((p) => p.created_by_email === adminFilter)
+    : projects;
+
   projectsTbody.innerHTML = '';
-  projectCount.textContent = projects.length ? `${projects.length} total` : '';
-  projectsEmpty.style.display = projects.length ? 'none' : 'block';
+  projectCount.textContent = filtered.length ? `${filtered.length} total` : '';
+  projectsEmpty.style.display = filtered.length ? 'none' : 'block';
 
   const statusOptions = statusesCache
     .map((s) => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`)
     .join('');
 
-  projects.forEach((p, i) => {
+  const showOwner = isLeader();
+
+  filtered.forEach((p, i) => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td class="col-idx">${String(i + 1).padStart(2, '0')}</td>
@@ -301,6 +392,7 @@ function renderProjects(projects) {
       </td>
       <td>${p.project_manager ? escapeHtml(p.project_manager) : '<span class="no-link">—</span>'}</td>
       <td>${fmtDate(p.start_date)} – ${fmtDate(p.end_date)}</td>
+      ${showOwner ? `<td>${escapeHtml(p.created_by_email || '—')}</td>` : ''}
       <td class="row-actions">
         <button class="icon-btn" data-edit-btn="${p.id}">edit</button>
         <button class="icon-btn" data-delete="${p.id}">remove</button>
@@ -588,6 +680,7 @@ editForm.addEventListener('submit', async (e) => {
     notify(`${actorLabel()} updated project "${payload.name}"`, 'project', 'update');
   } else {
     payload.created_by_email = currentUser ? currentUser.email : null;
+    payload.owner_id = currentUser ? currentUser.id : null;
     const { error } = await sb.from('projects').insert(payload);
     if (error) {
       showFormError('edit-error', error.message);
@@ -770,6 +863,7 @@ apkForm.addEventListener('submit', async (e) => {
     shared_by: document.getElementById('apk-shared-by').value.trim() || null,
     notes: document.getElementById('apk-notes').value.trim() || null,
     logged_by_email: currentUser ? currentUser.email : null,
+    owner_id: currentUser ? currentUser.id : null,
   };
   const { error } = await sb.from('apk_shares').insert(payload);
   if (error) {
@@ -986,6 +1080,7 @@ reportForm.addEventListener('submit', async (e) => {
     sign_off: document.getElementById('r-signoff').checked,
     notes: document.getElementById('r-notes').value.trim() || null,
     logged_by_email: currentUser ? currentUser.email : null,
+    owner_id: currentUser ? currentUser.id : null,
   };
   const { error } = await sb.from('daily_reports').insert(payload);
   if (error) {
@@ -1089,8 +1184,10 @@ async function loadReports() {
 
   const projectId = document.getElementById('filter-project').value;
   const date = document.getElementById('filter-date').value;
+  const adminEmail = document.getElementById('admin-filter-reports').value;
   if (projectId) query = query.eq('project_id', projectId);
   if (date) query = query.eq('report_date', date);
+  if (isLeader() && adminEmail) query = query.eq('logged_by_email', adminEmail);
 
   const { data, error } = await query;
   if (error) {

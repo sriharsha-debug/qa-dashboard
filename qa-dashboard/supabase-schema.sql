@@ -20,6 +20,7 @@ on conflict (name) do nothing;
 
 create table if not exists projects (
   id uuid primary key default gen_random_uuid(),
+  owner_id uuid references auth.users(id),
   name text not null,
   status text not null default 'Not Started',
   start_date date,
@@ -44,6 +45,7 @@ create table if not exists projects (
 
 create table if not exists apk_shares (
   id uuid primary key default gen_random_uuid(),
+  owner_id uuid references auth.users(id),
   project_id uuid not null references projects(id) on delete cascade,
   version text,
   apk_link text,
@@ -57,6 +59,7 @@ create index if not exists idx_apk_shares_project on apk_shares(project_id);
 
 create table if not exists daily_reports (
   id uuid primary key default gen_random_uuid(),
+  owner_id uuid references auth.users(id),
   project_id uuid not null references projects(id) on delete cascade,
   report_date date not null default current_date,
   project_manager text,
@@ -75,29 +78,35 @@ create index if not exists idx_daily_reports_project on daily_reports(project_id
 create index if not exists idx_daily_reports_date on daily_reports(report_date desc);
 
 -- Row Level Security: the browser talks to Supabase directly using the
--- public "anon" key (safe to expose). These policies make sure only a
--- signed-in user (via Supabase Auth, email + password) can read or write
--- anything at all.
+-- public "anon" key (safe to expose). Each tester's projects, daily logs,
+-- and APK shares are private to them — except the team leader, who can
+-- see and manage everyone's.
 alter table projects enable row level security;
 alter table daily_reports enable row level security;
 alter table statuses enable row level security;
 alter table apk_shares enable row level security;
 
-create policy "apk_shares_authenticated_only" on apk_shares
-  for all
-  using (auth.role() = 'authenticated')
-  with check (auth.role() = 'authenticated');
+create or replace function is_team_leader() returns boolean
+language sql stable security definer as $$
+  select exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'leader');
+$$;
 
-create policy "projects_authenticated_only" on projects
+create policy "apk_shares_owner_or_leader" on apk_shares
   for all
-  using (auth.role() = 'authenticated')
-  with check (auth.role() = 'authenticated');
+  using (owner_id = auth.uid() or is_team_leader())
+  with check (owner_id = auth.uid() or is_team_leader());
 
-create policy "daily_reports_authenticated_only" on daily_reports
+create policy "projects_owner_or_leader" on projects
   for all
-  using (auth.role() = 'authenticated')
-  with check (auth.role() = 'authenticated');
+  using (owner_id = auth.uid() or is_team_leader())
+  with check (owner_id = auth.uid() or is_team_leader());
 
+create policy "daily_reports_owner_or_leader" on daily_reports
+  for all
+  using (owner_id = auth.uid() or is_team_leader())
+  with check (owner_id = auth.uid() or is_team_leader());
+
+-- Statuses stay shared/global across the whole team.
 create policy "statuses_authenticated_only" on statuses
   for all
   using (auth.role() = 'authenticated')
