@@ -370,7 +370,9 @@ input:focus, select:focus, textarea:focus {
 }
 .report-metrics b { color: var(--ink); }
 .report-remarks { margin-top: 6px; font-style: italic; color: var(--ink-soft); }
-.report-delete { justify-self: end; }
+.report-delete, .report-share { justify-self: end; }
+.report-card { grid-template-columns: 1fr auto auto; }
+.report-body { grid-column: 1 / -1; }
 
 .stamp {
   position: absolute;
@@ -476,6 +478,22 @@ input:focus, select:focus, textarea:focus {
 .span-2.section-label:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
 
 .details-select { width: 100%; max-width: 420px; }
+
+.whatsapp-textarea {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 220px;
+}
+.whatsapp-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+.whatsapp-actions .btn { text-decoration: none; }
 
 .details-grid {
   display: grid;

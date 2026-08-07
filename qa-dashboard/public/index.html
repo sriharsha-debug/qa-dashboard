@@ -302,6 +302,21 @@
     </div>
   </div>
 
+  <!-- WhatsApp daily update modal -->
+  <div id="whatsapp-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>Daily update message</h2>
+        <button id="whatsapp-close" class="icon-btn">close</button>
+      </div>
+      <textarea id="whatsapp-message" class="whatsapp-textarea" rows="12" readonly></textarea>
+      <div class="whatsapp-actions">
+        <button id="whatsapp-copy" class="btn btn-primary">Copy message</button>
+        <a id="whatsapp-open" class="btn btn-ghost" target="_blank" rel="noopener">Open in WhatsApp</a>
+      </div>
+    </div>
+  </div>
+
   <script defer src="app.js"></script>
 </body>
 </html>

@@ -698,6 +698,63 @@ reportForm.addEventListener('submit', async (e) => {
   document.getElementById('r-date').valueAsDate = new Date();
   loadReports();
   loadProjects();
+
+  const project = projectsCache.find((p) => p.id === project_id);
+  openWhatsAppModal(payload, project ? project.name : 'Project');
+});
+
+// ---------- WhatsApp daily update message ----------
+
+const whatsappModal = document.getElementById('whatsapp-modal');
+const whatsappMessageEl = document.getElementById('whatsapp-message');
+const whatsappOpenLink = document.getElementById('whatsapp-open');
+const whatsappCopyBtn = document.getElementById('whatsapp-copy');
+
+function buildWhatsAppMessage(payload, projectName) {
+  const dateStr = new Date(payload.report_date + 'T00:00:00').toLocaleDateString('en-GB');
+  let msg = `*QA Daily Update*\n`;
+  msg += `📅 Date: ${dateStr}\n`;
+  msg += `📁 Project: ${projectName}\n`;
+  if (payload.project_manager) msg += `👤 PM: ${payload.project_manager}\n`;
+  msg += `\n`;
+  msg += `✅ Test Cases: ${payload.test_cases}\n`;
+  msg += `🐞 UI Bugs: ${payload.ui_bugs}\n`;
+  msg += `⚙️ Functionality Bugs: ${payload.functionality_bugs}\n`;
+  if (payload.bugsheet) msg += `🔗 Bugsheet: ${payload.bugsheet}\n`;
+  msg += `\n`;
+  msg += `✔️ Sign Off: ${payload.sign_off ? 'Yes' : 'No'}\n`;
+  if (payload.remarks) msg += `💬 Remarks: ${payload.remarks}\n`;
+  if (payload.notes) msg += `🗒️ Notes: ${payload.notes}\n`;
+  return msg;
+}
+
+function openWhatsAppModal(payload, projectName) {
+  const message = buildWhatsAppMessage(payload, projectName);
+  whatsappMessageEl.value = message;
+  whatsappOpenLink.href = `https://wa.me/?text=${encodeURIComponent(message)}`;
+  whatsappCopyBtn.textContent = 'Copy message';
+  whatsappModal.classList.remove('hidden');
+}
+
+document.getElementById('whatsapp-close').addEventListener('click', () => {
+  whatsappModal.classList.add('hidden');
+});
+whatsappModal.addEventListener('click', (e) => {
+  if (e.target === whatsappModal) whatsappModal.classList.add('hidden');
+});
+
+whatsappCopyBtn.addEventListener('click', async () => {
+  const text = whatsappMessageEl.value;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    whatsappMessageEl.select();
+    document.execCommand('copy');
+  }
+  whatsappCopyBtn.textContent = 'Copied ✓';
+  setTimeout(() => {
+    whatsappCopyBtn.textContent = 'Copy message';
+  }, 1800);
 });
 
 document.getElementById('filter-project').addEventListener('change', loadReports);
@@ -742,6 +799,7 @@ function renderReports(reports) {
         ${r.project_manager ? `<span>PM: ${escapeHtml(r.project_manager)}</span>` : ''}
       </div>
       <button class="icon-btn report-delete" data-delete="${r.id}">remove</button>
+      <button class="icon-btn report-share" data-share="${r.id}">share</button>
       <div class="report-body">
         ${r.bugsheet ? `<div>Bugsheet: ${escapeHtml(r.bugsheet)}</div>` : ''}
         <div class="report-metrics">
@@ -762,6 +820,9 @@ function renderReports(reports) {
         return;
       }
       loadReports();
+    });
+    card.querySelector('[data-share]').addEventListener('click', () => {
+      openWhatsAppModal(r, r.projects ? r.projects.name : 'Project');
     });
     reportsList.appendChild(card);
   });
