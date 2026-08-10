@@ -1136,15 +1136,22 @@ aiCopyPromptBtn.addEventListener('click', async () => {
     return;
   }
   const prompt = buildAiPrompt(project ? project.name : '', documentText);
+
+  // Open the tab synchronously (within the click event) so browsers don't block the popup.
+  const claudeTab = window.open('https://claude.ai/new', '_blank', 'noopener');
+
   try {
     await navigator.clipboard.writeText(prompt);
   } catch {
-    showFormError('ai-gen-error', 'Could not copy automatically — select the text manually if needed.');
+    showFormError('ai-gen-error', 'Opened Claude.ai, but could not copy the prompt automatically — copy it manually from the box above.');
     return;
   }
   const original = aiCopyPromptBtn.textContent;
-  aiCopyPromptBtn.textContent = 'Copied ✓ — now paste into Claude.ai';
-  setTimeout(() => { aiCopyPromptBtn.textContent = original; }, 2500);
+  aiCopyPromptBtn.textContent = 'Copied ✓ — paste into the Claude.ai tab';
+  setTimeout(() => { aiCopyPromptBtn.textContent = original; }, 3000);
+  if (!claudeTab) {
+    showFormError('ai-gen-error', 'Prompt copied, but the popup was blocked — open Claude.ai manually and paste it in.');
+  }
 });
 
 aiParseBtn.addEventListener('click', () => {

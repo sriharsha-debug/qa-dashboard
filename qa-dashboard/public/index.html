@@ -152,10 +152,9 @@
           <div class="ai-gen-box">
             <p class="detail-label">Generate test cases with AI (free — uses your own Claude.ai account)</p>
             <textarea id="ai-doc-text" rows="3" placeholder="Paste requirements or document text here" maxlength="20000"></textarea>
-            <p class="ai-gen-hint">1. Paste your document text above. 2. Copy the prompt. 3. Paste it into Claude.ai (opens in a new tab) and get the reply. 4. Paste that reply back below and parse it.</p>
+            <p class="ai-gen-hint">1. Paste your document text above. 2. Click below — it copies the prompt and opens Claude.ai for you. 3. Paste into Claude.ai and send. 4. Paste the reply back below and parse it.</p>
             <div class="form-actions ai-gen-btn-row">
-              <button type="button" id="ai-copy-prompt" class="btn btn-primary">Copy prompt</button>
-              <a id="ai-open-claude" class="btn btn-ghost" href="https://claude.ai/new" target="_blank" rel="noopener">Open Claude.ai</a>
+              <button type="button" id="ai-copy-prompt" class="btn btn-primary">Generate test cases (opens Claude.ai)</button>
             </div>
             <p id="ai-gen-error" class="login-error hidden"></p>
 
