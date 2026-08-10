@@ -148,6 +148,25 @@
             <h2>Test execution</h2>
             <span class="count" id="tc-summary"></span>
           </div>
+
+          <div class="ai-gen-box">
+            <p class="detail-label">Generate test cases with AI</p>
+            <textarea id="ai-doc-text" rows="3" placeholder="Paste requirements or document text here (optional — leave blank to use the Project Document link instead)" maxlength="20000"></textarea>
+            <p class="ai-gen-hint" id="ai-gen-hint"></p>
+            <div class="form-actions" style="justify-content:flex-start;">
+              <button type="button" id="ai-generate-btn" class="btn btn-primary">Generate test cases</button>
+            </div>
+            <p id="ai-gen-error" class="login-error hidden"></p>
+            <div id="ai-preview" class="ai-preview hidden">
+              <p class="detail-label">Review and add</p>
+              <div id="ai-preview-list" class="ai-preview-list"></div>
+              <div class="form-actions" style="justify-content:flex-start; gap:10px;">
+                <button type="button" id="ai-add-selected" class="btn btn-primary">Add selected to Test Execution</button>
+                <button type="button" id="ai-discard" class="btn btn-ghost">Discard</button>
+              </div>
+            </div>
+          </div>
+
           <form id="tc-form" class="grid-form">
             <label class="span-2">Test case title
               <input type="text" id="tc-title" placeholder="e.g. Verify login with valid credentials" required maxlength="200" />

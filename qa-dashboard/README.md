@@ -82,6 +82,23 @@ Vercel gives you a URL like `https://your-project.vercel.app`. Open it,
 sign in with the email + password you created in Supabase Auth, and
 you're in.
 
+## AI test case generation (optional)
+
+The Test Execution tracker can generate test cases from a pasted document
+or a Project Document link, using Claude. This needs one small server
+function (`api/generate-test-cases.js`), which Vercel deploys automatically
+alongside the static site — no extra setup beyond environment variables.
+
+In **Vercel → Site → Settings → Environment Variables**, add:
+- `ANTHROPIC_API_KEY` — from https://console.anthropic.com (Settings → API Keys)
+- `SUPABASE_URL` — same value as in `public/config.js`
+- `SUPABASE_ANON_KEY` — same value as in `public/config.js`
+
+Redeploy after adding these. Then in Project Details → Test execution,
+paste requirements text (or leave blank to use the project's Document
+link), click **Generate test cases**, review the suggestions, and add
+the ones you want.
+
 ---
 
 ## Notes

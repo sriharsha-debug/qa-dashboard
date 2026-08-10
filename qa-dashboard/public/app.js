@@ -835,6 +835,7 @@ async function showProjectDetails(id) {
 
   loadApkShares(id);
   loadTestCases(id);
+  updateAiHint();
 }
 
 // ---------- Test execution ----------
@@ -1103,7 +1104,131 @@ document.getElementById('share-day-btn').addEventListener('click', async () => {
   whatsappModal.classList.remove('hidden');
 });
 
-// ---------- Daily reports ----------
+// ---------- AI test case generation ----------
+
+const aiDocText = document.getElementById('ai-doc-text');
+const aiGenHint = document.getElementById('ai-gen-hint');
+const aiGenBtn = document.getElementById('ai-generate-btn');
+const aiPreview = document.getElementById('ai-preview');
+const aiPreviewList = document.getElementById('ai-preview-list');
+let aiGeneratedCases = [];
+
+function updateAiHint() {
+  const project = projectsCache.find((p) => p.id === detailsSelect.value);
+  if (aiDocText.value.trim()) {
+    aiGenHint.textContent = '';
+  } else if (project && project.project_document) {
+    aiGenHint.textContent = `Will use the Project Document link: ${project.project_document}`;
+  } else {
+    aiGenHint.textContent = 'Paste text above, or add a Project Document link via Edit first.';
+  }
+}
+detailsSelect.addEventListener('change', updateAiHint);
+aiDocText.addEventListener('input', updateAiHint);
+
+aiGenBtn.addEventListener('click', async () => {
+  clearFormError('ai-gen-error');
+  aiPreview.classList.add('hidden');
+  const projectId = detailsSelect.value;
+  const project = projectsCache.find((p) => p.id === projectId);
+  if (!project) return;
+
+  const documentText = aiDocText.value.trim();
+  if (!documentText && !project.project_document) {
+    showFormError('ai-gen-error', 'Paste some text, or add a Project Document link to this project first.');
+    return;
+  }
+
+  aiGenBtn.disabled = true;
+  aiGenBtn.textContent = 'Generating…';
+
+  try {
+    const { data: sessionData } = await sb.auth.getSession();
+    const token = sessionData && sessionData.session ? sessionData.session.access_token : null;
+    const res = await fetch('/api/generate-test-cases', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        projectName: project.name,
+        documentText,
+        documentUrl: documentText ? null : project.project_document,
+      }),
+    });
+    const body = await res.json();
+    if (!res.ok) {
+      showFormError('ai-gen-error', body.error || 'Generation failed.');
+      return;
+    }
+    if (!body.testCases || !body.testCases.length) {
+      showFormError('ai-gen-error', 'No test cases came back. Try adding more detail to the document.');
+      return;
+    }
+    aiGeneratedCases = body.testCases;
+    renderAiPreview(aiGeneratedCases);
+  } catch (err) {
+    showFormError('ai-gen-error', 'Something went wrong reaching the AI service.');
+  } finally {
+    aiGenBtn.disabled = false;
+    aiGenBtn.textContent = 'Generate test cases';
+  }
+});
+
+function renderAiPreview(cases) {
+  aiPreviewList.innerHTML = '';
+  cases.forEach((c, i) => {
+    const row = document.createElement('label');
+    row.className = 'ai-preview-item';
+    row.innerHTML = `
+      <input type="checkbox" class="ai-preview-check" data-idx="${i}" checked />
+      <div>
+        <div class="ai-preview-item-title">${escapeHtml(c.title)} <span class="priority-pill priority-${escapeHtml(c.priority)}">${escapeHtml(c.priority)}</span></div>
+        ${c.description ? `<div class="ai-preview-item-desc">${escapeHtml(c.description)}</div>` : ''}
+      </div>
+    `;
+    aiPreviewList.appendChild(row);
+  });
+  aiPreview.classList.remove('hidden');
+}
+
+document.getElementById('ai-discard').addEventListener('click', () => {
+  aiGeneratedCases = [];
+  aiPreview.classList.add('hidden');
+  aiDocText.value = '';
+  updateAiHint();
+});
+
+document.getElementById('ai-add-selected').addEventListener('click', async () => {
+  const projectId = detailsSelect.value;
+  const checks = aiPreviewList.querySelectorAll('.ai-preview-check');
+  const selected = [];
+  checks.forEach((cb) => {
+    if (cb.checked) selected.push(aiGeneratedCases[Number(cb.dataset.idx)]);
+  });
+  if (!selected.length) return;
+
+  const rows = selected.map((c) => ({
+    project_id: projectId,
+    title: c.title,
+    description: c.description,
+    priority: c.priority,
+    status: 'Not Run',
+    owner_id: currentUser ? currentUser.id : null,
+  }));
+
+  const { error } = await sb.from('test_cases').insert(rows);
+  if (error) {
+    showFormError('ai-gen-error', error.message);
+    return;
+  }
+  const project = projectsCache.find((p) => p.id === projectId);
+  notify(`${actorLabel()} generated ${rows.length} AI test case${rows.length === 1 ? '' : 's'} for "${project ? project.name : 'a project'}"`, 'test_case', 'ai_generate');
+
+  aiGeneratedCases = [];
+  aiPreview.classList.add('hidden');
+  aiDocText.value = '';
+  updateAiHint();
+  loadTestCases(projectId);
+});
 
 const reportForm = document.getElementById('report-form');
 const reportsList = document.getElementById('reports-list');
