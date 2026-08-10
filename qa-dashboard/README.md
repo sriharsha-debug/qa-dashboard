@@ -82,24 +82,27 @@ Vercel gives you a URL like `https://your-project.vercel.app`. Open it,
 sign in with the email + password you created in Supabase Auth, and
 you're in.
 
-## AI test case generation (free — no API key needed)
+## AI test case generation (free — Google Gemini)
 
-The Test Execution tracker can turn a requirements document into test
-cases using Claude — with **no billing and no backend function**. It works
-like this:
+The Test Execution tracker generates test cases automatically from pasted
+requirements text, using Google's Gemini API — which has a genuine free
+tier (no credit card required). This needs one small server function
+(`api/generate-test-cases.js`), which Vercel deploys automatically
+alongside the static site.
 
-1. In Project Details → Test execution, paste your requirements text.
-2. Click **Copy prompt** — this copies a ready-made prompt (your document
-   included) to your clipboard.
-3. Click **Open Claude.ai** — opens a free Claude.ai chat in a new tab.
-   Paste the prompt there and send it.
-4. Copy Claude's reply, come back to the dashboard, paste it into
-   "Paste the AI's reply here", and click **Parse response**.
-5. Review the suggested test cases, uncheck any you don't want, and click
-   **Add selected to Test Execution**.
+**Get a free Gemini API key:**
+1. Go to https://aistudio.google.com, sign in with any Google account
+2. Click **Get API key → Create API key**
+3. Copy it (starts with `AIza...`)
 
-Each team member uses their own Claude.ai account (free tier works fine),
-so there's no shared API key or cost on your end.
+**In Vercel → Site → Settings → Environment Variables, add:**
+- `GEMINI_API_KEY` — the key from above
+- `SUPABASE_URL` — same value as in `public/config.js`
+- `SUPABASE_ANON_KEY` — same value as in `public/config.js`
+
+Redeploy after adding these. Then in Project Details → Test execution,
+paste requirements text, click **Generate test cases**, review the
+suggestions, and add the ones you want.
 
 ---
 

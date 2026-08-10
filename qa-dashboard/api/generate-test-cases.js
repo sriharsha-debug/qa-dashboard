@@ -1,12 +1,14 @@
 // POST /api/generate-test-cases
-// Body: { projectName, documentText, documentUrl }
+// Body: { projectName, documentText }
 // Requires the caller's Supabase access token in the Authorization header.
-// Uses ANTHROPIC_API_KEY (server-side secret, set in Vercel env vars) to
-// call Claude and turn a requirements document into structured test cases.
+// Uses GEMINI_API_KEY (server-side secret, set in Vercel env vars) to call
+// Google's free Gemini API and turn a requirements document into
+// structured test cases.
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_MODEL = 'gemini-2.5-flash';
 const MAX_DOC_CHARS = 15000;
 
 module.exports = async function handler(req, res) {
@@ -33,33 +35,15 @@ module.exports = async function handler(req, res) {
     }
 
     // ---- Gather document content ----
-    const { projectName, documentText, documentUrl } = req.body || {};
-    let content = (documentText || '').trim();
-
-    if (!content && documentUrl) {
-      try {
-        const docRes = await fetch(documentUrl, { redirect: 'follow' });
-        const raw = await docRes.text();
-        content = raw
-          .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-          .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-          .replace(/<[^>]+>/g, ' ')
-          .replace(/\s+/g, ' ')
-          .trim();
-      } catch {
-        res.status(400).json({ error: 'Could not fetch the document link. Try pasting the text instead.' });
-        return;
-      }
-    }
+    const { projectName, documentText } = req.body || {};
+    const content = (documentText || '').trim().slice(0, MAX_DOC_CHARS);
 
     if (!content) {
-      res.status(400).json({ error: 'No document text found. Paste some text or provide a readable link.' });
+      res.status(400).json({ error: 'No document text provided.' });
       return;
     }
 
-    content = content.slice(0, MAX_DOC_CHARS);
-
-    // ---- Ask Claude for structured test cases ----
+    // ---- Ask Gemini for structured test cases ----
     const prompt = `You are a QA test case writer. Based on the requirements/document text below for the project "${projectName || 'this project'}", generate a thorough list of manual test cases.
 
 Respond with ONLY a JSON array, no prose, no markdown fences, in this exact shape:
@@ -72,31 +56,38 @@ Document:
 ${content}
 """`;
 
-    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-5',
-        max_tokens: 4000,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    });
+    const aiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': GEMINI_API_KEY,
+        },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        }),
+      }
+    );
 
     if (!aiRes.ok) {
       const errBody = await aiRes.text();
-      console.error('Anthropic API error:', errBody);
-      res.status(502).json({ error: 'AI request failed. Check the ANTHROPIC_API_KEY is set correctly in Vercel.' });
+      console.error('Gemini API error:', errBody);
+      res.status(502).json({ error: 'AI request failed. Check the GEMINI_API_KEY is set correctly in Vercel.' });
       return;
     }
 
     const aiData = await aiRes.json();
-    const textBlock = (aiData.content || []).find((b) => b.type === 'text');
-    let raw = textBlock ? textBlock.text.trim() : '';
+    const candidate = aiData.candidates && aiData.candidates[0];
+    const parts = candidate && candidate.content && candidate.content.parts;
+    let raw = parts && parts[0] && parts[0].text ? parts[0].text.trim() : '';
     raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+
+    const start = raw.indexOf('[');
+    const end = raw.lastIndexOf(']');
+    if (start !== -1 && end !== -1 && end > start) {
+      raw = raw.slice(start, end + 1);
+    }
 
     let testCases;
     try {
