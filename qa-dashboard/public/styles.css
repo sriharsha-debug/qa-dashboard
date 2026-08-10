@@ -727,3 +727,31 @@ input:focus, select:focus, textarea:focus {
   .details-grid { grid-template-columns: 1fr; }
   .detail-item.span-2 { grid-column: span 1; }
 }
+
+.ai-input-label { display:block; margin-top:10px; font-size:12px; color:var(--ink-soft); font-weight:600; }
+.ai-input-label input, .ai-input-label textarea { display:block; width:100%; margin-top:6px; }
+.ai-coverage { margin-top:16px; border:1px solid var(--line-strong); border-radius:8px; padding:14px; background:var(--panel-2); }
+.ai-coverage-head { display:flex; justify-content:space-between; gap:18px; align-items:flex-start; }
+.ai-coverage-big { font-size:34px; font-weight:800; line-height:1; margin:5px 0 6px; }
+.coverage-good { color:#15803d; }
+.coverage-warn { color:#b45309; }
+.coverage-bad { color:#b91c1c; }
+.ai-coverage-stats { display:grid; grid-template-columns:repeat(2,minmax(100px,1fr)); gap:8px; font-size:12px; color:var(--ink-soft); }
+.ai-coverage-stats span { border:1px solid var(--line-strong); border-radius:6px; padding:8px; }
+.ai-coverage-stats b { color:var(--ink); font-size:15px; margin-right:4px; }
+.coverage-cats { display:grid; grid-template-columns:repeat(3,minmax(130px,1fr)); gap:7px; margin-top:14px; }
+.coverage-cat { display:flex; justify-content:space-between; gap:8px; border-top:1px solid var(--line); padding:7px 0; font-size:11px; color:var(--ink-soft); }
+.ai-gap-box, .ai-success-box { margin-top:12px; padding:10px 12px; border-radius:6px; font-size:12px; }
+.ai-gap-box { border:1px solid #f59e0b; background:rgba(245,158,11,.08); }
+.ai-gap-box ul { margin:6px 0 0 18px; }
+.ai-success-box { border:1px solid #34d399; background:rgba(52,211,153,.08); }
+.ai-requirements { margin-top:16px; border-top:1px dashed var(--line-strong); padding-top:14px; }
+.ai-req-row { display:grid; grid-template-columns:180px 1fr; gap:12px; padding:8px 0; border-bottom:1px solid var(--line); font-size:12px; }
+.ai-req-text { color:var(--ink-soft); }
+.ai-scenario-pill { display:inline-block; margin-left:5px; padding:2px 6px; border-radius:999px; background:rgba(91,95,166,.12); color:var(--ink-soft); font-size:10px; }
+.ai-row-meta { color:var(--ink-soft); font-size:10px; margin:4px 0; }
+@media (max-width: 760px) {
+  .ai-coverage-head { flex-direction:column; }
+  .coverage-cats { grid-template-columns:repeat(2,minmax(120px,1fr)); }
+  .ai-req-row { grid-template-columns:1fr; gap:4px; }
+}

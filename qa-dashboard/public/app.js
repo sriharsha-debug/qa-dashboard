@@ -1103,29 +1103,95 @@ document.getElementById('share-day-btn').addEventListener('click', async () => {
   whatsappModal.classList.remove('hidden');
 });
 
-// ---------- AI test case generation ----------
+// ---------- AI requirement extraction + exhaustive test generation ----------
 
 const aiDocText = document.getElementById('ai-doc-text');
+const aiDocUrl = document.getElementById('ai-doc-url');
 const aiGenBtn = document.getElementById('ai-generate-btn');
 const aiPreview = document.getElementById('ai-preview');
 const aiPreviewList = document.getElementById('ai-preview-list');
+const aiCoverage = document.getElementById('ai-coverage');
+const aiRequirements = document.getElementById('ai-requirements');
+const aiRequirementsList = document.getElementById('ai-requirements-list');
 let aiGeneratedCases = [];
+let aiAnalysis = null;
+
+function coverageClass(value) {
+  if (Number(value) >= 90) return 'coverage-good';
+  if (Number(value) >= 70) return 'coverage-warn';
+  return 'coverage-bad';
+}
+
+function renderAiCoverage(body) {
+  const c = body.coverage || {};
+  const findings = body.findings || [];
+  const fully = findings.filter((f) => f.status === 'Fully Covered').length;
+  const partial = findings.filter((f) => f.status === 'Partially Covered').length;
+  const missing = findings.filter((f) => f.status === 'Not Covered').length;
+  const mapped = c.mappedRequirements ?? 0;
+  const total = c.totalRequirements ?? (body.requirements || []).length;
+  const mapPct = c.mappingPercentage ?? (total ? Math.round(mapped / total * 1000) / 10 : 0);
+  const auditPct = c.aiAuditedPercentage ?? c.percentage ?? mapPct;
+
+  const cats = c.categoryCoverage || {};
+  const categoryRows = Object.entries(cats)
+    .filter(([, v]) => typeof v === 'number')
+    .map(([k, v]) => `<div class="coverage-cat"><span>${escapeHtml(k)}</span><strong class="${coverageClass(v)}">${Number(v).toFixed(0)}%</strong></div>`)
+    .join('');
+
+  const gaps = (body.highRiskGaps || []).slice(0, 8);
+  aiCoverage.innerHTML = `
+    <div class="ai-coverage-head">
+      <div>
+        <p class="detail-label">AI coverage audit</p>
+        <div class="ai-coverage-big ${coverageClass(mapPct)}">${mapPct}%</div>
+        <div class="ai-gen-hint">${mapped} of ${total} acceptance criteria have mapped test cases. AI audited coverage: ${Number(auditPct).toFixed(1)}%.</div>
+      </div>
+      <div class="ai-coverage-stats">
+        <span><b>${fully}</b> fully covered</span>
+        <span><b>${partial}</b> partially covered</span>
+        <span><b>${missing}</b> not covered</span>
+        <span><b>${body.testCases?.length || 0}</b> test cases</span>
+      </div>
+    </div>
+    <div class="coverage-cats">${categoryRows}</div>
+    ${gaps.length ? `<div class="ai-gap-box"><b>High-risk gaps / review points</b><ul>${gaps.map(g => `<li>${escapeHtml(g)}</li>`).join('')}</ul></div>` : '<div class="ai-success-box">No high-risk gaps were reported by the coverage auditor.</div>'}
+  `;
+  aiCoverage.classList.remove('hidden');
+}
+
+function renderAiRequirements(requirements) {
+  aiRequirementsList.innerHTML = (requirements || []).map((r) => `
+    <div class="ai-req-row">
+      <div>
+        <strong>${escapeHtml(r.id)}</strong>
+        <span class="priority-pill priority-${escapeHtml(r.priority || 'Medium')}">${escapeHtml(r.priority || 'Medium')}</span>
+      </div>
+      <div class="ai-req-text">${escapeHtml(r.originalText || r.normalizedRequirement || '')}</div>
+    </div>
+  `).join('');
+  aiRequirements.classList.remove('hidden');
+}
 
 aiGenBtn.addEventListener('click', async () => {
   clearFormError('ai-gen-error');
   aiPreview.classList.add('hidden');
+  aiCoverage.classList.add('hidden');
+  aiRequirements.classList.add('hidden');
+
   const projectId = detailsSelect.value;
   const project = projectsCache.find((p) => p.id === projectId);
   if (!project) return;
 
   const documentText = aiDocText.value.trim();
-  if (!documentText) {
-    showFormError('ai-gen-error', 'Paste some requirements or document text above first.');
+  const documentUrl = aiDocUrl.value.trim();
+  if (!documentText && !documentUrl) {
+    showFormError('ai-gen-error', 'Paste the complete requirements document or provide a public document URL.');
     return;
   }
 
   aiGenBtn.disabled = true;
-  aiGenBtn.textContent = 'Generating…';
+  aiGenBtn.textContent = 'Analyzing requirements…';
 
   try {
     const { data: sessionData } = await sb.auth.getSession();
@@ -1133,24 +1199,33 @@ aiGenBtn.addEventListener('click', async () => {
     const res = await fetch('/api/generate-test-cases', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ projectName: project.name, documentText }),
+      body: JSON.stringify({ projectName: project.name, documentText, documentUrl }),
     });
     const body = await res.json();
     if (!res.ok) {
-      showFormError('ai-gen-error', body.error || 'Generation failed.');
+      showFormError('ai-gen-error', body.error || 'AI analysis failed.');
       return;
     }
-    if (!body.testCases || !body.testCases.length) {
-      showFormError('ai-gen-error', 'No test cases came back. Try adding more detail to the document.');
+    if (!body.requirements?.length) {
+      showFormError('ai-gen-error', 'No acceptance criteria were extracted. Check the document and try again.');
       return;
     }
+    if (!body.testCases?.length) {
+      showFormError('ai-gen-error', 'Requirements were extracted, but no test cases were generated. Try again.');
+      return;
+    }
+
+    aiAnalysis = body;
     aiGeneratedCases = body.testCases;
+    renderAiCoverage(body);
+    renderAiRequirements(body.requirements);
     renderAiPreview(aiGeneratedCases);
   } catch (err) {
+    console.error(err);
     showFormError('ai-gen-error', 'Something went wrong reaching the AI service.');
   } finally {
     aiGenBtn.disabled = false;
-    aiGenBtn.textContent = 'Generate test cases';
+    aiGenBtn.textContent = 'Analyze & Generate Complete Coverage';
   }
 });
 
@@ -1159,11 +1234,19 @@ function renderAiPreview(cases) {
   cases.forEach((c, i) => {
     const row = document.createElement('label');
     row.className = 'ai-preview-item';
+    const steps = Array.isArray(c.steps) ? c.steps.join(' → ') : '';
     row.innerHTML = `
       <input type="checkbox" class="ai-preview-check" data-idx="${i}" checked />
       <div>
-        <div class="ai-preview-item-title">${escapeHtml(c.title)} <span class="priority-pill priority-${escapeHtml(c.priority)}">${escapeHtml(c.priority)}</span></div>
-        ${c.description ? `<div class="ai-preview-item-desc">${escapeHtml(c.description)}</div>` : ''}
+        <div class="ai-preview-item-title">
+          ${escapeHtml(c.title)}
+          <span class="priority-pill priority-${escapeHtml(c.priority || 'Medium')}">${escapeHtml(c.priority || 'Medium')}</span>
+          <span class="ai-scenario-pill">${escapeHtml(c.scenarioType || 'Positive')}</span>
+        </div>
+        <div class="ai-row-meta">${escapeHtml(c.requirementId || '')} · Risk: ${escapeHtml(c.risk || c.priority || 'Medium')}</div>
+        ${c.preconditions ? `<div class="ai-preview-item-desc"><b>Preconditions:</b> ${escapeHtml(c.preconditions)}</div>` : ''}
+        ${steps ? `<div class="ai-preview-item-desc"><b>Steps:</b> ${escapeHtml(steps)}</div>` : ''}
+        ${c.expectedResult ? `<div class="ai-preview-item-desc"><b>Expected:</b> ${escapeHtml(c.expectedResult)}</div>` : ''}
       </div>
     `;
     aiPreviewList.appendChild(row);
@@ -1173,8 +1256,12 @@ function renderAiPreview(cases) {
 
 document.getElementById('ai-discard').addEventListener('click', () => {
   aiGeneratedCases = [];
+  aiAnalysis = null;
   aiPreview.classList.add('hidden');
+  aiCoverage.classList.add('hidden');
+  aiRequirements.classList.add('hidden');
   aiDocText.value = '';
+  aiDocUrl.value = '';
 });
 
 document.getElementById('ai-add-selected').addEventListener('click', async () => {
@@ -1184,28 +1271,67 @@ document.getElementById('ai-add-selected').addEventListener('click', async () =>
   checks.forEach((cb) => {
     if (cb.checked) selected.push(aiGeneratedCases[Number(cb.dataset.idx)]);
   });
-  if (!selected.length) return;
+  if (!selected.length) {
+    showFormError('ai-gen-error', 'Select at least one test case.');
+    return;
+  }
 
   const rows = selected.map((c) => ({
     project_id: projectId,
     title: c.title,
-    description: c.description,
-    priority: c.priority,
+    description: [
+      c.preconditions ? `Preconditions: ${c.preconditions}` : '',
+      Array.isArray(c.steps) && c.steps.length ? `Steps:\n${c.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}` : '',
+      c.expectedResult ? `Expected Result: ${c.expectedResult}` : '',
+      `Requirement: ${c.requirementId || 'Unmapped'}`,
+      `Scenario: ${c.scenarioType || 'Positive'}`,
+    ].filter(Boolean).join('\n\n').slice(0, 1000),
+    priority: ['Low','Medium','High'].includes(c.priority) ? c.priority : 'Medium',
     status: 'Not Run',
     owner_id: currentUser ? currentUser.id : null,
+    requirement_id: c.requirementId || null,
+    scenario_type: c.scenarioType || null,
+    risk: c.risk || c.priority || 'Medium',
+    preconditions: c.preconditions || null,
+    steps: Array.isArray(c.steps) ? c.steps.join('\n') : null,
+    expected_result: c.expectedResult || null,
+    ai_generated: true,
   }));
 
   const { error } = await sb.from('test_cases').insert(rows);
   if (error) {
-    showFormError('ai-gen-error', error.message);
+    // This also helps if the migration has not been run yet.
+    showFormError('ai-gen-error', `${error.message} — Run migration-v14-ai-coverage.sql in Supabase first.`);
     return;
   }
+
   const project = projectsCache.find((p) => p.id === projectId);
-  notify(`${actorLabel()} added ${rows.length} AI-suggested test case${rows.length === 1 ? '' : 's'} for "${project ? project.name : 'a project'}"`, 'test_case', 'ai_generate');
+  notify(`${actorLabel()} added ${rows.length} AI-generated test case${rows.length === 1 ? '' : 's'} for "${project ? project.name : 'a project'}"`, 'test_case', 'ai_generate');
+
+  // Save the analysis for future traceability if the migration exists.
+  if (aiAnalysis) {
+    const { error: saveError } = await sb.from('ai_requirement_runs').insert({
+      project_id: projectId,
+      owner_id: currentUser ? currentUser.id : null,
+      source_type: aiAnalysis.source || 'text',
+      source_url: aiAnalysis.source === 'url' ? aiDocUrl.value.trim() || null : null,
+      source_text: aiAnalysis.source === 'text' ? aiDocText.value.trim() || null : null,
+      project_summary: aiAnalysis.projectSummary || null,
+      requirements: aiAnalysis.requirements || [],
+      coverage: aiAnalysis.coverage || {},
+      findings: aiAnalysis.findings || [],
+      high_risk_gaps: aiAnalysis.highRiskGaps || [],
+      test_case_count: aiAnalysis.testCases?.length || 0,
+      model: aiAnalysis.model || null,
+    });
+    if (saveError) console.warn('AI analysis history was not saved:', saveError.message);
+  }
 
   aiGeneratedCases = [];
+  aiAnalysis = null;
   aiPreview.classList.add('hidden');
   aiDocText.value = '';
+  aiDocUrl.value = '';
   loadTestCases(projectId);
 });
 
