@@ -835,7 +835,6 @@ async function showProjectDetails(id) {
 
   loadApkShares(id);
   loadTestCases(id);
-  updateAiHint();
 }
 
 // ---------- Test execution ----------
@@ -1104,73 +1103,92 @@ document.getElementById('share-day-btn').addEventListener('click', async () => {
   whatsappModal.classList.remove('hidden');
 });
 
-// ---------- AI test case generation ----------
+// ---------- AI test case generation (free — copy prompt, paste reply) ----------
 
 const aiDocText = document.getElementById('ai-doc-text');
-const aiGenHint = document.getElementById('ai-gen-hint');
-const aiGenBtn = document.getElementById('ai-generate-btn');
+const aiResponseText = document.getElementById('ai-response-text');
+const aiCopyPromptBtn = document.getElementById('ai-copy-prompt');
+const aiParseBtn = document.getElementById('ai-parse-btn');
 const aiPreview = document.getElementById('ai-preview');
 const aiPreviewList = document.getElementById('ai-preview-list');
 let aiGeneratedCases = [];
 
-function updateAiHint() {
-  const project = projectsCache.find((p) => p.id === detailsSelect.value);
-  if (aiDocText.value.trim()) {
-    aiGenHint.textContent = '';
-  } else if (project && project.project_document) {
-    aiGenHint.textContent = `Will use the Project Document link: ${project.project_document}`;
-  } else {
-    aiGenHint.textContent = 'Paste text above, or add a Project Document link via Edit first.';
-  }
-}
-detailsSelect.addEventListener('change', updateAiHint);
-aiDocText.addEventListener('input', updateAiHint);
+function buildAiPrompt(projectName, documentText) {
+  return `You are a QA test case writer. Based on the requirements/document text below for the project "${projectName || 'this project'}", generate a thorough list of manual test cases.
 
-aiGenBtn.addEventListener('click', async () => {
+Respond with ONLY a JSON array, no prose, no markdown fences, in this exact shape:
+[{"title": "short test case title", "description": "steps or scenario to verify, 1-3 sentences", "priority": "Low"|"Medium"|"High"}]
+
+Cover positive cases, negative/edge cases, and validation. Aim for 8-20 test cases depending on document size. Keep titles concise and descriptions actionable.
+
+Document:
+"""
+${documentText}
+"""`;
+}
+
+aiCopyPromptBtn.addEventListener('click', async () => {
+  clearFormError('ai-gen-error');
+  const project = projectsCache.find((p) => p.id === detailsSelect.value);
+  const documentText = aiDocText.value.trim();
+  if (!documentText) {
+    showFormError('ai-gen-error', 'Paste some requirements or document text above first.');
+    return;
+  }
+  const prompt = buildAiPrompt(project ? project.name : '', documentText);
+  try {
+    await navigator.clipboard.writeText(prompt);
+  } catch {
+    showFormError('ai-gen-error', 'Could not copy automatically — select the text manually if needed.');
+    return;
+  }
+  const original = aiCopyPromptBtn.textContent;
+  aiCopyPromptBtn.textContent = 'Copied ✓ — now paste into Claude.ai';
+  setTimeout(() => { aiCopyPromptBtn.textContent = original; }, 2500);
+});
+
+aiParseBtn.addEventListener('click', () => {
   clearFormError('ai-gen-error');
   aiPreview.classList.add('hidden');
-  const projectId = detailsSelect.value;
-  const project = projectsCache.find((p) => p.id === projectId);
-  if (!project) return;
+  let raw = aiResponseText.value.trim();
+  if (!raw) {
+    showFormError('ai-gen-error', 'Paste the AI\'s reply above first.');
+    return;
+  }
+  raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
 
-  const documentText = aiDocText.value.trim();
-  if (!documentText && !project.project_document) {
-    showFormError('ai-gen-error', 'Paste some text, or add a Project Document link to this project first.');
+  // If there's extra prose around the JSON array, try to isolate it
+  const start = raw.indexOf('[');
+  const end = raw.lastIndexOf(']');
+  if (start !== -1 && end !== -1 && end > start) {
+    raw = raw.slice(start, end + 1);
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    showFormError('ai-gen-error', 'Could not read that as JSON. Make sure you pasted the AI\'s full reply, including the [ ] brackets.');
+    return;
+  }
+  if (!Array.isArray(parsed) || !parsed.length) {
+    showFormError('ai-gen-error', 'That didn\'t look like a list of test cases. Try again.');
     return;
   }
 
-  aiGenBtn.disabled = true;
-  aiGenBtn.textContent = 'Generating…';
+  aiGeneratedCases = parsed
+    .filter((t) => t && t.title)
+    .map((t) => ({
+      title: String(t.title).slice(0, 200),
+      description: t.description ? String(t.description).slice(0, 1000) : null,
+      priority: ['Low', 'Medium', 'High'].includes(t.priority) ? t.priority : 'Medium',
+    }));
 
-  try {
-    const { data: sessionData } = await sb.auth.getSession();
-    const token = sessionData && sessionData.session ? sessionData.session.access_token : null;
-    const res = await fetch('/api/generate-test-cases', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        projectName: project.name,
-        documentText,
-        documentUrl: documentText ? null : project.project_document,
-      }),
-    });
-    const body = await res.json();
-    if (!res.ok) {
-      showFormError('ai-gen-error', body.error || 'Generation failed.');
-      return;
-    }
-    if (!body.testCases || !body.testCases.length) {
-      showFormError('ai-gen-error', 'No test cases came back. Try adding more detail to the document.');
-      return;
-    }
-    aiGeneratedCases = body.testCases;
-    renderAiPreview(aiGeneratedCases);
-  } catch (err) {
-    showFormError('ai-gen-error', 'Something went wrong reaching the AI service.');
-  } finally {
-    aiGenBtn.disabled = false;
-    aiGenBtn.textContent = 'Generate test cases';
+  if (!aiGeneratedCases.length) {
+    showFormError('ai-gen-error', 'No valid test cases found in that reply.');
+    return;
   }
+  renderAiPreview(aiGeneratedCases);
 });
 
 function renderAiPreview(cases) {
@@ -1194,7 +1212,7 @@ document.getElementById('ai-discard').addEventListener('click', () => {
   aiGeneratedCases = [];
   aiPreview.classList.add('hidden');
   aiDocText.value = '';
-  updateAiHint();
+  aiResponseText.value = '';
 });
 
 document.getElementById('ai-add-selected').addEventListener('click', async () => {
@@ -1221,12 +1239,12 @@ document.getElementById('ai-add-selected').addEventListener('click', async () =>
     return;
   }
   const project = projectsCache.find((p) => p.id === projectId);
-  notify(`${actorLabel()} generated ${rows.length} AI test case${rows.length === 1 ? '' : 's'} for "${project ? project.name : 'a project'}"`, 'test_case', 'ai_generate');
+  notify(`${actorLabel()} added ${rows.length} AI-suggested test case${rows.length === 1 ? '' : 's'} for "${project ? project.name : 'a project'}"`, 'test_case', 'ai_generate');
 
   aiGeneratedCases = [];
   aiPreview.classList.add('hidden');
   aiDocText.value = '';
-  updateAiHint();
+  aiResponseText.value = '';
   loadTestCases(projectId);
 });
 

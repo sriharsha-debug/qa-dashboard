@@ -717,6 +717,8 @@ input:focus, select:focus, textarea:focus {
 .ai-preview-item input[type="checkbox"] { margin-top: 3px; }
 .ai-preview-item-title { font-weight: 600; font-size: 13px; color: var(--ink); }
 .ai-preview-item-desc { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+.ai-gen-btn-row { justify-content: flex-start; gap: 10px; }
+.ai-response-label { margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--line-strong); }
 
 @media (max-width: 640px) {
   .grid-form { grid-template-columns: 1fr; }
