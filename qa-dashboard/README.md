@@ -82,49 +82,29 @@ Vercel gives you a URL like `https://your-project.vercel.app`. Open it,
 sign in with the email + password you created in Supabase Auth, and
 you're in.
 
-## AI requirement extraction + exhaustive test coverage (Google Gemini)
+## AI test case generation (free — Google Gemini)
 
-The AI test generator now uses a multi-pass QA pipeline instead of asking Gemini for a short list of tests.
+The Test Execution tracker generates test cases automatically from pasted
+requirements text, using Google's Gemini API — which has a genuine free
+tier (no credit card required). This needs one small server function
+(`api/generate-test-cases.js`), which Vercel deploys automatically
+alongside the static site.
 
-### What it does
+**Get a free Gemini API key:**
+1. Go to https://aistudio.google.com, sign in with any Google account
+2. Click **Get API key → Create API key**
+3. Copy it (starts with `AIza...`)
 
-1. Accepts a complete project document as pasted text OR a public HTTP(S) URL.
-2. Extracts every User Story and every Acceptance Criterion with stable IDs such as `US-01-AC-01`.
-3. Preserves the source acceptance-criterion wording for traceability.
-4. Classifies risk and applicable scenario types.
-5. Generates detailed manual tests in batches.
-6. Covers applicable positive, negative, boundary/edge, validation, API/backend, database, integration, security, authorization, failure/recovery, duplicate/idempotency, concurrency, cross-region and role-based scenarios.
-7. Runs a separate coverage audit against every acceptance criterion.
-8. Generates additional tests for partial/uncovered requirements, up to three refinement passes.
-9. Shows requirement mapping and category coverage before you add tests.
-10. Stores AI traceability metadata on each test case.
+**In Vercel → Site → Settings → Environment Variables, add:**
+- `GEMINI_API_KEY` — the key from above
+- `SUPABASE_URL` — same value as in `public/config.js`
+- `SUPABASE_ANON_KEY` — same value as in `public/config.js`
 
-### Gemini configuration
+Redeploy after adding these. Then in Project Details → Test execution,
+paste requirements text, click **Generate test cases**, review the
+suggestions, and add the ones you want.
 
-Use a current model such as `gemini-3.6-flash`. You can override it with the Vercel environment variable `GEMINI_MODEL`.
-
-In Vercel → Settings → Environment Variables:
-
-- `GEMINI_API_KEY` — your Google AI Studio API key
-- `SUPABASE_URL` — same value as `public/config.js`
-- `SUPABASE_ANON_KEY` — same value as `public/config.js`
-- `GEMINI_MODEL` — optional; defaults to `gemini-3.6-flash`
-
-Redeploy after changing environment variables.
-
-### Supabase migration
-
-Run `migration-v14-ai-coverage.sql` in Supabase SQL Editor after your existing migrations.
-
-It adds traceability fields to `test_cases` and creates `ai_requirement_runs` for AI analysis history.
-
-### URL input
-
-The API accepts a public `http://` or `https://` URL. Private/local addresses are rejected. For best results, use a public page containing the actual requirements text. Authentication-only/private documents need to be pasted into the text box instead.
-
-### Important QA limitation
-
-The pipeline is designed to maximize coverage and detect gaps; no generative AI can mathematically guarantee that every possible real-world defect or scenario has been discovered. The coverage score is based on traceability to the supplied acceptance criteria and the AI's scenario audit. A QA review is still required for product-specific risks, regulations, infrastructure and production behavior.
+---
 
 ## Notes
 
