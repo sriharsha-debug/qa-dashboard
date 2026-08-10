@@ -106,6 +106,26 @@ create policy "daily_reports_owner_or_leader" on daily_reports
   using (owner_id = auth.uid() or is_team_leader())
   with check (owner_id = auth.uid() or is_team_leader());
 
+create table if not exists test_cases (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid references auth.users(id),
+  project_id uuid not null references projects(id) on delete cascade,
+  title text not null,
+  description text,
+  status text not null default 'Not Run' check (status in ('Not Run', 'Pass', 'Fail', 'Blocked')),
+  priority text default 'Medium' check (priority in ('Low', 'Medium', 'High')),
+  last_run_date date,
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists idx_test_cases_project on test_cases(project_id);
+alter table test_cases enable row level security;
+create policy "test_cases_owner_or_leader" on test_cases
+  for all
+  using (owner_id = auth.uid() or is_team_leader())
+  with check (owner_id = auth.uid() or is_team_leader());
+
 -- Statuses stay shared/global across the whole team.
 create policy "statuses_authenticated_only" on statuses
   for all
@@ -138,10 +158,12 @@ create table if not exists notifications (
 );
 create index if not exists idx_notifications_created on notifications(created_at desc);
 alter table notifications enable row level security;
-create policy "notifications_authenticated_all" on notifications
-  for all
-  using (auth.role() = 'authenticated')
-  with check (auth.role() = 'authenticated');
+create policy "notifications_select_own_or_leader" on notifications
+  for select
+  using (actor_id = auth.uid() or is_team_leader());
+create policy "notifications_insert_own" on notifications
+  for insert
+  with check (actor_id = auth.uid());
 
 alter table projects add column if not exists created_by_email text;
 alter table projects add column if not exists updated_by_email text;

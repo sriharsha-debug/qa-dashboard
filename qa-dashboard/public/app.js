@@ -834,6 +834,132 @@ async function showProjectDetails(id) {
   detailsEditBtn.onclick = () => openEditModal(id);
 
   loadApkShares(id);
+  loadTestCases(id);
+}
+
+// ---------- Test execution ----------
+
+const tcForm = document.getElementById('tc-form');
+const tcList = document.getElementById('tc-list');
+const tcEmpty = document.getElementById('tc-empty');
+const tcSummary = document.getElementById('tc-summary');
+
+function tcStatusColor(status) {
+  return { 'Not Run': '#7FA0A6', Pass: '#34D399', Fail: '#F87171', Blocked: '#FBBF24' }[status] || '#7FA0A6';
+}
+
+tcForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearFormError('tc-error');
+  const project_id = detailsSelect.value;
+  if (!project_id) return;
+
+  const title = document.getElementById('tc-title').value.trim();
+  if (!title || title.length < 3) {
+    showFormError('tc-error', 'Test case title must be at least 3 characters.');
+    return;
+  }
+
+  const status = document.getElementById('tc-status').value;
+  const payload = {
+    project_id,
+    title,
+    priority: document.getElementById('tc-priority').value,
+    status,
+    description: document.getElementById('tc-description').value.trim() || null,
+    last_run_date: status === 'Not Run' ? null : todayStr(),
+    owner_id: currentUser ? currentUser.id : null,
+  };
+  const { error } = await sb.from('test_cases').insert(payload);
+  if (error) {
+    showFormError('tc-error', error.message);
+    return;
+  }
+  const proj = projectsCache.find((p) => p.id === project_id);
+  notify(`${actorLabel()} added a test case for "${proj ? proj.name : 'a project'}"`, 'test_case', 'create');
+  tcForm.reset();
+  document.getElementById('tc-priority').value = 'Medium';
+  document.getElementById('tc-status').value = 'Not Run';
+  loadTestCases(project_id);
+});
+
+async function loadTestCases(projectId) {
+  const { data, error } = await sb
+    .from('test_cases')
+    .select('*')
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: true });
+  if (error) {
+    console.error(error);
+    return;
+  }
+  renderTestCases(data, projectId);
+}
+
+function renderTestCases(cases, projectId) {
+  tcList.innerHTML = '';
+  tcEmpty.style.display = cases.length ? 'none' : 'block';
+
+  const counts = { 'Not Run': 0, Pass: 0, Fail: 0, Blocked: 0 };
+  cases.forEach((c) => { counts[c.status] = (counts[c.status] || 0) + 1; });
+  tcSummary.textContent = cases.length
+    ? `${cases.length} total · ${counts.Pass} pass · ${counts.Fail} fail · ${counts.Blocked} blocked · ${counts['Not Run']} not run`
+    : '';
+
+  cases.forEach((c) => {
+    const row = document.createElement('div');
+    row.className = 'tc-row';
+    row.innerHTML = `
+      <div class="tc-row-top">
+        <div>
+          <div class="tc-row-title">${escapeHtml(c.title)}</div>
+          <div class="tc-row-meta">
+            <span class="priority-pill priority-${escapeHtml(c.priority || 'Medium')}">${escapeHtml(c.priority || 'Medium')}</span>
+            ${c.last_run_date ? `<span>Last run ${fmtDate(c.last_run_date)}</span>` : '<span>Not run yet</span>'}
+          </div>
+          ${c.description ? `<div class="tc-row-desc">${escapeHtml(c.description)}</div>` : ''}
+        </div>
+        <div class="tc-row-actions">
+          <select class="status-select pill tc-status-select" style="${pillStyle(tcStatusColor(c.status))}" data-id="${c.id}">
+            ${['Not Run', 'Pass', 'Fail', 'Blocked'].map((s) => `<option value="${s}" ${s === c.status ? 'selected' : ''}>${s}</option>`).join('')}
+          </select>
+          <button class="icon-btn" data-tc-delete="${c.id}">remove</button>
+        </div>
+      </div>
+    `;
+    tcList.appendChild(row);
+  });
+
+  tcList.querySelectorAll('.tc-status-select').forEach((sel) => {
+    sel.addEventListener('change', async () => {
+      const newStatus = sel.value;
+      const { error } = await sb
+        .from('test_cases')
+        .update({
+          status: newStatus,
+          last_run_date: newStatus === 'Not Run' ? null : todayStr(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', sel.dataset.id);
+      if (error) {
+        alert(error.message);
+        return;
+      }
+      loadTestCases(projectId);
+    });
+  });
+
+  tcList.querySelectorAll('[data-tc-delete]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Remove this test case?')) return;
+      const { error } = await sb.from('test_cases').delete().eq('id', btn.dataset.tcDelete);
+      if (error) {
+        alert(error.message);
+        return;
+      }
+      loadTestCases(projectId);
+    });
+  });
 }
 
 // ---------- APK shares ----------

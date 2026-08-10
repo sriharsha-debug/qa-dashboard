@@ -145,6 +145,42 @@
 
         <div class="panel">
           <div class="panel-head">
+            <h2>Test execution</h2>
+            <span class="count" id="tc-summary"></span>
+          </div>
+          <form id="tc-form" class="grid-form">
+            <label class="span-2">Test case title
+              <input type="text" id="tc-title" placeholder="e.g. Verify login with valid credentials" required maxlength="200" />
+            </label>
+            <label>Priority
+              <select id="tc-priority">
+                <option value="Low">Low</option>
+                <option value="Medium" selected>Medium</option>
+                <option value="High">High</option>
+              </select>
+            </label>
+            <label>Status
+              <select id="tc-status">
+                <option value="Not Run" selected>Not Run</option>
+                <option value="Pass">Pass</option>
+                <option value="Fail">Fail</option>
+                <option value="Blocked">Blocked</option>
+              </select>
+            </label>
+            <label class="span-2">Description
+              <textarea id="tc-description" rows="2" placeholder="Steps or scenario" maxlength="1000"></textarea>
+            </label>
+            <div class="span-2 form-actions">
+              <button type="submit" class="btn btn-primary">Add test case</button>
+            </div>
+          </form>
+          <p id="tc-error" class="login-error hidden"></p>
+          <div id="tc-list" class="tc-list"></div>
+          <p class="empty-state" id="tc-empty">No test cases logged yet for this project.</p>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
             <h2>APK shares</h2>
             <span class="count" id="apk-count"></span>
           </div>
