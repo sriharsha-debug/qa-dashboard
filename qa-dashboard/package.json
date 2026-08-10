@@ -1,9 +1,5 @@
 {
-  "name": "qa-daily-dashboard",
+  "name": "qa-dashboard",
   "version": "1.0.0",
-  "private": true,
-  "description": "QA project and daily status dashboard with Netlify Identity login and Supabase storage.",
-  "dependencies": {
-    "@supabase/supabase-js": "^2.45.4"
-  }
+  "private": true
 }
