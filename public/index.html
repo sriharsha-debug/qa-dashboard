@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Project Tracker — QA Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+<link rel="icon" type="image/svg+xml" href="favicon.svg" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+</head>
+<body>
+
+  <!-- Gate: shown until the user is signed in -->
+  <div id="gate" class="gate">
+    <button id="theme-toggle-gate" class="btn btn-ghost theme-toggle theme-toggle-gate" type="button" aria-label="Toggle light/dark theme" title="Toggle theme">🌙</button>
+    <div class="gate-card">
+      <p class="eyebrow">QA Dashboard</p>
+      <h1>Project Tracker</h1>
+      <p class="gate-copy" id="gate-copy">Sign in with your email and password to open the ledger.</p>
+      <form id="login-form" class="login-form">
+        <input type="email" id="login-email" placeholder="Email" required autocomplete="username" />
+        <input type="password" id="login-password" placeholder="Password" required autocomplete="current-password" minlength="6" />
+        <input type="password" id="login-password-confirm" placeholder="Confirm password" autocomplete="new-password" class="hidden" />
+        <button type="submit" class="btn btn-primary" id="gate-submit-btn">Sign in</button>
+      </form>
+      <p id="login-error" class="login-error hidden"></p>
+      <p id="login-success" class="login-success hidden"></p>
+      <p class="gate-toggle">
+        <span id="gate-toggle-signup">New tester? <button type="button" class="link-btn" id="show-signup">Create an account</button></span>
+        <span id="gate-toggle-signin" class="hidden">Already have an account? <button type="button" class="link-btn" id="show-signin">Sign in</button></span>
+      </p>
+      <p class="gate-hint" id="gate-hint">Your projects and daily logs are private to you — your team lead can view everyone's.</p>
+    </div>
+  </div>
+
+  <!-- App: shown once signed in -->
+  <div id="app" class="app hidden">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">QA Dashboard</p>
+        <h1>Project Tracker</h1>
+      </div>
+      <div class="who">
+        <span id="who-role" class="role-badge hidden"></span>
+        <button id="theme-toggle" class="btn btn-ghost theme-toggle" type="button" aria-label="Toggle light/dark theme" title="Toggle theme">🌙</button>
+        <div class="notif-wrap">
+          <button id="notif-bell" class="btn btn-ghost notif-bell">🔔<span id="notif-badge" class="notif-badge hidden">0</span></button>
+          <div id="notif-panel" class="notif-panel hidden">
+            <div class="notif-panel-head">Activity</div>
+            <div id="notif-list" class="notif-list"></div>
+            <p class="empty-state" id="notif-empty">No activity yet.</p>
+          </div>
+        </div>
+        <span id="who-email" class="who-email"></span>
+        <button id="logout" class="btn btn-ghost">Sign out</button>
+      </div>
+    </header>
+
+    <div class="app-body">
+      <nav class="sidebar">
+        <button class="tab active" data-tab="projects">Projects</button>
+        <button class="tab" data-tab="details">Project Details</button>
+        <button class="tab" data-tab="daily">Daily Log</button>
+        <button class="tab" data-tab="team">Team</button>
+      </nav>
+
+      <div class="tab-content">
+
+    <!-- PROJECTS TAB -->
+    <section id="tab-projects" class="tab-panel active">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Add a project</h2>
+        </div>
+        <p class="gate-copy" style="margin:0 0 14px;text-align:left;">Fill in full project details — timeline, testing dates, team, sign off — in one place.</p>
+        <button id="open-add-modal" class="btn btn-primary">+ Add project</button>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Projects</h2>
+          <div class="panel-head-right">
+            <select id="admin-filter-projects" class="hidden"></select>
+            <span class="count" id="project-count"></span>
+          </div>
+        </div>
+        <table class="ledger" id="projects-table">
+          <thead>
+            <tr>
+              <th class="col-idx">No.</th>
+              <th>Project</th>
+              <th>Status</th>
+              <th>PM</th>
+              <th>Start – End</th>
+              <th id="owner-col-head" class="hidden">Tester</th>
+              <th class="col-idx"></th>
+            </tr>
+          </thead>
+          <tbody id="projects-tbody"></tbody>
+        </table>
+        <p class="empty-state" id="projects-empty">No projects yet — add one above to start the ledger.</p>
+      </div>
+    </section>
+
+    <!-- PROJECT DETAILS TAB -->
+    <section id="tab-details" class="tab-panel">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Select a project</h2>
+        </div>
+        <select id="details-project-select" class="details-select"></select>
+      </div>
+
+      <div id="details-empty" class="panel">
+        <p class="empty-state" style="display:block;">Add a project to see its details here.</p>
+      </div>
+
+      <div id="details-content" class="hidden">
+        <div class="panel">
+          <div class="panel-head">
+            <h2 id="details-name">—</h2>
+            <button id="details-edit-btn" class="btn btn-ghost">Edit</button>
+          </div>
+          <div class="details-grid" id="details-fields"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Test execution</h2>
+            <span class="count" id="tc-summary"></span>
+          </div>
+
+          <div class="ai-gen-box">
+            <p class="detail-label">Generate test cases with AI (free — uses your own Claude.ai account)</p>
+            <textarea id="ai-doc-text" rows="3" placeholder="Paste requirements or document text here" maxlength="20000"></textarea>
+            <p class="ai-gen-hint">1. Paste your document text above. 2. Copy the prompt. 3. Click Open Claude.ai and paste the prompt there, then send it. 4. Paste the reply back below and parse it.</p>
+            <div class="form-actions ai-gen-btn-row">
+              <button type="button" id="ai-copy-prompt" class="btn btn-primary">Copy prompt</button>
+              <a id="ai-open-claude" class="btn btn-ghost" href="https://claude.ai/new" target="_blank" rel="noopener">Open Claude.ai</a>
+            </div>
+            <p id="ai-gen-error" class="login-error hidden"></p>
+
+            <p class="detail-label ai-response-label">Paste the AI's reply here</p>
+            <textarea id="ai-response-text" rows="4" placeholder="Paste the JSON reply from Claude here" maxlength="20000"></textarea>
+            <div class="form-actions" style="justify-content:flex-start;">
+              <button type="button" id="ai-parse-btn" class="btn btn-primary">Parse response</button>
+            </div>
+
+            <div id="ai-preview" class="ai-preview hidden">
+              <p class="detail-label">Review and add</p>
+              <div id="ai-preview-list" class="ai-preview-list"></div>
+              <div class="form-actions" style="justify-content:flex-start; gap:10px;">
+                <button type="button" id="ai-add-selected" class="btn btn-primary">Add selected to Test Execution</button>
+                <button type="button" id="ai-discard" class="btn btn-ghost">Discard</button>
+              </div>
+            </div>
+          </div>
+
+          <form id="tc-form" class="grid-form">
+            <label class="span-2">Test case title
+              <input type="text" id="tc-title" placeholder="e.g. Verify login with valid credentials" required maxlength="200" />
+            </label>
+            <label>Priority
+              <select id="tc-priority">
+                <option value="Low">Low</option>
+                <option value="Medium" selected>Medium</option>
+                <option value="High">High</option>
+              </select>
+            </label>
+            <label>Category
+              <select id="tc-category">
+                <option value="Functional" selected>Functional</option>
+                <option value="Positive">Positive</option>
+                <option value="Negative">Negative</option>
+                <option value="Edge Case">Edge Case</option>
+                <option value="Security">Security</option>
+                <option value="Validation">Validation</option>
+                <option value="UI/UX">UI/UX</option>
+                <option value="Performance">Performance</option>
+                <option value="Accessibility">Accessibility</option>
+                <option value="Compatibility">Compatibility</option>
+                <option value="Regression">Regression</option>
+                <option value="UAT">UAT</option>
+              </select>
+            </label>
+            <label>Status
+              <select id="tc-status">
+                <option value="Not Run" selected>Not Run</option>
+                <option value="Pass">Pass</option>
+                <option value="Fail">Fail</option>
+                <option value="Blocked">Blocked</option>
+              </select>
+            </label>
+            <label class="span-2">Description
+              <textarea id="tc-description" rows="2" placeholder="Steps or scenario" maxlength="1000"></textarea>
+            </label>
+            <div class="span-2 form-actions">
+              <button type="submit" class="btn btn-primary">Add test case</button>
+            </div>
+          </form>
+          <p id="tc-error" class="login-error hidden"></p>
+          <div id="tc-list" class="tc-list"></div>
+          <p class="empty-state" id="tc-empty">No test cases logged yet for this project.</p>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2>APK shares</h2>
+            <span class="count" id="apk-count"></span>
+          </div>
+          <form id="apk-form" class="grid-form">
+            <label>Version / label
+              <input type="text" id="apk-version" placeholder="e.g. v1.4.2" maxlength="60" />
+            </label>
+            <label>Shared date
+              <input type="date" id="apk-date" required />
+            </label>
+            <label class="span-2">APK link
+              <input type="url" id="apk-link" placeholder="https://..." maxlength="500" />
+            </label>
+            <label>Shared by
+              <input type="text" id="apk-shared-by" placeholder="Developer name" maxlength="80" />
+            </label>
+            <label class="span-2">Notes
+              <input type="text" id="apk-notes" placeholder="What changed in this build" maxlength="500" />
+            </label>
+            <div class="span-2 form-actions">
+              <button type="submit" class="btn btn-primary">Log APK</button>
+            </div>
+          </form>
+          <p id="apk-error" class="login-error hidden"></p>
+          <div id="apk-list" class="apk-list"></div>
+          <p class="empty-state" id="apk-empty">No APKs logged yet for this project.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- DAILY LOG TAB -->
+    <section id="tab-daily" class="tab-panel">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>New daily entry</h2>
+        </div>
+        <form id="report-form" class="grid-form">
+          <label>Date
+            <input type="date" id="r-date" required />
+          </label>
+          <label>Project
+            <select id="r-project" required></select>
+          </label>
+          <label>Project manager
+            <input type="text" id="r-pm" placeholder="Name" maxlength="80" />
+          </label>
+          <label class="span-2">Assigned tasks
+            <div id="task-list" class="task-list"></div>
+            <button type="button" id="add-task-btn" class="btn btn-ghost btn-small">+ Add task</button>
+          </label>
+          <label>Bugsheet
+            <input type="text" id="r-bugsheet" placeholder="Link or reference" maxlength="500" />
+          </label>
+          <label>Test cases
+            <input type="number" id="r-testcases" min="0" max="100000" step="1" value="0" required />
+          </label>
+          <label>UI bugs
+            <input type="number" id="r-uibugs" min="0" max="100000" step="1" value="0" required />
+          </label>
+          <label>Functionality bugs
+            <input type="number" id="r-funcbugs" min="0" max="100000" step="1" value="0" required />
+          </label>
+          <label class="signoff-field">
+            <span>Sign off</span>
+            <span class="toggle">
+              <input type="checkbox" id="r-signoff" />
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+            </span>
+          </label>
+          <label class="span-2">Remarks
+            <input type="text" id="r-remarks" placeholder="Short remark" maxlength="300" />
+          </label>
+          <label class="span-2">Notes
+            <textarea id="r-notes" rows="2" placeholder="Additional notes" maxlength="1000"></textarea>
+          </label>
+          <div class="span-2 form-actions">
+            <button type="submit" class="btn btn-primary">Save entry</button>
+          </div>
+        </form>
+        <p id="report-error" class="login-error hidden"></p>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>History</h2>
+          <div class="filters">
+            <select id="admin-filter-reports" class="hidden"></select>
+            <select id="filter-project">
+              <option value="">All projects</option>
+            </select>
+            <input type="date" id="filter-date" />
+            <button id="filter-clear" class="btn btn-ghost">Clear</button>
+            <button id="share-day-btn" class="btn btn-primary">Share day's updates</button>
+          </div>
+        </div>
+        <div id="reports-list" class="reports-list"></div>
+        <p class="empty-state" id="reports-empty">No entries yet.</p>
+      </div>
+    </section>
+
+    <!-- TEAM TAB -->
+    <section id="tab-team" class="tab-panel">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Team members</h2>
+          <span class="count" id="team-count"></span>
+        </div>
+        <p class="gate-copy" style="margin:0 0 14px;text-align:left;">
+          Everyone signed in shares the same projects and daily logs. Roles are just for
+          visibility — the leader can promote or demote anyone here. To add a new
+          teammate, invite their email in Supabase (Authentication → Users); they'll
+          appear in this list the first time they sign in.
+        </p>
+        <div id="team-list" class="team-list"></div>
+      </div>
+    </section>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Add / Edit project modal -->
+  <div id="edit-modal" class="modal-overlay hidden">
+    <div class="modal modal-large">
+      <div class="modal-head">
+        <h2 id="modal-title">Add project</h2>
+        <button id="edit-close" class="icon-btn">close</button>
+      </div>
+      <form id="edit-form" class="grid-form">
+        <input type="hidden" id="edit-id" />
+        <p id="edit-error" class="login-error hidden span-2"></p>
+
+        <label class="span-2">Project name
+          <input type="text" id="edit-name" required minlength="2" maxlength="120" />
+        </label>
+        <label>Status
+          <select id="edit-status" required></select>
+        </label>
+        <label>Project manager
+          <input type="text" id="edit-pm" placeholder="Name" maxlength="80" />
+        </label>
+        <label class="span-2">Bugsheet link
+          <input type="text" id="edit-bugsheet" placeholder="https://..." maxlength="500" />
+        </label>
+        <label class="span-2">Project document
+          <input type="url" id="edit-project-document" placeholder="https://... (spec, SRS, requirements doc)" maxlength="500" />
+        </label>
+
+        <p class="span-2 section-label">Timeline</p>
+        <label>Start date
+          <input type="date" id="edit-start-date" />
+        </label>
+        <label>End date
+          <input type="date" id="edit-end-date" />
+        </label>
+        <label>KT date
+          <input type="date" id="edit-kt-date" />
+        </label>
+        <label>Sign off date
+          <input type="date" id="edit-signoff-date" />
+        </label>
+
+        <p class="span-2 section-label">Testing schedule</p>
+        <label>UI testing start
+          <input type="date" id="edit-ui-start" />
+        </label>
+        <label>UI testing end
+          <input type="date" id="edit-ui-end" />
+        </label>
+        <label>Functional testing start
+          <input type="date" id="edit-func-start" />
+        </label>
+        <label>Functional testing end
+          <input type="date" id="edit-func-end" />
+        </label>
+
+        <p class="span-2 section-label">Team</p>
+        <label>Mobile app developers
+          <input type="text" id="edit-mobile-devs" placeholder="Names" maxlength="200" />
+        </label>
+        <label>Web developers
+          <input type="text" id="edit-web-devs" placeholder="Names" maxlength="200" />
+        </label>
+        <label class="span-2">Backend developers
+          <input type="text" id="edit-backend-devs" placeholder="Names" maxlength="200" />
+        </label>
+
+        <p class="span-2 section-label">Review</p>
+        <label class="span-2">Clients review
+          <textarea id="edit-clients-review" rows="2" placeholder="Client feedback / review status" maxlength="1000"></textarea>
+        </label>
+        <label class="span-2">Remarks
+          <textarea id="edit-remarks" rows="2" placeholder="Additional remarks" maxlength="1000"></textarea>
+        </label>
+
+        <div class="span-2 form-actions">
+          <button type="button" id="edit-delete" class="btn btn-ghost">Remove project</button>
+          <button type="submit" class="btn btn-primary">Save project</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- WhatsApp daily update modal -->
+  <div id="whatsapp-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>Daily update message</h2>
+        <button id="whatsapp-close" class="icon-btn">close</button>
+      </div>
+      <textarea id="whatsapp-message" class="whatsapp-textarea" rows="12" readonly></textarea>
+      <div class="whatsapp-actions">
+        <button id="whatsapp-copy" class="btn btn-primary">Copy message</button>
+        <a id="whatsapp-open" class="btn btn-ghost" target="_blank" rel="noopener">Open in WhatsApp</a>
+      </div>
+    </div>
+  </div>
+
+  <script defer src="app.js"></script>
+</body>
+</html>
