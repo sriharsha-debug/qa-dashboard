@@ -114,6 +114,7 @@ create table if not exists test_cases (
   description text,
   status text not null default 'Not Run' check (status in ('Not Run', 'Pass', 'Fail', 'Blocked')),
   priority text default 'Medium' check (priority in ('Low', 'Medium', 'High')),
+  category text default 'Functional' check (category in ('Positive', 'Negative', 'Functional', 'Edge Case', 'End-to-End', 'Monkey')),
   last_run_date date,
   notes text,
   created_at timestamptz not null default now(),

@@ -865,6 +865,7 @@ tcForm.addEventListener('submit', async (e) => {
     project_id,
     title,
     priority: document.getElementById('tc-priority').value,
+    category: document.getElementById('tc-category').value,
     status,
     description: document.getElementById('tc-description').value.trim() || null,
     last_run_date: status === 'Not Run' ? null : todayStr(),
@@ -879,6 +880,7 @@ tcForm.addEventListener('submit', async (e) => {
   notify(`${actorLabel()} added a test case for "${proj ? proj.name : 'a project'}"`, 'test_case', 'create');
   tcForm.reset();
   document.getElementById('tc-priority').value = 'Medium';
+  document.getElementById('tc-category').value = 'Functional';
   document.getElementById('tc-status').value = 'Not Run';
   loadTestCases(project_id);
 });
@@ -901,9 +903,15 @@ function renderTestCases(cases, projectId) {
   tcEmpty.style.display = cases.length ? 'none' : 'block';
 
   const counts = { 'Not Run': 0, Pass: 0, Fail: 0, Blocked: 0 };
-  cases.forEach((c) => { counts[c.status] = (counts[c.status] || 0) + 1; });
+  const catCounts = {};
+  cases.forEach((c) => {
+    counts[c.status] = (counts[c.status] || 0) + 1;
+    const cat = c.category || 'Functional';
+    catCounts[cat] = (catCounts[cat] || 0) + 1;
+  });
+  const catBreakdown = Object.entries(catCounts).map(([cat, n]) => `${cat}: ${n}`).join(' · ');
   tcSummary.textContent = cases.length
-    ? `${cases.length} total · ${counts.Pass} pass · ${counts.Fail} fail · ${counts.Blocked} blocked · ${counts['Not Run']} not run`
+    ? `${cases.length} total · ${counts.Pass} pass · ${counts.Fail} fail · ${counts.Blocked} blocked · ${counts['Not Run']} not run — ${catBreakdown}`
     : '';
 
   cases.forEach((c) => {
@@ -915,6 +923,7 @@ function renderTestCases(cases, projectId) {
           <div class="tc-row-title">${escapeHtml(c.title)}</div>
           <div class="tc-row-meta">
             <span class="priority-pill priority-${escapeHtml(c.priority || 'Medium')}">${escapeHtml(c.priority || 'Medium')}</span>
+            <span class="pill" style="${pillStyle(categoryColor(c.category || 'Functional'))}">${escapeHtml(c.category || 'Functional')}</span>
             ${c.last_run_date ? `<span>Last run ${fmtDate(c.last_run_date)}</span>` : '<span>Not run yet</span>'}
           </div>
           ${c.description ? `<div class="tc-row-desc">${escapeHtml(c.description)}</div>` : ''}
@@ -1114,12 +1123,20 @@ const aiPreviewList = document.getElementById('ai-preview-list');
 let aiGeneratedCases = [];
 
 function buildAiPrompt(projectName, documentText) {
-  return `You are a QA test case writer. Based on the requirements/document text below for the project "${projectName || 'this project'}", generate a thorough list of manual test cases.
+  return `You are an expert QA test case writer preparing test cases for real-world, production use — as if a market end user will actually use this feature. Based on the requirements/document text below for the project "${projectName || 'this project'}", generate a THOROUGH, comprehensive set of manual test cases.
+
+You must cover ALL of these categories, not just the happy path — spread the test cases across them realistically based on what the document supports:
+1. Positive — valid inputs, normal expected usage, typical end-user flows
+2. Negative — invalid inputs, wrong formats, missing required fields, unauthorized access, error handling
+3. Functional — each distinct feature or requirement verified individually
+4. Edge Case — boundary values, empty/null inputs, maximum length/limits, special characters, duplicate submissions, concurrent actions, slow/no network
+5. End-to-End — full multi-step user journeys spanning several features in sequence (e.g. signup → login → core action → logout)
+6. Monkey — unpredictable or careless real-user behavior: rapid repeated taps, navigating away mid-action, back button misuse, app backgrounding, random input combinations
 
 Respond with ONLY a JSON array, no prose, no markdown fences, in this exact shape:
-[{"title": "short test case title", "description": "steps or scenario to verify, 1-3 sentences", "priority": "Low"|"Medium"|"High"}]
+[{"title": "short test case title", "description": "steps or scenario to verify, 1-3 sentences", "priority": "Low"|"Medium"|"High", "category": "Positive"|"Negative"|"Functional"|"Edge Case"|"End-to-End"|"Monkey"}]
 
-Cover positive cases, negative/edge cases, and validation. Aim for 8-20 test cases depending on document size. Keep titles concise and descriptions actionable.
+Aim for thorough coverage — typically 20-40 test cases depending on document size and complexity — distributed across ALL six categories above, not concentrated in just one or two. Keep titles concise and descriptions actionable.
 
 Document:
 """
@@ -1181,6 +1198,7 @@ aiParseBtn.addEventListener('click', () => {
       title: String(t.title).slice(0, 200),
       description: t.description ? String(t.description).slice(0, 1000) : null,
       priority: ['Low', 'Medium', 'High'].includes(t.priority) ? t.priority : 'Medium',
+      category: ['Positive', 'Negative', 'Functional', 'Edge Case', 'End-to-End', 'Monkey'].includes(t.category) ? t.category : 'Functional',
     }));
 
   if (!aiGeneratedCases.length) {
@@ -1190,15 +1208,39 @@ aiParseBtn.addEventListener('click', () => {
   renderAiPreview(aiGeneratedCases);
 });
 
+function categoryColor(cat) {
+  return {
+    Positive: '#34D399',
+    Negative: '#F87171',
+    Functional: '#22D3EE',
+    'Edge Case': '#FBBF24',
+    'End-to-End': '#A78BFA',
+    Monkey: '#FB923C',
+  }[cat] || '#7FA0A6';
+}
+
 function renderAiPreview(cases) {
   aiPreviewList.innerHTML = '';
+
+  const counts = {};
+  cases.forEach((c) => { counts[c.category] = (counts[c.category] || 0) + 1; });
+  const summaryEl = document.createElement('p');
+  summaryEl.className = 'ai-coverage-summary';
+  summaryEl.textContent = `${cases.length} test cases — ` +
+    Object.entries(counts).map(([cat, n]) => `${cat}: ${n}`).join(' · ');
+  aiPreviewList.appendChild(summaryEl);
+
   cases.forEach((c, i) => {
     const row = document.createElement('label');
     row.className = 'ai-preview-item';
     row.innerHTML = `
       <input type="checkbox" class="ai-preview-check" data-idx="${i}" checked />
       <div>
-        <div class="ai-preview-item-title">${escapeHtml(c.title)} <span class="priority-pill priority-${escapeHtml(c.priority)}">${escapeHtml(c.priority)}</span></div>
+        <div class="ai-preview-item-title">
+          ${escapeHtml(c.title)}
+          <span class="priority-pill priority-${escapeHtml(c.priority)}">${escapeHtml(c.priority)}</span>
+          <span class="pill" style="${pillStyle(categoryColor(c.category))}">${escapeHtml(c.category)}</span>
+        </div>
         ${c.description ? `<div class="ai-preview-item-desc">${escapeHtml(c.description)}</div>` : ''}
       </div>
     `;
@@ -1228,6 +1270,7 @@ document.getElementById('ai-add-selected').addEventListener('click', async () =>
     title: c.title,
     description: c.description,
     priority: c.priority,
+    category: c.category,
     status: 'Not Run',
     owner_id: currentUser ? currentUser.id : null,
   }));
