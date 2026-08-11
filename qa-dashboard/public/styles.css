@@ -373,6 +373,7 @@ h2 {
   top: calc(100% + 8px);
   right: 0;
   width: 320px;
+  max-width: calc(100vw - 32px);
   max-height: 380px;
   overflow-y: auto;
   background: var(--panel-solid);
@@ -477,6 +478,11 @@ h2 {
 
 .tab-panel { display: none; flex-direction: column; gap: 20px; }
 .tab-panel.active { display: flex; }
+
+@media (max-width: 1024px) {
+  .app { padding: 24px 18px 60px; }
+  .app-body { gap: 18px; }
+}
 
 @media (max-width: 800px) {
   .app-body { flex-direction: column; }
@@ -658,7 +664,12 @@ select option:focus {
 .toggle input:checked + .toggle-track .toggle-thumb { left: 20px; background: var(--grad-cool); }
 
 /* Ledger table (projects) */
-.ledger { width: 100%; border-collapse: collapse; font-size: 14px; }
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.ledger { width: 100%; min-width: 560px; border-collapse: collapse; font-size: 14px; }
 .ledger th {
   text-align: left;
   font-family: var(--font-mono);
@@ -1081,4 +1092,26 @@ select option:focus {
   .topbar { flex-direction: column; align-items: flex-start; gap: 10px; }
   .details-grid { grid-template-columns: 1fr; }
   .detail-item.span-2 { grid-column: span 1; }
+}
+
+@media (max-width: 480px) {
+  .app { padding: 16px 12px 48px; }
+  h1 { font-size: 22px; }
+  h2 { font-size: 15px; }
+  .panel { padding: 16px 14px; border-radius: 16px; }
+  .gate-card { padding: 24px 18px; }
+  .who { flex-wrap: wrap; gap: 8px; }
+  .who-email { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .panel-head { flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+  .panel-head-right { flex-wrap: wrap; width: 100%; }
+  .filters { flex-wrap: wrap; width: 100%; }
+  .filters select, .filters input { flex: 1 1 140px; }
+  .inline-form { flex-direction: column; align-items: stretch; }
+  .inline-form input[type="text"] { min-width: 0; }
+  .form-actions { flex-direction: column-reverse; align-items: stretch; }
+  .form-actions .btn { width: 100%; text-align: center; }
+  .modal { padding: 18px 16px; border-radius: 18px; }
+  .details-select { max-width: none; }
+  .whatsapp-textarea { font-size: 13px; }
+  .notif-panel { right: -8px; }
 }

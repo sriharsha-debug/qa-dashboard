@@ -1123,13 +1123,13 @@ function buildBatchWhatsAppMessage(reports, dateStr) {
   reports.forEach((r, i) => {
     const projectName = r.projects ? r.projects.name : 'Project';
     msg += `\n*${i + 1}. ${projectName}*\n`;
-    if (r.project_manager) msg += `👤 PM: ${r.project_manager}\n`;
-    if (r.assigned_tasks) msg += `🧩 Assigned Tasks:\n${r.assigned_tasks}\n`;
-    msg += `✅ Test Cases: ${r.test_cases}  🐞 UI Bugs: ${r.ui_bugs}  ⚙️ Func Bugs: ${r.functionality_bugs}\n`;
-    if (r.bugsheet) msg += `🔗 Bugsheet: ${r.bugsheet}\n`;
-    msg += `✔️ Sign Off: ${r.sign_off ? 'Yes' : 'No'}\n`;
-    if (r.remarks) msg += `💬 Remarks: ${r.remarks}\n`;
-    if (r.notes) msg += `🗒️ Notes: ${r.notes}\n`;
+    if (r.project_manager) msg += `• PM: ${r.project_manager}\n`;
+    if (r.assigned_tasks) msg += `• Assigned Tasks:\n${r.assigned_tasks}\n`;
+    msg += `• Test Cases: ${r.test_cases}  • UI Bugs: ${r.ui_bugs}  • Func Bugs: ${r.functionality_bugs}\n`;
+    if (r.bugsheet) msg += `• Bugsheet: ${r.bugsheet}\n`;
+    msg += `• Sign Off: ${r.sign_off ? 'Yes' : 'No'}\n`;
+    if (r.remarks) msg += `• Remarks: ${r.remarks}\n`;
+    if (r.notes) msg += `• Notes: ${r.notes}\n`;
   });
 
   return msg;
@@ -1507,19 +1507,19 @@ const whatsappCopyBtn = document.getElementById('whatsapp-copy');
 function buildWhatsAppMessage(payload, projectName) {
   const dateStr = new Date(payload.report_date + 'T00:00:00').toLocaleDateString('en-GB');
   let msg = `*QA Daily Update*\n`;
-  msg += `📅 Date: ${dateStr}\n`;
-  msg += `📁 Project: ${projectName}\n`;
-  if (payload.project_manager) msg += `👤 PM: ${payload.project_manager}\n`;
-  if (payload.assigned_tasks) msg += `🧩 Assigned Tasks:\n${payload.assigned_tasks}\n`;
+  msg += `Date: ${dateStr}\n`;
+  msg += `Project: ${projectName}\n`;
+  if (payload.project_manager) msg += `• PM: ${payload.project_manager}\n`;
+  if (payload.assigned_tasks) msg += `• Assigned Tasks:\n${payload.assigned_tasks}\n`;
   msg += `\n`;
-  msg += `✅ Test Cases: ${payload.test_cases}\n`;
-  msg += `🐞 UI Bugs: ${payload.ui_bugs}\n`;
-  msg += `⚙️ Functionality Bugs: ${payload.functionality_bugs}\n`;
-  if (payload.bugsheet) msg += `🔗 Bugsheet: ${payload.bugsheet}\n`;
+  msg += `• Test Cases: ${payload.test_cases}\n`;
+  msg += `• UI Bugs: ${payload.ui_bugs}\n`;
+  msg += `• Functionality Bugs: ${payload.functionality_bugs}\n`;
+  if (payload.bugsheet) msg += `• Bugsheet: ${payload.bugsheet}\n`;
   msg += `\n`;
-  msg += `✔️ Sign Off: ${payload.sign_off ? 'Yes' : 'No'}\n`;
-  if (payload.remarks) msg += `💬 Remarks: ${payload.remarks}\n`;
-  if (payload.notes) msg += `🗒️ Notes: ${payload.notes}\n`;
+  msg += `• Sign Off: ${payload.sign_off ? 'Yes' : 'No'}\n`;
+  if (payload.remarks) msg += `• Remarks: ${payload.remarks}\n`;
+  if (payload.notes) msg += `• Notes: ${payload.notes}\n`;
   return msg;
 }
 
