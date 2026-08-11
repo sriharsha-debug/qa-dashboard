@@ -77,6 +77,34 @@ html[data-theme="light"] textarea:focus {
 html[data-theme="light"] .btn { background: rgba(255, 255, 255, 0.6); }
 html[data-theme="light"] .btn-ghost { background: rgba(255, 255, 255, 0.5); }
 
+/* Swap the dark theme's heavy black panel shadow for a soft color glow,
+   so panels/cards keep the same brand pop in light mode instead of
+   looking flat. */
+html[data-theme="light"] .panel {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.6) inset,
+    0 14px 34px rgba(45, 212, 191, 0.12),
+    0 6px 18px rgba(224, 122, 26, 0.10);
+  border-color: rgba(45, 212, 191, 0.20);
+}
+html[data-theme="light"] input,
+html[data-theme="light"] select,
+html[data-theme="light"] textarea {
+  border-color: rgba(45, 212, 191, 0.45);
+  box-shadow: 0 1px 8px rgba(45, 212, 191, 0.10);
+}
+html[data-theme="light"] input:hover,
+html[data-theme="light"] select:hover,
+html[data-theme="light"] textarea:hover {
+  border-color: rgba(224, 122, 26, 0.55);
+}
+html[data-theme="light"] .modal {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.6) inset,
+    0 14px 34px rgba(45, 212, 191, 0.12),
+    0 6px 18px rgba(224, 122, 26, 0.10);
+}
+
 .theme-toggle {
   padding: 8px 10px;
   font-size: 15px;
