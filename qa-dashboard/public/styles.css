@@ -44,12 +44,7 @@ html[data-theme="light"] {
 html[data-theme="light"] body {
   background-image:
     radial-gradient(circle at 50% 30%, rgba(124, 92, 255, 0.10), transparent 55%),
-    linear-gradient(180deg, rgba(238, 241, 250, 0.90), rgba(238, 241, 250, 0.95)),
-    url('https://images.unsplash.com/photo-1577975396515-a6a5271697f3?fm=jpg&q=70&w=2400&auto=format&fit=crop');
-  background-size: cover, cover, cover;
-  background-position: center, center, center 35%;
-  background-attachment: fixed, fixed, fixed;
-  background-repeat: no-repeat, no-repeat, no-repeat;
+    var(--paper);
 }
 html[data-theme="light"] body::before,
 html[data-theme="light"] body::after { opacity: 0.28; }
@@ -66,7 +61,19 @@ html[data-theme="light"] .notif-panel { background: var(--panel-solid); }
 html[data-theme="light"] .status-select,
 html[data-theme="light"] input,
 html[data-theme="light"] select,
-html[data-theme="light"] textarea { background-color: rgba(255, 255, 255, 0.7); }
+html[data-theme="light"] textarea {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(34, 211, 238, 0.06)),
+    rgba(255, 255, 255, 0.55);
+  border-color: rgba(34, 211, 238, 0.35);
+}
+html[data-theme="light"] input:focus,
+html[data-theme="light"] select:focus,
+html[data-theme="light"] textarea:focus {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(34, 211, 238, 0.10)),
+    rgba(255, 255, 255, 0.7);
+}
 html[data-theme="light"] .btn { background: rgba(255, 255, 255, 0.6); }
 html[data-theme="light"] .btn-ghost { background: rgba(255, 255, 255, 0.5); }
 
@@ -140,12 +147,7 @@ body::after {
 body {
   background-image:
     radial-gradient(circle at 50% 30%, rgba(124, 92, 255, 0.16), transparent 55%),
-    linear-gradient(180deg, rgba(5, 7, 15, 0.90), rgba(5, 7, 15, 0.95)),
-    url('https://images.unsplash.com/photo-1577975396515-a6a5271697f3?fm=jpg&q=70&w=2400&auto=format&fit=crop');
-  background-size: cover, cover, cover;
-  background-position: center, center, center 35%;
-  background-attachment: fixed, fixed, fixed;
-  background-repeat: no-repeat, no-repeat, no-repeat;
+    var(--paper);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -460,26 +462,76 @@ h2 {
   0% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.5); }
   100% { box-shadow: 0 0 0 8px rgba(34, 211, 238, 0); }
 }
+@keyframes fieldSuccessPulse {
+  0% { box-shadow: 0 0 0 0 rgba(52, 245, 197, 0.55); }
+  100% { box-shadow: 0 0 0 10px rgba(52, 245, 197, 0); }
+}
+@keyframes fieldErrorShake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-3px); }
+  40% { transform: translateX(3px); }
+  60% { transform: translateX(-2px); }
+  80% { transform: translateX(2px); }
+}
 
 input, select, textarea {
   font-family: var(--font-body);
   font-size: 14px;
-  padding: 10px 12px;
-  border: 1px solid var(--line-strong);
-  background: rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(10px);
+  padding: 11px 13px;
+  border: 1px solid rgba(34, 211, 238, 0.28);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(34, 211, 238, 0.03)),
+    rgba(255, 255, 255, 0.045);
+  backdrop-filter: blur(12px);
   color: var(--ink);
   border-radius: 12px;
-  transition: border-color 0.15s ease, transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10), 0 1px 6px rgba(0, 0, 0, 0.12);
+  transition: border-color 0.15s ease, box-shadow 0.2s ease, transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s ease;
 }
 input::placeholder, textarea::placeholder { color: #6C74A0; }
+input:hover, select:hover, textarea:hover {
+  border-color: rgba(34, 211, 238, 0.45);
+}
 input:focus, select:focus, textarea:focus {
-  outline: 2px solid var(--cyan);
-  outline-offset: 1px;
+  outline: none;
   border-color: var(--cyan);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.16);
   transform: scale(1.01);
   animation: focusPulse 0.5s ease-out;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(34, 211, 238, 0.06)),
+    rgba(255, 255, 255, 0.06);
 }
+
+/* Color-coded field states: entering / saving / removing */
+.field-saving {
+  border-color: var(--pending) !important;
+  box-shadow: 0 0 0 3px rgba(255, 200, 87, 0.22) !important;
+}
+.field-success {
+  border-color: var(--pass) !important;
+  box-shadow: 0 0 0 3px rgba(52, 245, 197, 0.30) !important;
+  animation: fieldSuccessPulse 0.7s ease-out;
+}
+.field-error {
+  border-color: var(--blocked) !important;
+  box-shadow: 0 0 0 3px rgba(255, 107, 157, 0.30) !important;
+  animation: fieldErrorShake 0.35s ease-in-out;
+}
+.field-removing {
+  border-color: var(--blocked) !important;
+  box-shadow: 0 0 0 3px rgba(255, 107, 157, 0.30) !important;
+  opacity: 0.5;
+  transition: opacity 0.3s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.row-removing {
+  background: rgba(255, 107, 157, 0.14) !important;
+  border-color: var(--blocked) !important;
+  box-shadow: 0 0 0 3px rgba(255, 107, 157, 0.28) !important;
+  opacity: 0.5;
+  transition: opacity 0.22s ease, background 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
+}
+.row-removing td { border-color: rgba(255, 107, 157, 0.4) !important; }
 
 .grid-form {
   display: grid;
@@ -494,7 +546,7 @@ input:focus, select:focus, textarea:focus {
   font-size: 11px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--ink-soft);
+  color: var(--accent);
 }
 .span-2 { grid-column: span 2; }
 .form-actions { display: flex; justify-content: flex-end; gap: 10px; }

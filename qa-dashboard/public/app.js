@@ -11,6 +11,23 @@ let currentUser = null;
 let currentProfile = null;
 let notifPollTimer = null;
 
+// ---------- Field color feedback (glass-water states) ----------
+
+function flashFields(container, className, duration = 900) {
+  if (!container) return;
+  const fields = container.querySelectorAll('input, select, textarea');
+  fields.forEach((f) => f.classList.add(className));
+  setTimeout(() => fields.forEach((f) => f.classList.remove(className)), duration);
+}
+
+function flashRowRemoving(rowEl, delay = 220) {
+  return new Promise((resolve) => {
+    if (!rowEl) { resolve(); return; }
+    rowEl.classList.add('row-removing');
+    setTimeout(resolve, delay);
+  });
+}
+
 // ---------- Supabase client + Auth ----------
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -64,17 +81,20 @@ loginForm.addEventListener('submit', async (e) => {
     if (password.length < 6) {
       loginError.textContent = 'Password must be at least 6 characters.';
       loginError.classList.remove('hidden');
+      flashFields(loginForm, 'field-error');
       return;
     }
     if (password !== confirmPasswordInput.value) {
       loginError.textContent = 'Passwords do not match.';
       loginError.classList.remove('hidden');
+      flashFields(loginForm, 'field-error');
       return;
     }
     const { data, error } = await sb.auth.signUp({ email, password });
     if (error) {
       loginError.textContent = error.message;
       loginError.classList.remove('hidden');
+      flashFields(loginForm, 'field-error');
       return;
     }
     if (data.session) {
@@ -82,12 +102,16 @@ loginForm.addEventListener('submit', async (e) => {
     }
     loginSuccess.textContent = 'Account created! Check your email to confirm it, then sign in.';
     loginSuccess.classList.remove('hidden');
+    flashFields(loginForm, 'field-success');
     setGateMode('signin');
   } else {
     const { error } = await sb.auth.signInWithPassword({ email, password });
     if (error) {
       loginError.textContent = error.message;
       loginError.classList.remove('hidden');
+      flashFields(loginForm, 'field-error');
+    } else {
+      flashFields(loginForm, 'field-success');
     }
   }
 });
@@ -430,6 +454,7 @@ function renderProjects(projects) {
     btn.addEventListener('click', async () => {
       const p = projectsCache.find((x) => x.id === btn.dataset.delete);
       if (!confirm('Remove this project and all its daily entries?')) return;
+      await flashRowRemoving(btn.closest('tr'));
       const { error } = await sb.from('projects').delete().eq('id', btn.dataset.delete);
       if (error) {
         alert(error.message);
@@ -645,26 +670,32 @@ editForm.addEventListener('submit', async (e) => {
   // ---- Validation ----
   if (!payload.name || payload.name.length < 2) {
     showFormError('edit-error', 'Project name must be at least 2 characters.');
+    flashFields(editForm, 'field-error');
     return;
   }
   if (!isValidUrl(payload.bugsheet)) {
     showFormError('edit-error', 'Bugsheet link must be a valid http(s) URL, or leave it blank.');
+    flashFields(editForm, 'field-error');
     return;
   }
   if (!isValidUrl(payload.project_document)) {
     showFormError('edit-error', 'Project document must be a valid http(s) URL, or leave it blank.');
+    flashFields(editForm, 'field-error');
     return;
   }
   if (!isValidDateRange(payload.start_date, payload.end_date)) {
     showFormError('edit-error', 'End date cannot be before start date.');
+    flashFields(editForm, 'field-error');
     return;
   }
   if (!isValidDateRange(payload.ui_testing_start_date, payload.ui_testing_end_date)) {
     showFormError('edit-error', 'UI testing end date cannot be before its start date.');
+    flashFields(editForm, 'field-error');
     return;
   }
   if (!isValidDateRange(payload.functional_testing_start_date, payload.functional_testing_end_date)) {
     showFormError('edit-error', 'Functional testing end date cannot be before its start date.');
+    flashFields(editForm, 'field-error');
     return;
   }
 
@@ -676,18 +707,22 @@ editForm.addEventListener('submit', async (e) => {
     const { error } = await sb.from('projects').update(payload).eq('id', id);
     if (error) {
       showFormError('edit-error', error.message);
+      flashFields(editForm, 'field-error');
       return;
     }
     notify(`${actorLabel()} updated project "${payload.name}"`, 'project', 'update');
+    flashFields(editForm, 'field-success');
   } else {
     payload.created_by_email = currentUser ? currentUser.email : null;
     payload.owner_id = currentUser ? currentUser.id : null;
     const { error } = await sb.from('projects').insert(payload);
     if (error) {
       showFormError('edit-error', error.message);
+      flashFields(editForm, 'field-error');
       return;
     }
     notify(`${actorLabel()} added a new project: "${payload.name}"`, 'project', 'create');
+    flashFields(editForm, 'field-success');
     celebrate(`"${payload.name}" added!`, '🚀');
   }
   closeEditModal();
@@ -699,6 +734,8 @@ editDeleteBtn.addEventListener('click', async () => {
   if (!id) return;
   const p = projectsCache.find((x) => x.id === id);
   if (!confirm('Remove this project and all its daily entries?')) return;
+  flashFields(editForm, 'field-removing', 250);
+  await new Promise((r) => setTimeout(r, 220));
   const { error } = await sb.from('projects').delete().eq('id', id);
   if (error) {
     alert(error.message);
@@ -859,6 +896,7 @@ tcForm.addEventListener('submit', async (e) => {
   const title = document.getElementById('tc-title').value.trim();
   if (!title || title.length < 3) {
     showFormError('tc-error', 'Test case title must be at least 3 characters.');
+    flashFields(tcForm, 'field-error');
     return;
   }
 
@@ -876,11 +914,13 @@ tcForm.addEventListener('submit', async (e) => {
   const { error } = await sb.from('test_cases').insert(payload);
   if (error) {
     showFormError('tc-error', error.message);
+    flashFields(tcForm, 'field-error');
     return;
   }
   const proj = projectsCache.find((p) => p.id === project_id);
   notify(`${actorLabel()} added a test case for "${proj ? proj.name : 'a project'}"`, 'test_case', 'create');
   celebrate('Test case added!', '✅');
+  flashFields(tcForm, 'field-success');
   tcForm.reset();
   document.getElementById('tc-priority').value = 'Medium';
   document.getElementById('tc-category').value = 'Functional';
@@ -965,6 +1005,7 @@ function renderTestCases(cases, projectId) {
   tcList.querySelectorAll('[data-tc-delete]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       if (!confirm('Remove this test case?')) return;
+      await flashRowRemoving(btn.closest('.tc-row'));
       const { error } = await sb.from('test_cases').delete().eq('id', btn.dataset.tcDelete);
       if (error) {
         alert(error.message);
@@ -986,11 +1027,13 @@ apkForm.addEventListener('submit', async (e) => {
   const sharedDate = document.getElementById('apk-date').value;
   if (!sharedDate) {
     showFormError('apk-error', 'Shared date is required.');
+    flashFields(apkForm, 'field-error');
     return;
   }
   const apkLinkVal = document.getElementById('apk-link').value.trim();
   if (!isValidUrl(apkLinkVal)) {
     showFormError('apk-error', 'APK link must be a valid http(s) URL, or leave it blank.');
+    flashFields(apkForm, 'field-error');
     return;
   }
 
@@ -1007,11 +1050,13 @@ apkForm.addEventListener('submit', async (e) => {
   const { error } = await sb.from('apk_shares').insert(payload);
   if (error) {
     showFormError('apk-error', error.message);
+    flashFields(apkForm, 'field-error');
     return;
   }
   const proj = projectsCache.find((p) => p.id === project_id);
   notify(`${actorLabel()} shared an APK (${payload.version || 'build'}) for "${proj ? proj.name : 'a project'}"`, 'apk', 'create');
   celebrate('APK logged!', '📦');
+  flashFields(apkForm, 'field-success');
   apkForm.reset();
   document.getElementById('apk-date').valueAsDate = new Date();
   showProjectDetails(project_id);
@@ -1053,6 +1098,7 @@ function renderApkShares(shares) {
     `;
     row.querySelector('[data-apk-delete]').addEventListener('click', async () => {
       if (!confirm('Remove this APK log entry?')) return;
+      await flashRowRemoving(row);
       const { error } = await sb.from('apk_shares').delete().eq('id', a.id);
       if (error) {
         alert(error.message);
@@ -1377,11 +1423,13 @@ reportForm.addEventListener('submit', async (e) => {
   const project_id = document.getElementById('r-project').value;
   if (!project_id) {
     showFormError('report-error', 'Select a project first (add one on the Projects tab if the list is empty).');
+    flashFields(reportForm, 'field-error');
     return;
   }
   const reportDate = document.getElementById('r-date').value;
   if (!reportDate) {
     showFormError('report-error', 'Date is required.');
+    flashFields(reportForm, 'field-error');
     return;
   }
   const bugsheetVal = document.getElementById('r-bugsheet').value.trim();
@@ -1396,6 +1444,7 @@ reportForm.addEventListener('submit', async (e) => {
   for (const [label, val] of numericFields) {
     if (val === '' || Number(val) < 0 || !Number.isInteger(Number(val))) {
       showFormError('report-error', `${label} must be a whole number, 0 or higher.`);
+      flashFields(reportForm, 'field-error');
       return;
     }
   }
@@ -1418,12 +1467,14 @@ reportForm.addEventListener('submit', async (e) => {
   const { error } = await sb.from('daily_reports').insert(payload);
   if (error) {
     showFormError('report-error', error.message);
+    flashFields(reportForm, 'field-error');
     return;
   }
 
   const project = projectsCache.find((p) => p.id === project_id);
   notify(`${actorLabel()} logged a daily update for "${project ? project.name : 'a project'}"`, 'daily_report', 'create');
   celebrate('Daily update saved!', '🎉');
+  flashFields(reportForm, 'field-success');
 
   // Keep the project record in sync with the latest daily update
   const projectUpdates = {};
@@ -1562,6 +1613,7 @@ function renderReports(reports) {
     `;
     card.querySelector('[data-delete]').addEventListener('click', async () => {
       if (!confirm('Remove this entry?')) return;
+      await flashRowRemoving(card);
       const { error } = await sb.from('daily_reports').delete().eq('id', r.id);
       if (error) {
         alert(error.message);
