@@ -1125,18 +1125,24 @@ let aiGeneratedCases = [];
 function buildAiPrompt(projectName, documentText) {
   return `You are an expert QA test case writer preparing test cases for real-world, production use — as if a market end user will actually use this feature. Based on the requirements/document text below for the project "${projectName || 'this project'}", generate a THOROUGH, comprehensive set of manual test cases.
 
-You must cover ALL of these categories, not just the happy path — spread the test cases across them realistically based on what the document supports:
-1. Positive — valid inputs, normal expected usage, typical end-user flows
-2. Negative — invalid inputs, wrong formats, missing required fields, unauthorized access, error handling
-3. Functional — each distinct feature or requirement verified individually
-4. Edge Case — boundary values, empty/null inputs, maximum length/limits, special characters, duplicate submissions, concurrent actions, slow/no network
-5. End-to-End — full multi-step user journeys spanning several features in sequence (e.g. signup → login → core action → logout)
-6. Monkey — unpredictable or careless real-user behavior: rapid repeated taps, navigating away mid-action, back button misuse, app backgrounding, random input combinations
+You must cover these categories as relevant, not just the happy path — spread the test cases across them realistically based on what the document supports:
+- Functional — each distinct feature or requirement verified individually
+- Positive — valid inputs, normal expected usage, typical end-user flows
+- Negative — invalid inputs, wrong formats, missing required fields, unauthorized access, error handling
+- Edge Case — boundary values, empty/null inputs, maximum length/limits, special characters, duplicate submissions, concurrent actions
+- Security — auth bypass attempts, injection, data exposure, permission checks, session handling
+- Validation — field-level input validation, format checks, required-field enforcement
+- UI/UX — layout, responsiveness, clarity of feedback/errors, navigation flow
+- Performance — load times, behavior under slow/no network, large data sets
+- Accessibility — screen reader support, keyboard navigation, color contrast, labels
+- Compatibility — different devices, browsers, OS versions, screen sizes
+- Regression — verifying existing related functionality still works after this change
+- UAT — end-to-end scenarios matching real acceptance criteria a client/user would check
 
 Respond with ONLY a JSON array, no prose, no markdown fences, in this exact shape:
-[{"title": "short test case title", "description": "steps or scenario to verify, 1-3 sentences", "priority": "Low"|"Medium"|"High", "category": "Positive"|"Negative"|"Functional"|"Edge Case"|"End-to-End"|"Monkey"}]
+[{"title": "short test case title", "description": "steps or scenario to verify, 1-3 sentences", "priority": "Low"|"Medium"|"High", "category": "Functional"|"Positive"|"Negative"|"Edge Case"|"Security"|"Validation"|"UI/UX"|"Performance"|"Accessibility"|"Compatibility"|"Regression"|"UAT"}]
 
-Aim for thorough coverage — typically 20-40 test cases depending on document size and complexity — distributed across ALL six categories above, not concentrated in just one or two. Keep titles concise and descriptions actionable.
+Aim for thorough coverage — typically 20-40 test cases depending on document size and complexity — distributed across the categories that are actually relevant to this document (not every category applies to every feature). Keep titles concise and descriptions actionable.
 
 Document:
 """
@@ -1198,7 +1204,11 @@ aiParseBtn.addEventListener('click', () => {
       title: String(t.title).slice(0, 200),
       description: t.description ? String(t.description).slice(0, 1000) : null,
       priority: ['Low', 'Medium', 'High'].includes(t.priority) ? t.priority : 'Medium',
-      category: ['Positive', 'Negative', 'Functional', 'Edge Case', 'End-to-End', 'Monkey'].includes(t.category) ? t.category : 'Functional',
+      category: [
+        'Functional', 'Positive', 'Negative', 'Edge Case', 'Security',
+        'Validation', 'UI/UX', 'Performance', 'Accessibility',
+        'Compatibility', 'Regression', 'UAT',
+      ].includes(t.category) ? t.category : 'Functional',
     }));
 
   if (!aiGeneratedCases.length) {
@@ -1210,12 +1220,18 @@ aiParseBtn.addEventListener('click', () => {
 
 function categoryColor(cat) {
   return {
+    Functional: '#22D3EE',
     Positive: '#34D399',
     Negative: '#F87171',
-    Functional: '#22D3EE',
     'Edge Case': '#FBBF24',
-    'End-to-End': '#A78BFA',
-    Monkey: '#FB923C',
+    Security: '#EF4444',
+    Validation: '#60A5FA',
+    'UI/UX': '#A78BFA',
+    Performance: '#FB923C',
+    Accessibility: '#2DD4BF',
+    Compatibility: '#818CF8',
+    Regression: '#F472B6',
+    UAT: '#FACC15',
   }[cat] || '#7FA0A6';
 }
 
