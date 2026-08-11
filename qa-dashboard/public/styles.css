@@ -29,6 +29,54 @@
   --font-mono: 'IBM Plex Mono', monospace;
 }
 
+/* Light theme override */
+html[data-theme="light"] {
+  --paper: #EEF1FA;
+  --panel: rgba(255, 255, 255, 0.65);
+  --panel-2: rgba(255, 255, 255, 0.55);
+  --panel-solid: #FFFFFF;
+  --ink: #171A2E;
+  --ink-soft: #5B6188;
+  --line: rgba(23, 26, 46, 0.10);
+  --line-strong: rgba(23, 26, 46, 0.16);
+  --glow: 0 0 0 1px rgba(23, 26, 46, 0.06), 0 0 32px rgba(34, 211, 238, 0.14), 0 0 60px rgba(167, 139, 250, 0.12);
+}
+html[data-theme="light"] body {
+  background-image:
+    radial-gradient(circle at 50% 30%, rgba(124, 92, 255, 0.10), transparent 55%),
+    var(--paper);
+}
+html[data-theme="light"] body::before,
+html[data-theme="light"] body::after { opacity: 0.28; }
+html[data-theme="light"] input::placeholder,
+html[data-theme="light"] textarea::placeholder { color: #8C92B8; }
+html[data-theme="light"] .btn-primary { color: #061018; }
+html[data-theme="light"] .tab.active { color: #061018; }
+html[data-theme="light"] .celebrate-toast { color: #061018; }
+html[data-theme="light"] .toggle-track { background: rgba(23, 26, 46, 0.06); }
+html[data-theme="light"] .toggle-thumb { background: #ffffff; box-shadow: 0 1px 3px rgba(23,26,46,0.25); }
+html[data-theme="light"] .modal,
+html[data-theme="light"] .modal-head,
+html[data-theme="light"] .notif-panel { background: var(--panel-solid); }
+html[data-theme="light"] .status-select,
+html[data-theme="light"] input,
+html[data-theme="light"] select,
+html[data-theme="light"] textarea { background-color: rgba(255, 255, 255, 0.7); }
+html[data-theme="light"] .btn { background: rgba(255, 255, 255, 0.6); }
+html[data-theme="light"] .btn-ghost { background: rgba(255, 255, 255, 0.5); }
+
+.theme-toggle {
+  padding: 8px 10px;
+  font-size: 15px;
+  line-height: 1;
+  border-radius: 999px;
+}
+.theme-toggle-gate {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+}
+
 * { box-sizing: border-box; }
 
 @keyframes driftA {

@@ -1630,3 +1630,54 @@ function clearFormError(elId) {
   el.textContent = '';
   el.classList.add('hidden');
 }
+
+// ---------- Theme toggle (light/dark) ----------
+
+(function () {
+  const THEME_KEY = 'qa-dashboard-theme';
+  const root = document.documentElement;
+  const btns = [
+    document.getElementById('theme-toggle'),
+    document.getElementById('theme-toggle-gate'),
+  ].filter(Boolean);
+
+  function applyTheme(theme) {
+    if (theme === 'light') {
+      root.setAttribute('data-theme', 'light');
+    } else {
+      root.removeAttribute('data-theme');
+    }
+    btns.forEach((btn) => {
+      btn.textContent = theme === 'light' ? '☀️' : '🌙';
+    });
+  }
+
+  function getStoredTheme() {
+    try {
+      return localStorage.getItem(THEME_KEY);
+    } catch {
+      return null;
+    }
+  }
+
+  function setStoredTheme(theme) {
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {
+      /* ignore storage errors (e.g. private browsing) */
+    }
+  }
+
+  const saved = getStoredTheme();
+  const prefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+  applyTheme(saved || (prefersLight ? 'light' : 'dark'));
+
+  btns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const isLight = root.getAttribute('data-theme') === 'light';
+      const next = isLight ? 'dark' : 'light';
+      applyTheme(next);
+      setStoredTheme(next);
+    });
+  });
+})();
