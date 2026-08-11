@@ -687,6 +687,7 @@ editForm.addEventListener('submit', async (e) => {
       return;
     }
     notify(`${actorLabel()} added a new project: "${payload.name}"`, 'project', 'create');
+    celebrate(`"${payload.name}" added!`, '🚀');
   }
   closeEditModal();
   loadProjects();
@@ -878,6 +879,7 @@ tcForm.addEventListener('submit', async (e) => {
   }
   const proj = projectsCache.find((p) => p.id === project_id);
   notify(`${actorLabel()} added a test case for "${proj ? proj.name : 'a project'}"`, 'test_case', 'create');
+  celebrate('Test case added!', '✅');
   tcForm.reset();
   document.getElementById('tc-priority').value = 'Medium';
   document.getElementById('tc-category').value = 'Functional';
@@ -954,6 +956,7 @@ function renderTestCases(cases, projectId) {
         alert(error.message);
         return;
       }
+      if (newStatus === 'Pass') celebrate('Nice, that passed!', '💪');
       loadTestCases(projectId);
     });
   });
@@ -1007,6 +1010,7 @@ apkForm.addEventListener('submit', async (e) => {
   }
   const proj = projectsCache.find((p) => p.id === project_id);
   notify(`${actorLabel()} shared an APK (${payload.version || 'build'}) for "${proj ? proj.name : 'a project'}"`, 'apk', 'create');
+  celebrate('APK logged!', '📦');
   apkForm.reset();
   document.getElementById('apk-date').valueAsDate = new Date();
   showProjectDetails(project_id);
@@ -1298,6 +1302,7 @@ document.getElementById('ai-add-selected').addEventListener('click', async () =>
   }
   const project = projectsCache.find((p) => p.id === projectId);
   notify(`${actorLabel()} added ${rows.length} AI-suggested test case${rows.length === 1 ? '' : 's'} for "${project ? project.name : 'a project'}"`, 'test_case', 'ai_generate');
+  celebrate(`${rows.length} test case${rows.length === 1 ? '' : 's'} added!`, '🤖');
 
   aiGeneratedCases = [];
   aiPreview.classList.add('hidden');
@@ -1417,6 +1422,7 @@ reportForm.addEventListener('submit', async (e) => {
 
   const project = projectsCache.find((p) => p.id === project_id);
   notify(`${actorLabel()} logged a daily update for "${project ? project.name : 'a project'}"`, 'daily_report', 'create');
+  celebrate('Daily update saved!', '🎉');
 
   // Keep the project record in sync with the latest daily update
   const projectUpdates = {};
@@ -1567,6 +1573,25 @@ function renderReports(reports) {
     });
     reportsList.appendChild(card);
   });
+}
+
+// ---------- Celebration toasts ----------
+
+let toastWrap = null;
+function celebrate(message, emoji) {
+  if (!toastWrap) {
+    toastWrap = document.createElement('div');
+    toastWrap.className = 'celebrate-toast-wrap';
+    document.body.appendChild(toastWrap);
+  }
+  const toast = document.createElement('div');
+  toast.className = 'celebrate-toast';
+  toast.innerHTML = `<span class="celebrate-emoji">${emoji || '✨'}</span><span>${escapeHtml(message)}</span>`;
+  toastWrap.appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add('leaving');
+    setTimeout(() => toast.remove(), 300);
+  }, 2200);
 }
 
 function escapeHtml(str) {
