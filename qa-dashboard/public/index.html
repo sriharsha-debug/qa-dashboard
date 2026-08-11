@@ -59,12 +59,15 @@
       </div>
     </header>
 
-    <nav class="tabs">
-      <button class="tab active" data-tab="projects">Projects</button>
-      <button class="tab" data-tab="details">Project Details</button>
-      <button class="tab" data-tab="daily">Daily Log</button>
-      <button class="tab" data-tab="team">Team</button>
-    </nav>
+    <div class="app-body">
+      <nav class="sidebar">
+        <button class="tab active" data-tab="projects">Projects</button>
+        <button class="tab" data-tab="details">Project Details</button>
+        <button class="tab" data-tab="daily">Daily Log</button>
+        <button class="tab" data-tab="team">Team</button>
+      </nav>
+
+      <div class="tab-content">
 
     <!-- PROJECTS TAB -->
     <section id="tab-projects" class="tab-panel active">
@@ -321,6 +324,9 @@
         <div id="team-list" class="team-list"></div>
       </div>
     </section>
+
+      </div>
+    </div>
   </div>
 
   <!-- Add / Edit project modal -->
