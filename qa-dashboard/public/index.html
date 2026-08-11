@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="styles.css" />
 <link rel="icon" type="image/svg+xml" href="favicon.svg" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="config.js"></script>
 </head>
 <body>
@@ -85,6 +86,7 @@
           <div class="panel-head-right">
             <select id="admin-filter-projects" class="hidden"></select>
             <span class="count" id="project-count"></span>
+            <button id="download-projects-btn" class="btn btn-ghost">Download</button>
           </div>
         </div>
         <div class="table-scroll">
@@ -124,7 +126,10 @@
         <div class="panel">
           <div class="panel-head">
             <h2 id="details-name">—</h2>
-            <button id="details-edit-btn" class="btn btn-ghost">Edit</button>
+            <div class="panel-head-right">
+              <button id="download-details-btn" class="btn btn-ghost">Download</button>
+              <button id="details-edit-btn" class="btn btn-ghost">Edit</button>
+            </div>
           </div>
           <div class="details-grid" id="details-fields"></div>
         </div>
@@ -132,7 +137,10 @@
         <div class="panel">
           <div class="panel-head">
             <h2>Test execution</h2>
-            <span class="count" id="tc-summary"></span>
+            <div class="panel-head-right">
+              <span class="count" id="tc-summary"></span>
+              <button id="download-tc-btn" class="btn btn-ghost">Download</button>
+            </div>
           </div>
 
           <div class="ai-gen-box">
@@ -303,6 +311,7 @@
             <input type="date" id="filter-date" />
             <button id="filter-clear" class="btn btn-ghost">Clear</button>
             <button id="share-day-btn" class="btn btn-primary">Share day's updates</button>
+            <button id="download-reports-btn" class="btn btn-ghost">Download</button>
           </div>
         </div>
         <div id="reports-list" class="reports-list"></div>

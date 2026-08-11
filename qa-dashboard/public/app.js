@@ -10,6 +10,8 @@ let teamCache = [];
 let currentUser = null;
 let currentProfile = null;
 let notifPollTimer = null;
+let tcCache = [];
+let reportsCache = [];
 
 // ---------- Field color feedback (glass-water states) ----------
 
@@ -939,6 +941,7 @@ async function loadTestCases(projectId) {
     return;
   }
   renderTestCases(data, projectId);
+  tcCache = data || [];
 }
 
 function renderTestCases(cases, projectId) {
@@ -1580,6 +1583,7 @@ async function loadReports() {
     return;
   }
   renderReports(data);
+  reportsCache = data || [];
 }
 
 function renderReports(reports) {
@@ -1683,6 +1687,91 @@ function clearFormError(elId) {
   el.textContent = '';
   el.classList.add('hidden');
 }
+
+// ---------- Download to Excel (.xlsx) ----------
+
+function safeFileName(name) {
+  return String(name || 'download').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
+}
+
+function downloadSheet(filename, rows, sheetName) {
+  if (!rows || !rows.length) {
+    alert('Nothing to download yet.');
+    return;
+  }
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, (sheetName || 'Sheet1').slice(0, 31));
+  XLSX.writeFile(wb, `${filename}.xlsx`);
+}
+
+// Projects tab → downloads only the projects ledger.
+document.getElementById('download-projects-btn').addEventListener('click', () => {
+  const rows = projectsCache.map((p) => ({
+    'Project': p.name,
+    'Status': p.status,
+    'Project Manager': p.project_manager || '',
+    'Start Date': p.start_date || '',
+    'End Date': p.end_date || '',
+    'Bugsheet': p.bugsheet || '',
+    'Project Document': p.project_document || '',
+    'KT Date': p.kt_date || '',
+    'Sign Off Date': p.sign_off_date || '',
+    'Remarks': p.remarks || '',
+  }));
+  downloadSheet('Projects', rows, 'Projects');
+});
+
+// Project Details tab → downloads only the currently selected project's full detail sheet.
+document.getElementById('download-details-btn').addEventListener('click', () => {
+  const id = detailsSelect.value;
+  const p = projectsCache.find((x) => x.id === id);
+  if (!p) {
+    alert('Select a project first.');
+    return;
+  }
+  const row = {};
+  detailFieldGroups.forEach((f) => {
+    if (f.isHeader) return;
+    row[f.label] = p[f.key] || '';
+  });
+  downloadSheet(`${safeFileName(p.name)} - Project Details`, [row], 'Project Details');
+});
+
+// Test execution panel → downloads only the currently selected project's test cases.
+document.getElementById('download-tc-btn').addEventListener('click', () => {
+  const id = detailsSelect.value;
+  const p = projectsCache.find((x) => x.id === id);
+  const rows = tcCache.map((c) => ({
+    'Title': c.title,
+    'Priority': c.priority || '',
+    'Category': c.category || '',
+    'Status': c.status,
+    'Last Run Date': c.last_run_date || '',
+    'Description': c.description || '',
+    'Notes': c.notes || '',
+  }));
+  downloadSheet(`${safeFileName(p ? p.name : 'Project')} - Test Cases`, rows, 'Test Cases');
+});
+
+// Daily Log tab (History) → downloads only the currently filtered daily logs.
+document.getElementById('download-reports-btn').addEventListener('click', () => {
+  const rows = reportsCache.map((r) => ({
+    'Project': r.projects ? r.projects.name : '',
+    'Date': r.report_date,
+    'Project Manager': r.project_manager || '',
+    'Assigned Tasks': r.assigned_tasks || '',
+    'Test Cases': r.test_cases,
+    'UI Bugs': r.ui_bugs,
+    'Functionality Bugs': r.functionality_bugs,
+    'Bugsheet': r.bugsheet || '',
+    'Sign Off': r.sign_off ? 'Yes' : 'No',
+    'Remarks': r.remarks || '',
+    'Notes': r.notes || '',
+    'Logged By': r.logged_by_email || '',
+  }));
+  downloadSheet('Daily Logs', rows, 'Daily Logs');
+});
 
 // ---------- Theme toggle (light/dark) ----------
 
