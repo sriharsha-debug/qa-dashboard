@@ -1103,55 +1103,98 @@ document.getElementById('share-day-btn').addEventListener('click', async () => {
   whatsappModal.classList.remove('hidden');
 });
 
-// ---------- AI test case generation ----------
+// ---------- AI test case generation (free — copy prompt, paste reply) ----------
 
 const aiDocText = document.getElementById('ai-doc-text');
-const aiGenBtn = document.getElementById('ai-generate-btn');
+const aiResponseText = document.getElementById('ai-response-text');
+const aiCopyPromptBtn = document.getElementById('ai-copy-prompt');
+const aiParseBtn = document.getElementById('ai-parse-btn');
 const aiPreview = document.getElementById('ai-preview');
 const aiPreviewList = document.getElementById('ai-preview-list');
 let aiGeneratedCases = [];
 
-aiGenBtn.addEventListener('click', async () => {
-  clearFormError('ai-gen-error');
-  aiPreview.classList.add('hidden');
-  const projectId = detailsSelect.value;
-  const project = projectsCache.find((p) => p.id === projectId);
-  if (!project) return;
+function buildAiPrompt(projectName, documentText) {
+  return `You are a QA test case writer. Based on the requirements/document text below for the project "${projectName || 'this project'}", generate a thorough list of manual test cases.
 
+Respond with ONLY a JSON array, no prose, no markdown fences, in this exact shape:
+[{"title": "short test case title", "description": "steps or scenario to verify, 1-3 sentences", "priority": "Low"|"Medium"|"High"}]
+
+Cover positive cases, negative/edge cases, and validation. Aim for 8-20 test cases depending on document size. Keep titles concise and descriptions actionable.
+
+Document:
+"""
+${documentText}
+"""`;
+}
+
+aiCopyPromptBtn.addEventListener('click', async () => {
+  clearFormError('ai-gen-error');
+  const project = projectsCache.find((p) => p.id === detailsSelect.value);
   const documentText = aiDocText.value.trim();
   if (!documentText) {
     showFormError('ai-gen-error', 'Paste some requirements or document text above first.');
     return;
   }
+  const prompt = buildAiPrompt(project ? project.name : '', documentText);
 
-  aiGenBtn.disabled = true;
-  aiGenBtn.textContent = 'Generating…';
+  // Open the tab synchronously (within the click event) so browsers don't block the popup.
+  const claudeTab = window.open('https://claude.ai/new', '_blank', 'noopener');
 
   try {
-    const { data: sessionData } = await sb.auth.getSession();
-    const token = sessionData && sessionData.session ? sessionData.session.access_token : null;
-    const res = await fetch('/api/generate-test-cases', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ projectName: project.name, documentText }),
-    });
-    const body = await res.json();
-    if (!res.ok) {
-      showFormError('ai-gen-error', body.error || 'Generation failed.');
-      return;
-    }
-    if (!body.testCases || !body.testCases.length) {
-      showFormError('ai-gen-error', 'No test cases came back. Try adding more detail to the document.');
-      return;
-    }
-    aiGeneratedCases = body.testCases;
-    renderAiPreview(aiGeneratedCases);
-  } catch (err) {
-    showFormError('ai-gen-error', 'Something went wrong reaching the AI service.');
-  } finally {
-    aiGenBtn.disabled = false;
-    aiGenBtn.textContent = 'Generate test cases';
+    await navigator.clipboard.writeText(prompt);
+  } catch {
+    showFormError('ai-gen-error', 'Opened Claude.ai, but could not copy the prompt automatically — copy it manually from the box above.');
+    return;
   }
+  const original = aiCopyPromptBtn.textContent;
+  aiCopyPromptBtn.textContent = 'Copied ✓ — paste into the Claude.ai tab';
+  setTimeout(() => { aiCopyPromptBtn.textContent = original; }, 3000);
+  if (!claudeTab) {
+    showFormError('ai-gen-error', 'Prompt copied, but the popup was blocked — open Claude.ai manually and paste it in.');
+  }
+});
+
+aiParseBtn.addEventListener('click', () => {
+  clearFormError('ai-gen-error');
+  aiPreview.classList.add('hidden');
+  let raw = aiResponseText.value.trim();
+  if (!raw) {
+    showFormError('ai-gen-error', 'Paste the AI\'s reply above first.');
+    return;
+  }
+  raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+
+  const start = raw.indexOf('[');
+  const end = raw.lastIndexOf(']');
+  if (start !== -1 && end !== -1 && end > start) {
+    raw = raw.slice(start, end + 1);
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    showFormError('ai-gen-error', 'Could not read that as JSON. Make sure you pasted the AI\'s full reply, including the [ ] brackets.');
+    return;
+  }
+  if (!Array.isArray(parsed) || !parsed.length) {
+    showFormError('ai-gen-error', 'That didn\'t look like a list of test cases. Try again.');
+    return;
+  }
+
+  aiGeneratedCases = parsed
+    .filter((t) => t && t.title)
+    .map((t) => ({
+      title: String(t.title).slice(0, 200),
+      description: t.description ? String(t.description).slice(0, 1000) : null,
+      priority: ['Low', 'Medium', 'High'].includes(t.priority) ? t.priority : 'Medium',
+    }));
+
+  if (!aiGeneratedCases.length) {
+    showFormError('ai-gen-error', 'No valid test cases found in that reply.');
+    return;
+  }
+  renderAiPreview(aiGeneratedCases);
 });
 
 function renderAiPreview(cases) {
@@ -1175,6 +1218,7 @@ document.getElementById('ai-discard').addEventListener('click', () => {
   aiGeneratedCases = [];
   aiPreview.classList.add('hidden');
   aiDocText.value = '';
+  aiResponseText.value = '';
 });
 
 document.getElementById('ai-add-selected').addEventListener('click', async () => {
@@ -1206,6 +1250,7 @@ document.getElementById('ai-add-selected').addEventListener('click', async () =>
   aiGeneratedCases = [];
   aiPreview.classList.add('hidden');
   aiDocText.value = '';
+  aiResponseText.value = '';
   loadTestCases(projectId);
 });
 
