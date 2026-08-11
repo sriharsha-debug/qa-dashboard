@@ -538,6 +538,20 @@ input:focus, select:focus, textarea:focus {
   grid-template-columns: 1fr 1fr;
   gap: 14px 18px;
 }
+/* Native <option> list popups are rendered by the browser/OS, not by our
+   glass theme, and usually force a white/opaque background regardless of
+   theme — so options need their own always-readable colors here. */
+select option {
+  background-color: #ffffff;
+  color: #14172A;
+}
+select option:checked,
+select option:hover,
+select option:focus {
+  background-color: var(--cyan);
+  color: #06131A;
+}
+
 .grid-form label {
   display: flex;
   flex-direction: column;
