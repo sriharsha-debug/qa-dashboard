@@ -44,7 +44,12 @@ html[data-theme="light"] {
 html[data-theme="light"] body {
   background-image:
     radial-gradient(circle at 50% 30%, rgba(124, 92, 255, 0.10), transparent 55%),
-    var(--paper);
+    linear-gradient(180deg, rgba(238, 241, 250, 0.90), rgba(238, 241, 250, 0.95)),
+    url('https://images.unsplash.com/photo-1577975396515-a6a5271697f3?fm=jpg&q=70&w=2400&auto=format&fit=crop');
+  background-size: cover, cover, cover;
+  background-position: center, center, center 35%;
+  background-attachment: fixed, fixed, fixed;
+  background-repeat: no-repeat, no-repeat, no-repeat;
 }
 html[data-theme="light"] body::before,
 html[data-theme="light"] body::after { opacity: 0.28; }
@@ -135,7 +140,12 @@ body::after {
 body {
   background-image:
     radial-gradient(circle at 50% 30%, rgba(124, 92, 255, 0.16), transparent 55%),
-    var(--paper);
+    linear-gradient(180deg, rgba(5, 7, 15, 0.90), rgba(5, 7, 15, 0.95)),
+    url('https://images.unsplash.com/photo-1577975396515-a6a5271697f3?fm=jpg&q=70&w=2400&auto=format&fit=crop');
+  background-size: cover, cover, cover;
+  background-position: center, center, center 35%;
+  background-attachment: fixed, fixed, fixed;
+  background-repeat: no-repeat, no-repeat, no-repeat;
 }
 
 @media (prefers-reduced-motion: reduce) {

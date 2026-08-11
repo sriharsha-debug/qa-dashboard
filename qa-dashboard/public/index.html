@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Inspection Ledger — QA Daily Dashboard</title>
+<title>Project Tracker — QA Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css" />
@@ -17,8 +17,8 @@
   <div id="gate" class="gate">
     <button id="theme-toggle-gate" class="btn btn-ghost theme-toggle theme-toggle-gate" type="button" aria-label="Toggle light/dark theme" title="Toggle theme">🌙</button>
     <div class="gate-card">
-      <p class="eyebrow">QA Daily Log</p>
-      <h1>Inspection Ledger</h1>
+      <p class="eyebrow">QA Dashboard</p>
+      <h1>Project Tracker</h1>
       <p class="gate-copy" id="gate-copy">Sign in with your email and password to open the ledger.</p>
       <form id="login-form" class="login-form">
         <input type="email" id="login-email" placeholder="Email" required autocomplete="username" />
@@ -40,8 +40,8 @@
   <div id="app" class="app hidden">
     <header class="topbar">
       <div>
-        <p class="eyebrow">QA Daily Log</p>
-        <h1>Inspection Ledger</h1>
+        <p class="eyebrow">QA Dashboard</p>
+        <h1>Project Tracker</h1>
       </div>
       <div class="who">
         <span id="who-role" class="role-badge hidden"></span>
@@ -99,27 +99,6 @@
           <tbody id="projects-tbody"></tbody>
         </table>
         <p class="empty-state" id="projects-empty">No projects yet — add one above to start the ledger.</p>
-      </div>
-
-      <div class="panel">
-        <div class="panel-head">
-          <h2>Manage statuses</h2>
-          <span class="count">Edit the options used in the Status dropdown</span>
-        </div>
-        <form id="status-form" class="inline-form">
-          <input type="text" id="new-status-name" placeholder="Status name" required />
-          <select id="new-status-color">
-            <option value="#12747D">Teal</option>
-            <option value="#1F7A6C">Green</option>
-            <option value="#A9761E">Amber</option>
-            <option value="#A63D26">Red</option>
-            <option value="#5B5FA6">Purple</option>
-            <option value="#6B7280">Gray</option>
-          </select>
-          <button type="submit" class="btn btn-primary">Add status</button>
-        </form>
-        <p id="status-error" class="login-error hidden"></p>
-        <div id="statuses-list" class="statuses-list"></div>
       </div>
     </section>
 

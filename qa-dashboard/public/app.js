@@ -454,7 +454,7 @@ function renderProjectSelects(projects) {
 const statusForm = document.getElementById('status-form');
 const statusesListEl = document.getElementById('statuses-list');
 
-statusForm.addEventListener('submit', async (e) => {
+if (statusForm) statusForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   clearFormError('status-error');
   const name = document.getElementById('new-status-name').value.trim();
@@ -494,6 +494,7 @@ async function loadStatuses() {
 const colorSwatches = ['#12747D', '#1F7A6C', '#A9761E', '#A63D26', '#5B5FA6', '#6B7280'];
 
 function renderStatusManager(statuses) {
+  if (!statusesListEl) return;
   statusesListEl.innerHTML = '';
   statuses.forEach((s) => {
     const row = document.createElement('div');
