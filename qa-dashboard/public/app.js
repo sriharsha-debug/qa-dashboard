@@ -302,7 +302,26 @@ document.getElementById('notif-clear-btn').addEventListener('click', async () =>
     return;
   }
   if (!count) {
-    alert('Nothing was deleted. This usually means migration-v16.sql (which adds the missing delete permission) hasn\'t been run in Supabase yet — run it in the SQL Editor, then try again.');
+    alert('Nothing was deleted. This usually means the notifications delete permission hasn\'t been added in Supabase yet — see migration-v16.sql (or the standalone policy snippet), run it, then try again.');
+    return;
+  }
+  loadNotificationsPage();
+  refreshNotifications();
+});
+
+const notifClearAllBtn = document.getElementById('notif-clear-all-btn');
+notifClearAllBtn.addEventListener('click', async () => {
+  if (!confirm('Clear EVERYONE\'s notifications, not just yours? This cannot be undone.')) return;
+  const { error, count } = await sb
+    .from('notifications')
+    .delete({ count: 'exact' })
+    .not('id', 'is', null);
+  if (error) {
+    alert(error.message);
+    return;
+  }
+  if (!count) {
+    alert('Nothing was deleted. Make sure the notifications delete permission has been added in Supabase (migration-v16.sql or the standalone policy snippet).');
     return;
   }
   loadNotificationsPage();
@@ -465,6 +484,7 @@ function initSettingsTab() {
   document.getElementById('settings-display-name').value = currentProfile ? currentProfile.display_name || '' : '';
   document.getElementById('settings-email').value = currentUser ? currentUser.email : '';
   updateCleanupNotifCount();
+  notifClearAllBtn.classList.toggle('hidden', !isLeader());
 }
 
 document.getElementById('profile-form').addEventListener('submit', async (e) => {
