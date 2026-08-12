@@ -169,6 +169,9 @@ create policy "notifications_select_own_or_leader" on notifications
 create policy "notifications_insert_own" on notifications
   for insert
   with check (actor_id = auth.uid());
+create policy "notifications_delete_own_or_leader" on notifications
+  for delete
+  using (actor_id = auth.uid() or is_team_leader());
 
 alter table projects add column if not exists created_by_email text;
 alter table projects add column if not exists updated_by_email text;

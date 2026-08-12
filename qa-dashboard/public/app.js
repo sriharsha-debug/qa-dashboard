@@ -133,8 +133,24 @@ async function onLogin(user) {
   loadReports();
   loadTeam();
   refreshNotifications();
+  loadNotificationsPage();
+  initSettingsTab();
+  runFallbackCleanup();
   if (notifPollTimer) clearInterval(notifPollTimer);
   notifPollTimer = setInterval(refreshNotifications, 25000);
+}
+
+// Best-effort fallback in case pg_cron isn't available on the Supabase plan -
+// the leader's login silently prunes notifications older than 30 days.
+// This is a safety net; migration-v16.sql sets up the real daily pg_cron job.
+async function runFallbackCleanup() {
+  if (!isLeader()) return;
+  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  try {
+    await sb.from('notifications').delete().lt('created_at', cutoff);
+  } catch (err) {
+    console.error(err);
+  }
 }
 
 function onLogout() {
@@ -214,13 +230,56 @@ async function refreshNotifications() {
   const since = currentProfile ? currentProfile.last_seen_notifications_at : null;
   const unread = data.filter((n) => n.actor_id !== (currentUser && currentUser.id) && (!since || new Date(n.created_at) > new Date(since)));
   const badge = document.getElementById('notif-badge');
-  if (unread.length) {
-    badge.textContent = unread.length > 9 ? '9+' : String(unread.length);
-    badge.classList.remove('hidden');
-  } else {
-    badge.classList.add('hidden');
-  }
+  const sidebarBadge = document.getElementById('sidebar-notif-badge');
+  [badge, sidebarBadge].forEach((b) => {
+    if (!b) return;
+    if (unread.length) {
+      b.textContent = unread.length > 9 ? '9+' : String(unread.length);
+      b.classList.remove('hidden');
+    } else {
+      b.classList.add('hidden');
+    }
+  });
 }
+
+async function loadNotificationsPage() {
+  const { data, error } = await sb
+    .from('notifications')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(200);
+  if (error) {
+    console.error(error);
+    return;
+  }
+  const list = document.getElementById('notif-page-list');
+  const empty = document.getElementById('notif-page-empty');
+  const count = document.getElementById('notif-page-count');
+  count.textContent = data.length ? `${data.length} shown` : '';
+  list.innerHTML = '';
+  empty.style.display = data.length ? 'none' : 'block';
+  data.forEach((n) => {
+    const row = document.createElement('div');
+    row.className = 'notif-item';
+    row.innerHTML = `
+      <div>${escapeHtml(n.message)}</div>
+      <span class="notif-item-time">${escapeHtml(n.actor_email || '')} · ${timeAgo(n.created_at)}</span>
+    `;
+    list.appendChild(row);
+  });
+}
+
+document.getElementById('notif-clear-btn').addEventListener('click', async () => {
+  if (!currentUser) return;
+  if (!confirm('Clear all notifications you triggered? This cannot be undone.')) return;
+  const { error } = await sb.from('notifications').delete().eq('actor_id', currentUser.id);
+  if (error) {
+    alert(error.message);
+    return;
+  }
+  loadNotificationsPage();
+  refreshNotifications();
+});
 
 function timeAgo(dateStr) {
   const diffMs = Date.now() - new Date(dateStr).getTime();
@@ -306,8 +365,20 @@ document.getElementById('admin-filter-projects').addEventListener('change', () =
 document.getElementById('admin-filter-reports').addEventListener('change', () => loadReports());
 
 function renderTeam(members) {
-  const list = document.getElementById('team-list');
-  const count = document.getElementById('team-count');
+  renderTeamInto('team-list', 'team-count', members);
+  const settingsPanel = document.getElementById('settings-permissions-panel');
+  if (isLeader()) {
+    settingsPanel.classList.remove('hidden');
+    renderTeamInto('settings-team-list', 'settings-team-count', members);
+  } else {
+    settingsPanel.classList.add('hidden');
+  }
+}
+
+function renderTeamInto(listId, countId, members) {
+  const list = document.getElementById(listId);
+  const count = document.getElementById(countId);
+  if (!list) return;
   count.textContent = members.length ? `${members.length} member${members.length === 1 ? '' : 's'}` : '';
   list.innerHTML = '';
   members.forEach((m) => {
@@ -340,6 +411,106 @@ function renderTeam(members) {
     });
   });
 }
+
+// ---------- Settings tab ----------
+
+function initSettingsTab() {
+  document.getElementById('settings-display-name').value = currentProfile ? currentProfile.display_name || '' : '';
+  document.getElementById('settings-email').value = currentUser ? currentUser.email : '';
+  updateCleanupNotifCount();
+}
+
+document.getElementById('profile-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearFormError('profile-error');
+  document.getElementById('profile-success').classList.add('hidden');
+  const name = document.getElementById('settings-display-name').value.trim();
+  if (!name) {
+    showFormError('profile-error', 'Display name cannot be empty.');
+    return;
+  }
+  const { error } = await sb.from('profiles').update({ display_name: name }).eq('id', currentUser.id);
+  if (error) {
+    showFormError('profile-error', error.message);
+    return;
+  }
+  if (currentProfile) currentProfile.display_name = name;
+  document.getElementById('profile-success').textContent = 'Profile saved.';
+  document.getElementById('profile-success').classList.remove('hidden');
+  loadTeam();
+});
+
+document.getElementById('password-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearFormError('password-error');
+  document.getElementById('password-success').classList.add('hidden');
+  const pw = document.getElementById('settings-new-password').value;
+  const confirm = document.getElementById('settings-confirm-password').value;
+  if (pw.length < 6) {
+    showFormError('password-error', 'Password must be at least 6 characters.');
+    return;
+  }
+  if (pw !== confirm) {
+    showFormError('password-error', 'Passwords do not match.');
+    return;
+  }
+  const { error } = await sb.auth.updateUser({ password: pw });
+  if (error) {
+    showFormError('password-error', error.message);
+    return;
+  }
+  document.getElementById('password-form').reset();
+  document.getElementById('password-success').textContent = 'Password updated.';
+  document.getElementById('password-success').classList.remove('hidden');
+});
+
+async function updateCleanupNotifCount() {
+  if (!currentUser) return;
+  const { count } = await sb
+    .from('notifications')
+    .select('*', { count: 'exact', head: true })
+    .eq('actor_id', currentUser.id);
+  document.getElementById('cleanup-notif-count').textContent = `${count || 0} logged`;
+}
+
+document.getElementById('cleanup-notif-btn').addEventListener('click', async () => {
+  clearFormError('cleanup-error');
+  document.getElementById('cleanup-success').classList.add('hidden');
+  if (!confirm('Clear all notifications you triggered? This cannot be undone.')) return;
+  const { error } = await sb.from('notifications').delete().eq('actor_id', currentUser.id);
+  if (error) {
+    showFormError('cleanup-error', error.message);
+    return;
+  }
+  updateCleanupNotifCount();
+  loadNotificationsPage();
+  refreshNotifications();
+  document.getElementById('cleanup-success').textContent = 'Notifications cleared.';
+  document.getElementById('cleanup-success').classList.remove('hidden');
+});
+
+document.getElementById('cleanup-daily-btn').addEventListener('click', async () => {
+  clearFormError('cleanup-error');
+  document.getElementById('cleanup-success').classList.add('hidden');
+  const cutoff = document.getElementById('cleanup-daily-date').value;
+  if (!cutoff) {
+    showFormError('cleanup-error', 'Pick a date first — entries older than that will be removed.');
+    return;
+  }
+  if (!confirm(`Remove all your daily log entries before ${cutoff}? This cannot be undone.`)) return;
+  const { error, count } = await sb
+    .from('daily_reports')
+    .delete({ count: 'exact' })
+    .eq('owner_id', currentUser.id)
+    .lt('report_date', cutoff);
+  if (error) {
+    showFormError('cleanup-error', error.message);
+    return;
+  }
+  loadReports();
+  document.getElementById('cleanup-success').textContent = `Cleared ${count ?? ''} old daily log entr${count === 1 ? 'y' : 'ies'}.`;
+  document.getElementById('cleanup-success').classList.remove('hidden');
+});
 
 // ---------- Tabs ----------
 

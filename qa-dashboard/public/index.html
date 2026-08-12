@@ -66,6 +66,8 @@
         <button class="tab" data-tab="details">Project Details</button>
         <button class="tab" data-tab="daily">Daily Log</button>
         <button class="tab" data-tab="team">Team</button>
+        <button class="tab" data-tab="notifications">Notifications<span id="sidebar-notif-badge" class="notif-badge hidden">0</span></button>
+        <button class="tab" data-tab="settings">Settings</button>
       </nav>
 
       <div class="tab-content">
@@ -333,6 +335,104 @@
           appear in this list the first time they sign in.
         </p>
         <div id="team-list" class="team-list"></div>
+      </div>
+    </section>
+
+    <!-- NOTIFICATIONS TAB -->
+    <section id="tab-notifications" class="tab-panel">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>All activity</h2>
+          <div class="panel-head-right">
+            <span class="count" id="notif-page-count"></span>
+            <button id="notif-clear-btn" class="btn btn-ghost">Clear my notifications</button>
+          </div>
+        </div>
+        <p class="gate-copy" style="margin:0 0 14px;text-align:left;">
+          Notifications older than 30 days are cleared automatically every day to save
+          storage. "Clear my notifications" removes only the ones you triggered.
+        </p>
+        <div id="notif-page-list" class="notif-list notif-page-list"></div>
+        <p class="empty-state" id="notif-page-empty">No activity yet.</p>
+      </div>
+    </section>
+
+    <!-- SETTINGS TAB -->
+    <section id="tab-settings" class="tab-panel">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>My profile</h2>
+        </div>
+        <form id="profile-form" class="grid-form">
+          <label>Display name
+            <input type="text" id="settings-display-name" placeholder="Your name" maxlength="80" />
+          </label>
+          <label>Email
+            <input type="text" id="settings-email" disabled />
+          </label>
+          <div class="span-2 form-actions">
+            <button type="submit" class="btn btn-primary">Save profile</button>
+          </div>
+        </form>
+        <p id="profile-error" class="login-error hidden"></p>
+        <p id="profile-success" class="login-success hidden"></p>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Change password</h2>
+        </div>
+        <form id="password-form" class="grid-form">
+          <label>New password
+            <input type="password" id="settings-new-password" minlength="6" autocomplete="new-password" />
+          </label>
+          <label>Confirm new password
+            <input type="password" id="settings-confirm-password" minlength="6" autocomplete="new-password" />
+          </label>
+          <div class="span-2 form-actions">
+            <button type="submit" class="btn btn-primary">Update password</button>
+          </div>
+        </form>
+        <p id="password-error" class="login-error hidden"></p>
+        <p id="password-success" class="login-success hidden"></p>
+      </div>
+
+      <div id="settings-permissions-panel" class="panel hidden">
+        <div class="panel-head">
+          <h2>Role & permissions</h2>
+          <span class="count" id="settings-team-count"></span>
+        </div>
+        <p class="gate-copy" style="margin:0 0 14px;text-align:left;">
+          As team leader, you can promote or demote anyone here. This is the same list
+          shown on the Team tab.
+        </p>
+        <div id="settings-team-list" class="team-list"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Data & storage cleanup</h2>
+        </div>
+        <p class="gate-copy" style="margin:0 0 14px;text-align:left;">
+          Free up storage by clearing your own old data. This only removes items you
+          created — nothing belonging to teammates.
+        </p>
+        <div class="cleanup-row">
+          <div>
+            <p class="detail-label">My notifications</p>
+            <p class="detail-value" id="cleanup-notif-count">—</p>
+          </div>
+          <button id="cleanup-notif-btn" class="btn btn-ghost">Clear all my notifications</button>
+        </div>
+        <div class="cleanup-row">
+          <div>
+            <p class="detail-label">My daily logs older than</p>
+            <input type="date" id="cleanup-daily-date" />
+          </div>
+          <button id="cleanup-daily-btn" class="btn btn-ghost">Clear old daily logs</button>
+        </div>
+        <p id="cleanup-error" class="login-error hidden"></p>
+        <p id="cleanup-success" class="login-success hidden"></p>
       </div>
     </section>
 
