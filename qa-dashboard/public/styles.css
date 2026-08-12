@@ -131,10 +131,6 @@ html[data-theme="light"] .modal {
   0%, 100% { transform: translate(-4%, 6%) scale(1); }
   50% { transform: translate(5%, -5%) scale(1.08); }
 }
-@keyframes scanline {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
 
 body {
   margin: 0;
@@ -330,10 +326,24 @@ h2 {
   position: absolute;
   bottom: -1px; left: 0;
   width: 100%; height: 2px;
-  background: linear-gradient(90deg, transparent, var(--cyan) 15%, var(--accent2) 50%, var(--cyan) 85%, transparent);
-  background-size: 50% 100%;
-  animation: scanline 3.5s linear infinite;
-  box-shadow: 0 0 14px rgba(45, 212, 191, 0.6);
+  background: linear-gradient(90deg, transparent, var(--cyan) 20%, var(--accent2) 50%, var(--cyan) 80%, transparent);
+  box-shadow: 0 0 10px rgba(45, 212, 191, 0.4);
+}
+@keyframes driveAcross {
+  0% { left: -6%; opacity: 0; transform: scaleX(1); }
+  6% { opacity: 1; }
+  94% { opacity: 1; }
+  100% { left: 104%; opacity: 0; transform: scaleX(1); }
+}
+.road-car {
+  position: absolute;
+  bottom: -13px;
+  left: -6%;
+  font-size: 18px;
+  line-height: 1;
+  animation: driveAcross 14s linear infinite;
+  filter: drop-shadow(0 0 6px rgba(45, 212, 191, 0.7));
+  pointer-events: none;
 }
 .who { display: flex; align-items: center; gap: 12px; }
 .who-email { font-family: var(--font-mono); font-size: 12px; color: var(--ink-soft); }
