@@ -950,6 +950,18 @@ select option:focus {
 }
 .task-row input[type="text"] { flex: 1; }
 .btn-small { padding: 7px 14px; font-size: 12px; }
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 16px;
+}
+.pager-info {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-soft);
+}
 
 .details-grid {
   display: grid;

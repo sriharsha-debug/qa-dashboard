@@ -242,6 +242,10 @@ async function refreshNotifications() {
   });
 }
 
+let notifPageAll = [];
+let notifPageNum = 1;
+const NOTIF_PAGE_SIZE = 15;
+
 async function loadNotificationsPage() {
   const { data, error } = await sb
     .from('notifications')
@@ -252,13 +256,25 @@ async function loadNotificationsPage() {
     console.error(error);
     return;
   }
+  notifPageAll = data;
+  notifPageNum = 1;
+  renderNotifPage();
+}
+
+function renderNotifPage() {
   const list = document.getElementById('notif-page-list');
   const empty = document.getElementById('notif-page-empty');
   const count = document.getElementById('notif-page-count');
-  count.textContent = data.length ? `${data.length} shown` : '';
+  const totalPages = Math.max(1, Math.ceil(notifPageAll.length / NOTIF_PAGE_SIZE));
+  if (notifPageNum > totalPages) notifPageNum = totalPages;
+
+  count.textContent = notifPageAll.length ? `${notifPageAll.length} total` : '';
   list.innerHTML = '';
-  empty.style.display = data.length ? 'none' : 'block';
-  data.forEach((n) => {
+  empty.style.display = notifPageAll.length ? 'none' : 'block';
+
+  const start = (notifPageNum - 1) * NOTIF_PAGE_SIZE;
+  const pageItems = notifPageAll.slice(start, start + NOTIF_PAGE_SIZE);
+  pageItems.forEach((n) => {
     const row = document.createElement('div');
     row.className = 'notif-item';
     row.innerHTML = `
@@ -267,19 +283,50 @@ async function loadNotificationsPage() {
     `;
     list.appendChild(row);
   });
+
+  renderPager('notif-page-pager', notifPageNum, totalPages, (dir) => {
+    notifPageNum += dir;
+    renderNotifPage();
+  });
 }
 
 document.getElementById('notif-clear-btn').addEventListener('click', async () => {
   if (!currentUser) return;
   if (!confirm('Clear all notifications you triggered? This cannot be undone.')) return;
-  const { error } = await sb.from('notifications').delete().eq('actor_id', currentUser.id);
+  const { error, count } = await sb
+    .from('notifications')
+    .delete({ count: 'exact' })
+    .eq('actor_id', currentUser.id);
   if (error) {
     alert(error.message);
+    return;
+  }
+  if (!count) {
+    alert('Nothing was deleted. This usually means migration-v16.sql (which adds the missing delete permission) hasn\'t been run in Supabase yet — run it in the SQL Editor, then try again.');
     return;
   }
   loadNotificationsPage();
   refreshNotifications();
 });
+
+// ---------- Simple pager helper ----------
+
+function renderPager(containerId, page, totalPages, onChange) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  if (totalPages <= 1) {
+    el.innerHTML = '';
+    return;
+  }
+  el.innerHTML = `
+    <button type="button" class="btn btn-ghost btn-small" data-dir="-1" ${page <= 1 ? 'disabled' : ''}>‹ Prev</button>
+    <span class="pager-info">Page ${page} of ${totalPages}</span>
+    <button type="button" class="btn btn-ghost btn-small" data-dir="1" ${page >= totalPages ? 'disabled' : ''}>Next ›</button>
+  `;
+  el.querySelectorAll('button[data-dir]').forEach((btn) => {
+    btn.addEventListener('click', () => onChange(Number(btn.dataset.dir)));
+  });
+}
 
 function timeAgo(dateStr) {
   const diffMs = Date.now() - new Date(dateStr).getTime();
@@ -477,15 +524,22 @@ document.getElementById('cleanup-notif-btn').addEventListener('click', async () 
   clearFormError('cleanup-error');
   document.getElementById('cleanup-success').classList.add('hidden');
   if (!confirm('Clear all notifications you triggered? This cannot be undone.')) return;
-  const { error } = await sb.from('notifications').delete().eq('actor_id', currentUser.id);
+  const { error, count } = await sb
+    .from('notifications')
+    .delete({ count: 'exact' })
+    .eq('actor_id', currentUser.id);
   if (error) {
     showFormError('cleanup-error', error.message);
+    return;
+  }
+  if (!count) {
+    showFormError('cleanup-error', 'Nothing was deleted — run migration-v16.sql in Supabase (it adds the missing delete permission), then try again.');
     return;
   }
   updateCleanupNotifCount();
   loadNotificationsPage();
   refreshNotifications();
-  document.getElementById('cleanup-success').textContent = 'Notifications cleared.';
+  document.getElementById('cleanup-success').textContent = `Cleared ${count} notification${count === 1 ? '' : 's'}.`;
   document.getElementById('cleanup-success').classList.remove('hidden');
 });
 
@@ -1046,6 +1100,7 @@ async function showProjectDetails(id) {
   detailsEditBtn.onclick = () => openEditModal(id);
 
   loadApkShares(id);
+  tcPageNum = 1;
   loadTestCases(id);
 }
 
@@ -1115,10 +1170,10 @@ async function loadTestCases(projectId) {
   tcCache = data || [];
 }
 
-function renderTestCases(cases, projectId) {
-  tcList.innerHTML = '';
-  tcEmpty.style.display = cases.length ? 'none' : 'block';
+let tcPageNum = 1;
+const TC_PAGE_SIZE = 8;
 
+function renderTestCases(cases, projectId) {
   const counts = { 'Not Run': 0, Pass: 0, Fail: 0, Blocked: 0 };
   const catCounts = {};
   cases.forEach((c) => {
@@ -1131,7 +1186,15 @@ function renderTestCases(cases, projectId) {
     ? `${cases.length} total · ${counts.Pass} pass · ${counts.Fail} fail · ${counts.Blocked} blocked · ${counts['Not Run']} not run — ${catBreakdown}`
     : '';
 
-  cases.forEach((c) => {
+  const totalPages = Math.max(1, Math.ceil(cases.length / TC_PAGE_SIZE));
+  if (tcPageNum > totalPages) tcPageNum = totalPages;
+  const start = (tcPageNum - 1) * TC_PAGE_SIZE;
+  const pageCases = cases.slice(start, start + TC_PAGE_SIZE);
+
+  tcList.innerHTML = '';
+  tcEmpty.style.display = cases.length ? 'none' : 'block';
+
+  pageCases.forEach((c) => {
     const row = document.createElement('div');
     row.className = 'tc-row';
     row.innerHTML = `
@@ -1154,6 +1217,11 @@ function renderTestCases(cases, projectId) {
       </div>
     `;
     tcList.appendChild(row);
+  });
+
+  renderPager('tc-pager', tcPageNum, totalPages, (dir) => {
+    tcPageNum += dir;
+    renderTestCases(cases, projectId);
   });
 
   tcList.querySelectorAll('.tc-status-select').forEach((sel) => {
