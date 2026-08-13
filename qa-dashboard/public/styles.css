@@ -443,6 +443,7 @@ h2 {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
   padding: 12px 14px;
   border: 1px solid var(--line-strong);
   background: var(--panel-2);
@@ -469,11 +470,13 @@ h2 {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  flex-wrap: wrap;
   padding: 14px 4px;
   border-bottom: 1px solid var(--line);
 }
 .cleanup-row:last-of-type { border-bottom: none; }
 .cleanup-row input[type="date"] { margin-top: 4px; }
+.cleanup-row .btn { flex-shrink: 0; }
 
 /* App shell: sidebar layout */
 .app-body {
@@ -684,7 +687,7 @@ select option:focus {
   color: var(--accent);
 }
 .span-2 { grid-column: span 2; }
-.form-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.form-actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
 #edit-form .form-actions { justify-content: space-between; }
 
 .signoff-field { flex-direction: row !important; align-items: center; gap: 10px !important; }
@@ -822,7 +825,8 @@ select option:focus {
   font-size: 12px;
   color: var(--ink-soft);
   display: flex;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 6px 10px;
   align-items: baseline;
 }
 .report-head .proj-name { font-family: var(--font-body); font-weight: 600; font-size: 15px; color: var(--ink); }
@@ -842,6 +846,11 @@ select option:focus {
 .report-delete, .report-share { justify-self: end; }
 .report-card { grid-template-columns: 1fr auto auto; }
 .report-body { grid-column: 1 / -1; }
+
+@media (max-width: 520px) {
+  .report-card { grid-template-columns: 1fr; }
+  .report-delete, .report-share { justify-self: start; }
+}
 
 .stamp {
   position: absolute;
@@ -1021,6 +1030,7 @@ select option:focus {
   border-radius: 16px;
   padding: 12px 16px;
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
@@ -1047,6 +1057,7 @@ select option:focus {
 }
 .tc-row-top {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
@@ -1054,6 +1065,7 @@ select option:focus {
 .tc-row-title { font-weight: 600; font-size: 14px; color: var(--ink); }
 .tc-row-meta {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
   font-family: var(--font-mono);
@@ -1117,12 +1129,15 @@ select option:focus {
   position: fixed;
   bottom: 24px;
   right: 24px;
+  left: 24px;
   z-index: 200;
   display: flex;
   flex-direction: column;
+  align-items: flex-end;
   gap: 10px;
   pointer-events: none;
 }
+.celebrate-toast { max-width: 100%; }
 .celebrate-toast {
   background: var(--grad-mix);
   color: #06131A;
@@ -1175,5 +1190,11 @@ select option:focus {
   .modal { padding: 18px 16px; border-radius: 18px; }
   .details-select { max-width: none; }
   .whatsapp-textarea { font-size: 13px; }
-  .notif-panel { right: -8px; }
+  .notif-panel { right: -8px; width: calc(100vw - 32px); }
+  .tab { padding: 10px 12px; font-size: 12px; }
+  .sidebar { gap: 6px; }
+  .cleanup-row { align-items: flex-start; }
+  .cleanup-row .btn { width: 100%; }
+  .celebrate-toast-wrap { bottom: 16px; right: 16px; left: 16px; }
+  .pager { flex-wrap: wrap; gap: 8px; }
 }
