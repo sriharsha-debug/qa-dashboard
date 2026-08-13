@@ -302,7 +302,7 @@ document.getElementById('notif-clear-btn').addEventListener('click', async () =>
     return;
   }
   if (!count) {
-    alert('Nothing was deleted. This usually means the notifications delete permission hasn\'t been added in Supabase yet — see migration-v16.sql (or the standalone policy snippet), run it, then try again.');
+    alert("Couldn't clear notifications right now — please try again, or contact your admin.");
     return;
   }
   loadNotificationsPage();
@@ -321,7 +321,7 @@ notifClearAllBtn.addEventListener('click', async () => {
     return;
   }
   if (!count) {
-    alert('Nothing was deleted. Make sure the notifications delete permission has been added in Supabase (migration-v16.sql or the standalone policy snippet).');
+    alert("Couldn't clear notifications right now — please try again, or contact your admin.");
     return;
   }
   loadNotificationsPage();
@@ -553,7 +553,7 @@ document.getElementById('cleanup-notif-btn').addEventListener('click', async () 
     return;
   }
   if (!count) {
-    showFormError('cleanup-error', 'Nothing was deleted — run migration-v16.sql in Supabase (it adds the missing delete permission), then try again.');
+    showFormError('cleanup-error', "Couldn't clear notifications right now — please try again, or contact your admin.");
     return;
   }
   updateCleanupNotifCount();
@@ -1483,27 +1483,56 @@ aiCopyPromptBtn.addEventListener('click', async () => {
   setTimeout(() => { aiCopyPromptBtn.textContent = original; }, 2500);
 });
 
+function tryParseTestCasesJson(raw) {
+  let text = raw.trim();
+  text = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+  const start = text.indexOf('[');
+  if (start === -1) return null;
+  text = text.slice(start);
+
+  // Try a straightforward parse first (handles a clean, complete paste)
+  try {
+    return JSON.parse(text);
+  } catch { /* fall through to repair attempt below */ }
+
+  // The paste may have been cut off partway through. Find the last fully
+  // closed object in the array and salvage everything up to there.
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  let lastGoodEnd = -1;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) { escape = false; continue; }
+    if (ch === '\\') { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') depth++;
+    if (ch === '}') {
+      depth--;
+      if (depth === 0) lastGoodEnd = i;
+    }
+  }
+  if (lastGoodEnd !== -1) {
+    try {
+      return JSON.parse(text.slice(0, lastGoodEnd + 1) + ']');
+    } catch { /* give up below */ }
+  }
+  return null;
+}
+
 aiParseBtn.addEventListener('click', () => {
   clearFormError('ai-gen-error');
   aiPreview.classList.add('hidden');
-  let raw = aiResponseText.value.trim();
+  const raw = aiResponseText.value.trim();
   if (!raw) {
     showFormError('ai-gen-error', 'Paste the AI\'s reply above first.');
     return;
   }
-  raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
 
-  const start = raw.indexOf('[');
-  const end = raw.lastIndexOf(']');
-  if (start !== -1 && end !== -1 && end > start) {
-    raw = raw.slice(start, end + 1);
-  }
-
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    showFormError('ai-gen-error', 'Could not read that as JSON. Make sure you pasted the AI\'s full reply, including the [ ] brackets.');
+  const parsed = tryParseTestCasesJson(raw);
+  if (!parsed) {
+    showFormError('ai-gen-error', 'Couldn\'t read that reply — the paste may have been cut off. Try copying the AI\'s reply again from the very start ("[") to the very end ("]").');
     return;
   }
   if (!Array.isArray(parsed) || !parsed.length) {
