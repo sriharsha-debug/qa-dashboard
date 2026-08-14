@@ -516,6 +516,7 @@
           <div class="panel-head-right">
             <span class="count" id="audit-count"></span>
             <button id="download-audit-btn" class="btn btn-ghost">Download</button>
+            <button id="audit-clear-btn" class="btn btn-ghost hidden">Clear all logs</button>
           </div>
         </div>
         <div class="filters">
@@ -706,6 +707,96 @@
         <button id="whatsapp-copy" class="btn btn-primary">Copy message</button>
         <a id="whatsapp-open" class="btn btn-ghost" target="_blank" rel="noopener">Open in WhatsApp</a>
       </div>
+    </div>
+  </div>
+
+  <!-- Bug detail / edit modal -->
+  <div id="bug-modal" class="modal-overlay hidden">
+    <div class="modal modal-large">
+      <div class="modal-head">
+        <h2>Bug details</h2>
+        <button id="bug-modal-close" class="icon-btn">close</button>
+      </div>
+      <form id="bug-edit-form" class="grid-form">
+        <input type="hidden" id="be-id" />
+        <label class="span-2">Bug title
+          <input type="text" id="be-title" required maxlength="200" />
+        </label>
+        <label>Page
+          <input type="text" id="be-page" required maxlength="120" />
+        </label>
+        <label>Module
+          <input type="text" id="be-module" maxlength="120" />
+        </label>
+        <label class="span-2">Sub module
+          <input type="text" id="be-sub-module" maxlength="200" />
+        </label>
+        <label>Severity
+          <select id="be-severity">
+            <option value="Low">Low</option>
+            <option value="Medium">Medium</option>
+            <option value="High">High</option>
+            <option value="Critical">Critical</option>
+          </select>
+        </label>
+        <label>Status
+          <select id="be-status">
+            <option value="Open">Open</option>
+            <option value="In Progress">In Progress</option>
+            <option value="Fixed">Fixed</option>
+            <option value="Retest">Retest</option>
+            <option value="Closed">Closed</option>
+            <option value="Reopened">Reopened</option>
+          </select>
+        </label>
+        <label>Reported by
+          <input type="text" id="be-reported-by" maxlength="80" />
+        </label>
+        <label>Developer status
+          <select id="be-developer-status">
+            <option value="Not Started">Not Started</option>
+            <option value="In Progress">In Progress</option>
+            <option value="Fixed">Fixed</option>
+            <option value="Cannot Reproduce">Cannot Reproduce</option>
+            <option value="Need Info">Need Info</option>
+            <option value="Won't Fix">Won't Fix</option>
+          </select>
+        </label>
+        <label>Retest status
+          <select id="be-retest-status">
+            <option value="Not Retested">Not Retested</option>
+            <option value="Pass">Pass</option>
+            <option value="Fail">Fail</option>
+            <option value="Blocked">Blocked</option>
+          </select>
+        </label>
+        <label class="span-2">Steps to reproduce
+          <textarea id="be-steps" rows="3" maxlength="1000"></textarea>
+        </label>
+        <label>Expected result
+          <textarea id="be-expected" rows="2" maxlength="1000"></textarea>
+        </label>
+        <label>Actual result
+          <textarea id="be-actual" rows="2" maxlength="1000"></textarea>
+        </label>
+        <label class="span-2">Description
+          <textarea id="be-description" rows="2" maxlength="1000"></textarea>
+        </label>
+        <label>Developer comments
+          <textarea id="be-developer-comments" rows="2" maxlength="1000"></textarea>
+        </label>
+        <label>Manager comments
+          <textarea id="be-manager-comments" rows="2" maxlength="1000"></textarea>
+        </label>
+        <label class="span-2">Notes
+          <input type="text" id="be-notes" maxlength="500" />
+        </label>
+        <p id="bug-edit-error" class="login-error hidden span-2"></p>
+        <div class="span-2 form-actions">
+          <button type="button" id="bug-edit-delete" class="btn btn-ghost">Remove bug</button>
+          <button type="submit" class="btn btn-primary">Save bug</button>
+        </div>
+      </form>
     </div>
   </div>
 

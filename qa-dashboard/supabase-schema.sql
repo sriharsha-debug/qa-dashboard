@@ -207,6 +207,11 @@ create policy "audit_logs_leader_select" on audit_logs
   for select
   using (is_team_leader());
 
+drop policy if exists "audit_logs_leader_delete" on audit_logs;
+create policy "audit_logs_leader_delete" on audit_logs
+  for delete
+  using (is_team_leader());
+
 create or replace function write_audit_log()
 returns trigger
 language plpgsql

@@ -624,6 +624,7 @@ function auditChangedFields(row) {
 }
 
 async function loadAuditLogs() {
+  document.getElementById('audit-clear-btn')?.classList.toggle('hidden', !isLeader());
   if (!isLeader()) return;
   let query = sb.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(500);
   const action = document.getElementById('audit-filter-action')?.value || '';
@@ -651,6 +652,24 @@ async function loadAuditLogs() {
   }
   renderAuditLogs();
 }
+
+document.getElementById('audit-clear-btn')?.addEventListener('click', async () => {
+  if (!isLeader()) return;
+  if (!confirm('Clear ALL audit log history? This is permanent and cannot be undone.')) return;
+  const { error, count } = await sb
+    .from('audit_logs')
+    .delete({ count: 'exact' })
+    .not('id', 'is', null);
+  if (error) {
+    alert(error.message);
+    return;
+  }
+  if (!count) {
+    alert("Couldn't clear audit logs — make sure migration-v20.sql has been run.");
+    return;
+  }
+  loadAuditLogs();
+});
 
 function renderAuditLogs() {
   const list = document.getElementById('audit-list');
@@ -1548,6 +1567,102 @@ bugForm.addEventListener('submit', async (e) => {
   loadBugs(project_id);
 });
 
+// ---------- Bug detail / edit modal ----------
+
+const bugModal = document.getElementById('bug-modal');
+const bugEditForm = document.getElementById('bug-edit-form');
+
+function openBugModal(id) {
+  const b = bugCache.find((x) => x.id === id);
+  if (!b) return;
+  clearFormError('bug-edit-error');
+  document.getElementById('be-id').value = b.id;
+  document.getElementById('be-title').value = b.title || '';
+  document.getElementById('be-page').value = b.page || '';
+  document.getElementById('be-module').value = b.module || '';
+  document.getElementById('be-sub-module').value = b.sub_module || '';
+  document.getElementById('be-severity').value = b.severity || 'Medium';
+  document.getElementById('be-status').value = b.status || 'Open';
+  document.getElementById('be-reported-by').value = b.reported_by || '';
+  document.getElementById('be-developer-status').value = b.developer_status || 'Not Started';
+  document.getElementById('be-retest-status').value = b.retest_status || 'Not Retested';
+  document.getElementById('be-steps').value = b.steps_to_reproduce || '';
+  document.getElementById('be-expected').value = b.expected_result || '';
+  document.getElementById('be-actual').value = b.actual_result || '';
+  document.getElementById('be-description').value = b.description || '';
+  document.getElementById('be-developer-comments').value = b.developer_comments || '';
+  document.getElementById('be-manager-comments').value = b.manager_comments || '';
+  document.getElementById('be-notes').value = b.notes || '';
+  bugModal.classList.remove('hidden');
+}
+
+function closeBugModal() {
+  bugModal.classList.add('hidden');
+}
+
+document.getElementById('bug-modal-close').addEventListener('click', closeBugModal);
+bugModal.addEventListener('click', (e) => {
+  if (e.target === bugModal) closeBugModal();
+});
+
+bugEditForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearFormError('bug-edit-error');
+  const id = document.getElementById('be-id').value;
+  const title = document.getElementById('be-title').value.trim();
+  const page = document.getElementById('be-page').value.trim();
+  if (!title || title.length < 3) {
+    showFormError('bug-edit-error', 'Bug title must be at least 3 characters.');
+    return;
+  }
+  if (!page) {
+    showFormError('bug-edit-error', 'Page is required.');
+    return;
+  }
+  const payload = {
+    title,
+    page,
+    module: document.getElementById('be-module').value.trim() || null,
+    sub_module: document.getElementById('be-sub-module').value.trim() || null,
+    severity: document.getElementById('be-severity').value,
+    status: document.getElementById('be-status').value,
+    reported_by: document.getElementById('be-reported-by').value.trim() || null,
+    developer_status: document.getElementById('be-developer-status').value,
+    retest_status: document.getElementById('be-retest-status').value,
+    steps_to_reproduce: document.getElementById('be-steps').value.trim() || null,
+    expected_result: document.getElementById('be-expected').value.trim() || null,
+    actual_result: document.getElementById('be-actual').value.trim() || null,
+    description: document.getElementById('be-description').value.trim() || null,
+    developer_comments: document.getElementById('be-developer-comments').value.trim() || null,
+    manager_comments: document.getElementById('be-manager-comments').value.trim() || null,
+    notes: document.getElementById('be-notes').value.trim() || null,
+    updated_at: new Date().toISOString(),
+  };
+  const { error } = await sb.from('bugs').update(payload).eq('id', id);
+  if (error) {
+    showFormError('bug-edit-error', error.message);
+    return;
+  }
+  notify(`${actorLabel()} updated bug "${title}"`, 'bug', 'update');
+  closeBugModal();
+  loadBugs(bugsSelect.value);
+});
+
+document.getElementById('bug-edit-delete').addEventListener('click', async () => {
+  const id = document.getElementById('be-id').value;
+  const title = document.getElementById('be-title').value;
+  if (!id) return;
+  if (!confirm('Remove this bug? This cannot be undone.')) return;
+  const { error } = await sb.from('bugs').delete().eq('id', id);
+  if (error) {
+    showFormError('bug-edit-error', error.message);
+    return;
+  }
+  notify(`${actorLabel()} removed bug "${title}"`, 'bug', 'delete');
+  closeBugModal();
+  loadBugs(bugsSelect.value);
+});
+
 async function loadBugs(projectId) {
   const { data, error } = await sb
     .from('bugs')
@@ -1595,7 +1710,7 @@ function renderBugs(bugs, projectId) {
     row.innerHTML = `
       <div class="tc-row-top">
         <div>
-          <div class="tc-row-title">${escapeHtml(b.title)}</div>
+          <div class="tc-row-title"><button type="button" class="project-link" data-bug-edit="${b.id}">${escapeHtml(b.title)}</button></div>
           <div class="tc-row-meta">
             ${b.module ? `<span class="pill" style="${pillStyle('#38BDF8')}">Module: ${escapeHtml(b.module)}</span>` : ''}
             ${b.sub_module ? `<span class="pill" style="${pillStyle('#38BDF8')}">Sub module: ${escapeHtml(b.sub_module)}</span>` : ''}
@@ -1623,6 +1738,10 @@ function renderBugs(bugs, projectId) {
       </div>
     `;
     bugList.appendChild(row);
+  });
+
+  bugList.querySelectorAll('[data-bug-edit]').forEach((btn) => {
+    btn.addEventListener('click', () => openBugModal(btn.dataset.bugEdit));
   });
 
   renderPager('bug-pager', bugPageNum, totalPages, (dir) => {
