@@ -68,6 +68,7 @@
       <nav class="sidebar">
         <button class="tab active" data-tab="projects">Projects</button>
         <button class="tab" data-tab="details">Project Details</button>
+        <button class="tab" data-tab="bugs">Bugs</button>
         <button class="tab" data-tab="daily">Daily Log</button>
         <button class="tab" data-tab="team">Team</button>
         <button class="tab" data-tab="notifications">Notifications<span id="sidebar-notif-badge" class="notif-badge hidden">0</span></button>
@@ -226,6 +227,89 @@
 
         <div class="panel">
           <div class="panel-head">
+            <h2>APK shares</h2>
+            <span class="count" id="apk-count"></span>
+          </div>
+          <form id="apk-form" class="grid-form">
+            <label>Version / label
+              <input type="text" id="apk-version" placeholder="e.g. v1.4.2" maxlength="60" />
+            </label>
+            <label>Shared date
+              <input type="date" id="apk-date" required />
+            </label>
+            <label class="span-2">APK link
+              <input type="url" id="apk-link" placeholder="https://..." maxlength="500" />
+            </label>
+            <label>Shared by
+              <input type="text" id="apk-shared-by" placeholder="Developer name" maxlength="80" />
+            </label>
+            <label class="span-2">Notes
+              <input type="text" id="apk-notes" placeholder="What changed in this build" maxlength="500" />
+            </label>
+            <div class="span-2 form-actions">
+              <button type="submit" class="btn btn-primary">Log APK</button>
+            </div>
+          </form>
+          <p id="apk-error" class="login-error hidden"></p>
+          <div id="apk-list" class="apk-list"></div>
+          <p class="empty-state" id="apk-empty">No APKs logged yet for this project.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- BUGS TAB -->
+    <section id="tab-bugs" class="tab-panel">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Select a project</h2>
+        </div>
+        <select id="bugs-project-select" class="details-select"></select>
+      </div>
+
+      <div id="bugs-tab-empty" class="panel">
+        <p class="empty-state" style="display:block;">Add a project to log bugs here.</p>
+      </div>
+
+      <div id="bugs-tab-content" class="hidden">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Import bugs from Google Sheet</h2>
+          </div>
+          <p class="gate-copy" style="margin:0 0 14px;text-align:left;">
+            Paste a shareable Google Sheet link to auto-fetch its rows, or copy
+            rows straight from the sheet and paste them below. Expected columns
+            (any order, header row optional): <b>Title, Page, Severity, Status,
+            Reported By, Description, Notes</b> — Title and Page are required,
+            the rest are optional.
+          </p>
+          <div class="grid-form">
+            <label class="span-2">Google Sheet link (shared as "Anyone with the link can view")
+              <input type="url" id="bug-import-sheet-url" placeholder="https://docs.google.com/spreadsheets/d/..." maxlength="500" />
+            </label>
+            <div class="span-2 form-actions" style="justify-content:flex-start;">
+              <button type="button" id="bug-import-fetch-btn" class="btn btn-ghost">Fetch from link</button>
+            </div>
+            <label class="span-2">Or paste rows copied from your sheet
+              <textarea id="bug-import-text" rows="4" placeholder="Title&#9;Page&#9;Severity&#9;Status&#9;Reported By&#9;Description&#9;Notes"></textarea>
+            </label>
+            <div class="span-2 form-actions" style="justify-content:flex-start;">
+              <button type="button" id="bug-import-parse-btn" class="btn btn-primary">Parse rows</button>
+            </div>
+          </div>
+          <p id="bug-import-error" class="login-error hidden"></p>
+
+          <div id="bug-import-preview" class="ai-preview hidden">
+            <p class="detail-label">Review and add</p>
+            <div id="bug-import-preview-list" class="ai-preview-list"></div>
+            <div class="form-actions" style="justify-content:flex-start; gap:10px;">
+              <button type="button" id="bug-import-add-selected" class="btn btn-primary">Add selected to Bugs</button>
+              <button type="button" id="bug-import-discard" class="btn btn-ghost">Discard</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
             <h2>Bugs</h2>
             <div class="panel-head-right">
               <span class="count" id="bug-summary"></span>
@@ -275,36 +359,6 @@
           <div id="bug-list" class="tc-list"></div>
           <p class="empty-state" id="bug-empty">No bugs logged yet for this project.</p>
           <div id="bug-pager" class="pager"></div>
-        </div>
-
-        <div class="panel">
-          <div class="panel-head">
-            <h2>APK shares</h2>
-            <span class="count" id="apk-count"></span>
-          </div>
-          <form id="apk-form" class="grid-form">
-            <label>Version / label
-              <input type="text" id="apk-version" placeholder="e.g. v1.4.2" maxlength="60" />
-            </label>
-            <label>Shared date
-              <input type="date" id="apk-date" required />
-            </label>
-            <label class="span-2">APK link
-              <input type="url" id="apk-link" placeholder="https://..." maxlength="500" />
-            </label>
-            <label>Shared by
-              <input type="text" id="apk-shared-by" placeholder="Developer name" maxlength="80" />
-            </label>
-            <label class="span-2">Notes
-              <input type="text" id="apk-notes" placeholder="What changed in this build" maxlength="500" />
-            </label>
-            <div class="span-2 form-actions">
-              <button type="submit" class="btn btn-primary">Log APK</button>
-            </div>
-          </form>
-          <p id="apk-error" class="login-error hidden"></p>
-          <div id="apk-list" class="apk-list"></div>
-          <p class="empty-state" id="apk-empty">No APKs logged yet for this project.</p>
         </div>
       </div>
     </section>

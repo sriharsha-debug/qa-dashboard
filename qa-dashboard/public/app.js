@@ -747,6 +747,7 @@ async function loadProjects() {
   renderProjects(data);
   renderProjectSelects(data);
   renderDetailsSelect();
+  renderBugsSelect();
 }
 
 function statusColor(name) {
@@ -1249,8 +1250,6 @@ async function showProjectDetails(id) {
   loadApkShares(id);
   tcPageNum = 1;
   loadTestCases(id);
-  bugPageNum = 1;
-  loadBugs(id);
 }
 
 // ---------- Test execution ----------
@@ -1407,12 +1406,40 @@ function renderTestCases(cases, projectId) {
   });
 }
 
-// ---------- Bugs ----------
+// ---------- Bugs (own tab, own project selector) ----------
 
+const bugsSelect = document.getElementById('bugs-project-select');
+const bugsTabEmpty = document.getElementById('bugs-tab-empty');
+const bugsTabContent = document.getElementById('bugs-tab-content');
 const bugForm = document.getElementById('bug-form');
 const bugList = document.getElementById('bug-list');
 const bugEmpty = document.getElementById('bug-empty');
 const bugSummary = document.getElementById('bug-summary');
+
+function renderBugsSelect() {
+  const opts = projectsCache.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+  bugsSelect.innerHTML = opts;
+  if (!projectsCache.length) {
+    bugsTabEmpty.classList.remove('hidden');
+    bugsTabContent.classList.add('hidden');
+    return;
+  }
+  bugsTabEmpty.classList.add('hidden');
+  const keep = projectsCache.find((p) => p.id === bugsSelect.dataset.current);
+  const targetId = keep ? keep.id : projectsCache[0].id;
+  bugsSelect.value = targetId;
+  showBugsForProject(targetId);
+}
+
+bugsSelect.addEventListener('change', () => showBugsForProject(bugsSelect.value));
+
+function showBugsForProject(id) {
+  if (!id) return;
+  bugsSelect.dataset.current = id;
+  bugsTabContent.classList.remove('hidden');
+  bugPageNum = 1;
+  loadBugs(id);
+}
 
 function bugSeverityColor(sev) {
   return { Low: '#34D399', Medium: '#FBBF24', High: '#FB923C', Critical: '#F87171' }[sev] || '#7FA0A6';
@@ -1429,10 +1456,18 @@ function bugStatusColor(status) {
   }[status] || '#7FA0A6';
 }
 
+function normalizeSeverity(v) {
+  return ['Low', 'Medium', 'High', 'Critical'].includes(v) ? v : 'Medium';
+}
+
+function normalizeBugStatus(v) {
+  return ['Open', 'In Progress', 'Fixed', 'Retest', 'Closed', 'Reopened'].includes(v) ? v : 'Open';
+}
+
 bugForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   clearFormError('bug-error');
-  const project_id = detailsSelect.value;
+  const project_id = bugsSelect.value;
   if (!project_id) return;
 
   const title = document.getElementById('bug-title').value.trim();
@@ -1566,6 +1601,236 @@ function renderBugs(bugs, projectId) {
     });
   });
 }
+
+// ---------- Import bugs from Google Sheet ----------
+
+const bugImportSheetUrl = document.getElementById('bug-import-sheet-url');
+const bugImportFetchBtn = document.getElementById('bug-import-fetch-btn');
+const bugImportText = document.getElementById('bug-import-text');
+const bugImportParseBtn = document.getElementById('bug-import-parse-btn');
+const bugImportPreview = document.getElementById('bug-import-preview');
+const bugImportPreviewList = document.getElementById('bug-import-preview-list');
+let bugImportRows = [];
+
+// Parses a single CSV/TSV line, respecting double-quoted fields (RFC4180-ish).
+function parseDelimitedLine(line, delim) {
+  const out = [];
+  let cur = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') { cur += '"'; i++; } else { inQuotes = false; }
+      } else {
+        cur += ch;
+      }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === delim) {
+      out.push(cur);
+      cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  out.push(cur);
+  return out;
+}
+
+function parseDelimitedText(text) {
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter((l) => l.trim() !== '');
+  if (!lines.length) return [];
+  const delim = lines[0].includes('\t') ? '\t' : ',';
+  return lines.map((l) => parseDelimitedLine(l, delim).map((c) => c.trim()));
+}
+
+function normalizeHeaderKey(h) {
+  return h.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+const BUG_HEADER_ALIASES = {
+  title: 'title',
+  bugtitle: 'title',
+  page: 'page',
+  screen: 'page',
+  severity: 'severity',
+  status: 'status',
+  reportedby: 'reported_by',
+  reporter: 'reported_by',
+  description: 'description',
+  desc: 'description',
+  stepstoreproduce: 'description',
+  notes: 'notes',
+  note: 'notes',
+};
+
+function rowsToBugObjects(rows) {
+  if (!rows.length) return [];
+  const firstRowKeys = rows[0].map((c) => BUG_HEADER_ALIASES[normalizeHeaderKey(c)]).filter(Boolean);
+  const hasHeader = firstRowKeys.includes('title') && firstRowKeys.includes('page');
+
+  let fieldMap; // index -> field name
+  let dataRows;
+  if (hasHeader) {
+    fieldMap = rows[0].map((c) => BUG_HEADER_ALIASES[normalizeHeaderKey(c)] || null);
+    dataRows = rows.slice(1);
+  } else {
+    // Assume the default column order when no recognizable header is present.
+    fieldMap = ['title', 'page', 'severity', 'status', 'reported_by', 'description', 'notes'];
+    dataRows = rows;
+  }
+
+  const objs = [];
+  dataRows.forEach((row) => {
+    const obj = {};
+    fieldMap.forEach((field, idx) => {
+      if (field) obj[field] = (row[idx] || '').trim();
+    });
+    if (!obj.title || !obj.page) return; // Title and Page are required
+    objs.push({
+      title: obj.title.slice(0, 200),
+      page: obj.page.slice(0, 120),
+      severity: normalizeSeverity(obj.severity),
+      status: normalizeBugStatus(obj.status),
+      reported_by: obj.reported_by ? obj.reported_by.slice(0, 80) : null,
+      description: obj.description ? obj.description.slice(0, 1000) : null,
+      notes: obj.notes ? obj.notes.slice(0, 500) : null,
+    });
+  });
+  return objs;
+}
+
+// Best-effort: works only for sheets shared as "Anyone with the link can view".
+// Google's CORS headers on this export endpoint aren't guaranteed, so if the
+// fetch fails we tell the user to paste the rows instead.
+function extractSheetIdAndGid(url) {
+  const idMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if (!idMatch) return null;
+  const gidMatch = url.match(/[#&?]gid=([0-9]+)/);
+  return { id: idMatch[1], gid: gidMatch ? gidMatch[1] : null };
+}
+
+bugImportFetchBtn.addEventListener('click', async () => {
+  clearFormError('bug-import-error');
+  const url = bugImportSheetUrl.value.trim();
+  if (!url) {
+    showFormError('bug-import-error', 'Paste a Google Sheet link above first.');
+    return;
+  }
+  const parts = extractSheetIdAndGid(url);
+  if (!parts) {
+    showFormError('bug-import-error', 'That doesn\'t look like a Google Sheets link.');
+    return;
+  }
+  const original = bugImportFetchBtn.textContent;
+  bugImportFetchBtn.textContent = 'Fetching...';
+  bugImportFetchBtn.disabled = true;
+  try {
+    const csvUrl = `https://docs.google.com/spreadsheets/d/${parts.id}/gviz/tq?tqx=out:csv${parts.gid ? `&gid=${parts.gid}` : ''}`;
+    const res = await fetch(csvUrl);
+    if (!res.ok) throw new Error('not ok');
+    const text = await res.text();
+    if (!text.trim()) throw new Error('empty');
+    bugImportText.value = text.trim();
+  } catch {
+    showFormError('bug-import-error', 'Couldn\'t fetch that sheet automatically (it may not be shared publicly, or your browser blocked the request). Open the sheet, select all the rows, copy them, and paste into the box below instead.');
+  } finally {
+    bugImportFetchBtn.textContent = original;
+    bugImportFetchBtn.disabled = false;
+  }
+});
+
+bugImportParseBtn.addEventListener('click', () => {
+  clearFormError('bug-import-error');
+  bugImportPreview.classList.add('hidden');
+  const raw = bugImportText.value.trim();
+  if (!raw) {
+    showFormError('bug-import-error', 'Paste sheet rows above first (or fetch from a link).');
+    return;
+  }
+  const rows = parseDelimitedText(raw);
+  const objs = rowsToBugObjects(rows);
+  if (!objs.length) {
+    showFormError('bug-import-error', 'No valid rows found — make sure each row has at least a Title and a Page.');
+    return;
+  }
+  bugImportRows = objs;
+  renderBugImportPreview(objs);
+});
+
+function renderBugImportPreview(bugs) {
+  bugImportPreviewList.innerHTML = '';
+
+  const summaryEl = document.createElement('p');
+  summaryEl.className = 'ai-coverage-summary';
+  summaryEl.textContent = `${bugs.length} bug${bugs.length === 1 ? '' : 's'} found`;
+  bugImportPreviewList.appendChild(summaryEl);
+
+  bugs.forEach((b, i) => {
+    const row = document.createElement('label');
+    row.className = 'ai-preview-item';
+    row.innerHTML = `
+      <input type="checkbox" class="bug-import-check" data-idx="${i}" checked />
+      <div>
+        <div class="ai-preview-item-title">
+          ${escapeHtml(b.title)}
+          <span class="pill" style="${pillStyle('#818CF8')}">Page: ${escapeHtml(b.page)}</span>
+          <span class="priority-pill priority-${escapeHtml(b.severity)}">${escapeHtml(b.severity)}</span>
+          <span class="pill" style="${pillStyle(bugStatusColor(b.status))}">${escapeHtml(b.status)}</span>
+        </div>
+        ${b.description ? `<div class="ai-preview-item-desc">${escapeHtml(b.description)}</div>` : ''}
+      </div>
+    `;
+    bugImportPreviewList.appendChild(row);
+  });
+  bugImportPreview.classList.remove('hidden');
+}
+
+document.getElementById('bug-import-discard').addEventListener('click', () => {
+  bugImportRows = [];
+  bugImportPreview.classList.add('hidden');
+  bugImportSheetUrl.value = '';
+  bugImportText.value = '';
+});
+
+document.getElementById('bug-import-add-selected').addEventListener('click', async () => {
+  const projectId = bugsSelect.value;
+  if (!projectId) return;
+  const checks = bugImportPreviewList.querySelectorAll('.bug-import-check');
+  const selected = [];
+  checks.forEach((cb) => {
+    if (cb.checked) selected.push(bugImportRows[Number(cb.dataset.idx)]);
+  });
+  if (!selected.length) return;
+
+  const rows = selected.map((b) => ({
+    project_id: projectId,
+    title: b.title,
+    page: b.page,
+    severity: b.severity,
+    status: b.status,
+    reported_by: b.reported_by,
+    description: b.description,
+    notes: b.notes,
+    owner_id: currentUser ? currentUser.id : null,
+  }));
+
+  const { error } = await sb.from('bugs').insert(rows);
+  if (error) {
+    showFormError('bug-import-error', error.message);
+    return;
+  }
+  const project = projectsCache.find((p) => p.id === projectId);
+  notify(`${actorLabel()} imported ${rows.length} bug${rows.length === 1 ? '' : 's'} from a sheet for "${project ? project.name : 'a project'}"`, 'bug', 'import');
+  celebrate(`${rows.length} bug${rows.length === 1 ? '' : 's'} imported!`, '📥');
+
+  bugImportRows = [];
+  bugImportPreview.classList.add('hidden');
+  bugImportSheetUrl.value = '';
+  bugImportText.value = '';
+  loadBugs(projectId);
+});
 
 // ---------- APK shares ----------
 
@@ -2333,7 +2598,7 @@ document.getElementById('download-tc-btn').addEventListener('click', () => {
 
 // Bugs panel → downloads only the currently selected project's bugs.
 document.getElementById('download-bugs-btn').addEventListener('click', () => {
-  const id = detailsSelect.value;
+  const id = bugsSelect.value;
   const p = projectsCache.find((x) => x.id === id);
   const rows = bugCache.map((b) => ({
     'Title': b.title,
