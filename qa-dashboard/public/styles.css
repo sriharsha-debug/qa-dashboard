@@ -1201,3 +1201,442 @@ select option:focus {
 .audit-meta{font-size:12px;opacity:.72;margin-top:5px}
 .audit-details{margin-top:8px;font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
 .audit-label{font-weight:600}
+
+/* ==========================================================
+   Responsive hardening — phones, tablets, laptops and desktop
+   ========================================================== */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+img, svg, video, canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+button, input, select, textarea {
+  max-width: 100%;
+}
+
+.app {
+  width: 100%;
+  min-width: 0;
+}
+
+.app-body,
+.tab-content,
+.tab-panel,
+.panel,
+.panel-head,
+.panel-head-right {
+  min-width: 0;
+}
+
+.panel-head-right {
+  flex-wrap: wrap;
+}
+
+.panel-head-right > * {
+  min-width: 0;
+}
+
+/* Keep every page inside the viewport. */
+.tab-panel,
+.panel,
+.grid-form,
+.details-grid,
+.reports-list,
+.team-list,
+.apk-list,
+.tc-list,
+.audit-list {
+  max-width: 100%;
+}
+
+/* Better tablet navigation: tabs can scroll instead of squeezing/crushing. */
+@media (max-width: 800px) {
+  .app {
+    padding-left: max(16px, env(safe-area-inset-left));
+    padding-right: max(16px, env(safe-area-inset-right));
+  }
+
+  .sidebar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .tab {
+    width: 100%;
+    min-height: 44px;
+    text-align: center;
+  }
+
+  .topbar {
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .who {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .panel-head {
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .panel-head-right {
+    width: 100%;
+  }
+
+  .filters {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .filters > * {
+    flex: 1 1 160px;
+    min-width: 0;
+  }
+
+  .grid-form {
+    grid-template-columns: 1fr;
+  }
+
+  .grid-form .span-2 {
+    grid-column: span 1;
+  }
+}
+
+/* Phones and small tablets. */
+@media (max-width: 640px) {
+  .app {
+    padding-top: 18px;
+    padding-bottom: 56px;
+  }
+
+  .topbar {
+    padding-bottom: 14px;
+  }
+
+  h1 { font-size: 24px; line-height: 1.15; }
+  h2 { font-size: 16px; }
+
+  .who {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .who-email {
+    max-width: min(70vw, 320px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .panel {
+    padding: 18px 16px;
+    border-radius: 17px;
+  }
+
+  .panel-head,
+  .panel-head-right {
+    width: 100%;
+  }
+
+  .panel-head-right {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .panel-head-right .count {
+    grid-column: 1 / -1;
+  }
+
+  .panel-head-right select,
+  .panel-head-right .btn {
+    width: 100%;
+  }
+
+  input, select, textarea {
+    font-size: 16px; /* prevents iOS Safari zoom on focus */
+    min-height: 44px;
+  }
+
+  .btn {
+    min-height: 44px;
+  }
+
+  .details-select {
+    max-width: 100%;
+  }
+
+  .report-card {
+    grid-template-columns: 1fr;
+  }
+
+  .report-delete,
+  .report-share {
+    justify-self: stretch;
+  }
+
+  .report-delete .btn,
+  .report-share .btn {
+    width: 100%;
+  }
+
+  .team-row,
+  .apk-row,
+  .tc-row-top {
+    align-items: stretch;
+  }
+
+  .team-row > *,
+  .apk-row > * {
+    max-width: 100%;
+  }
+
+  .team-role-select,
+  .apk-row .btn,
+  .tc-row-actions .btn {
+    min-height: 42px;
+  }
+
+  .tc-row-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .tc-row-actions .btn {
+    flex: 1 1 120px;
+  }
+
+  .details-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-item.span-2 {
+    grid-column: span 1;
+  }
+
+  .modal-overlay {
+    padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+    align-items: flex-start;
+    overflow-y: auto;
+  }
+
+  .modal,
+  .modal-large {
+    width: 100%;
+    max-width: none;
+    max-height: calc(100dvh - 24px);
+    margin: auto 0;
+    padding: 18px 16px;
+  }
+
+  .modal-head {
+    top: -18px;
+  }
+
+  .notif-panel {
+    position: fixed;
+    top: 76px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: none;
+  }
+
+  .celebrate-toast-wrap {
+    bottom: max(12px, env(safe-area-inset-bottom));
+  }
+}
+
+/* Small phones: make the sidebar a compact horizontal rail. */
+@media (max-width: 480px) {
+  .app {
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+  }
+
+  .sidebar {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 6px;
+    padding-bottom: 4px;
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tab {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: max-content;
+    padding: 10px 13px;
+    white-space: nowrap;
+  }
+
+  .panel {
+    padding: 15px 12px;
+  }
+
+  .panel-head-right {
+    grid-template-columns: 1fr;
+  }
+
+  .panel-head-right .count {
+    grid-column: auto;
+  }
+
+  .inline-form,
+  .filters,
+  .whatsapp-actions,
+  .form-actions {
+    width: 100%;
+  }
+
+  .inline-form > *,
+  .filters > *,
+  .whatsapp-actions > *,
+  .form-actions > * {
+    width: 100%;
+    flex: 1 1 100%;
+  }
+
+  .row-actions {
+    flex-wrap: wrap;
+    white-space: normal;
+  }
+
+  .status-row {
+    flex-wrap: wrap;
+  }
+
+  .status-row input[type="text"] {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .status-row select,
+  .status-row .btn,
+  .status-row .icon-btn {
+    min-height: 42px;
+  }
+}
+
+/* ==========================================================
+   Projects: true mobile cards instead of a wide table
+   ========================================================== */
+@media (max-width: 700px) {
+  #tab-projects .table-scroll {
+    overflow: visible;
+  }
+
+  #tab-projects .ledger {
+    min-width: 0;
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  #tab-projects .ledger thead {
+    display: none;
+  }
+
+  #tab-projects .ledger,
+  #tab-projects .ledger tbody,
+  #tab-projects .ledger tr,
+  #tab-projects .ledger td {
+    display: block;
+    width: 100%;
+  }
+
+  #tab-projects .ledger tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  #tab-projects .ledger tr {
+    position: relative;
+    padding: 12px 14px;
+    border: 1px solid var(--line-strong);
+    border-radius: 14px;
+    background: var(--panel-2);
+    box-shadow: 0 8px 22px rgba(0,0,0,.10);
+  }
+
+  #tab-projects .ledger td {
+    display: grid;
+    grid-template-columns: minmax(74px, 34%) minmax(0, 1fr);
+    gap: 10px;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px dashed var(--line);
+    min-width: 0;
+  }
+
+  #tab-projects .ledger td:last-child {
+    border-bottom: 0;
+    padding-bottom: 2px;
+  }
+
+  #tab-projects .ledger td::before {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+
+  #tab-projects .ledger td:nth-child(1)::before { content: 'No.'; }
+  #tab-projects .ledger td:nth-child(2)::before { content: 'Project'; }
+  #tab-projects .ledger td:nth-child(3)::before { content: 'Status'; }
+  #tab-projects .ledger td:nth-child(4)::before { content: 'PM'; }
+  #tab-projects .ledger td:nth-child(5)::before { content: 'Start – End'; }
+  #tab-projects .ledger td:nth-child(6)::before { content: 'Tester'; }
+  #tab-projects .ledger td:nth-child(7)::before { content: 'Actions'; }
+
+  #tab-projects .ledger td > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  #tab-projects .ledger .project-link,
+  #tab-projects .ledger .status-select,
+  #tab-projects .ledger .row-actions {
+    justify-self: start;
+  }
+
+  #tab-projects .ledger .project-link {
+    overflow-wrap: anywhere;
+  }
+
+  #tab-projects .ledger .row-actions {
+    white-space: normal;
+    flex-wrap: wrap;
+  }
+}
+
+/* iPad/tablet landscape: retain readable tables but never let the page itself overflow. */
+@media (min-width: 701px) and (max-width: 1100px) {
+  #tab-projects .ledger {
+    min-width: 680px;
+  }
+
+  #tab-projects .table-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+}
+
+/* Fix the audit cards to use the existing border token. */
+.audit-item {
+  border-color: var(--line);
+}

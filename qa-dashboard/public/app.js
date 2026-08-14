@@ -128,10 +128,14 @@ document.getElementById('logout').addEventListener('click', () => {
 
 async function onLogin(user) {
   currentUser = user;
-  whoEmail.textContent = user.email;
   gate.classList.add('hidden');
   app.classList.remove('hidden');
   await ensureProfile(user);
+  // Show the signed-in user's profile name in the header instead of their email.
+  // Fall back to the email prefix only when a display name is not available.
+  whoEmail.textContent = (currentProfile && currentProfile.display_name)
+    ? currentProfile.display_name
+    : (user.email ? user.email.split('@')[0] : 'User');
   loadStatuses().then(loadProjects);
   loadReports();
   loadTeam();
