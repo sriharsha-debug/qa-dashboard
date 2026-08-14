@@ -76,7 +76,13 @@ the changes instead of `git init` again.)
 4. Click **Deploy**. No environment variables needed — the anon key lives
    in `config.js`, which is safe to ship.
 
-## 5. Open your dashboard
+## 5. Add Audit Logs
+
+Run `migration-v17.sql` in Supabase SQL Editor after `migration-v16.sql`.
+
+This adds an **Audit Logs** tab for the team leader. It records create, update, and delete activity for projects, daily reports, test cases, APK shares, and profiles, including user email, action, module, record, timestamp, and changed fields. Existing names and existing dashboard sections are unchanged.
+
+## 6. Open your dashboard
 
 Vercel gives you a URL like `https://your-project.vercel.app`. Open it,
 sign in with the email + password you created in Supabase Auth, and

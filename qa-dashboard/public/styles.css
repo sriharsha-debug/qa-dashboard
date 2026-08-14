@@ -1191,3 +1191,13 @@ select option:focus {
   .celebrate-toast-wrap { bottom: 16px; right: 16px; left: 16px; }
   .pager { flex-wrap: wrap; gap: 8px; }
 }
+
+/* Audit logs */
+.audit-list{display:flex;flex-direction:column;gap:10px;margin-top:14px}
+.audit-item{padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--panel)}
+.audit-head{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.audit-action{font-weight:700;font-family:"IBM Plex Mono",monospace;font-size:12px}
+.audit-action.insert{color:#1F7A6C}.audit-action.update{color:#A9761E}.audit-action.delete{color:#A63D26}
+.audit-meta{font-size:12px;opacity:.72;margin-top:5px}
+.audit-details{margin-top:8px;font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.audit-label{font-weight:600}

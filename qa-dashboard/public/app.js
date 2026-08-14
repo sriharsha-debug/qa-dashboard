@@ -12,6 +12,9 @@ let currentProfile = null;
 let notifPollTimer = null;
 let tcCache = [];
 let reportsCache = [];
+let auditCache = [];
+let auditPageNum = 1;
+const AUDIT_PAGE_SIZE = 20;
 
 // ---------- Field color feedback (glass-water states) ----------
 
@@ -134,6 +137,12 @@ async function onLogin(user) {
   loadTeam();
   refreshNotifications();
   loadNotificationsPage();
+  if (isLeader()) {
+    document.getElementById('audit-tab').classList.remove('hidden');
+    loadAuditLogs();
+  } else {
+    document.getElementById('audit-tab').classList.add('hidden');
+  }
   initSettingsTab();
   runFallbackCleanup();
   if (notifPollTimer) clearInterval(notifPollTimer);
@@ -584,6 +593,116 @@ document.getElementById('cleanup-daily-btn').addEventListener('click', async () 
   loadReports();
   document.getElementById('cleanup-success').textContent = `Cleared ${count ?? ''} old daily log entr${count === 1 ? 'y' : 'ies'}.`;
   document.getElementById('cleanup-success').classList.remove('hidden');
+});
+
+
+// ---------- Audit logs ----------
+
+function auditActionText(action) {
+  return action === 'INSERT' ? 'Created' : action === 'UPDATE' ? 'Updated' : 'Deleted';
+}
+
+function auditChangedFields(row) {
+  if (!row.old_data || !row.new_data) return '';
+  const keys = new Set([...Object.keys(row.old_data || {}), ...Object.keys(row.new_data || {})]);
+  const changed = [];
+  keys.forEach((key) => {
+    if (['updated_at', 'created_at'].includes(key)) return;
+    const before = JSON.stringify(row.old_data?.[key] ?? null);
+    const after = JSON.stringify(row.new_data?.[key] ?? null);
+    if (before !== after) changed.push(`${key}: ${before} → ${after}`);
+  });
+  return changed.slice(0, 8).join('\n');
+}
+
+async function loadAuditLogs() {
+  if (!isLeader()) return;
+  let query = sb.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(500);
+  const action = document.getElementById('audit-filter-action')?.value || '';
+  const table = document.getElementById('audit-filter-table')?.value || '';
+  const user = document.getElementById('audit-filter-user')?.value.trim() || '';
+  if (action) query = query.eq('action', action);
+  if (table) query = query.eq('table_name', table);
+  if (user) query = query.ilike('actor_email', `%${user}%`);
+
+  const { data, error } = await query;
+  if (error) {
+    console.error(error);
+    return;
+  }
+  auditCache = data || [];
+  auditPageNum = 1;
+
+  const tableSelect = document.getElementById('audit-filter-table');
+  if (tableSelect) {
+    const selected = tableSelect.value;
+    const tables = [...new Set(auditCache.map((r) => r.table_name))].sort();
+    tableSelect.innerHTML = '<option value="">All modules</option>' +
+      tables.map((t) => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
+    tableSelect.value = selected;
+  }
+  renderAuditLogs();
+}
+
+function renderAuditLogs() {
+  const list = document.getElementById('audit-list');
+  const empty = document.getElementById('audit-empty');
+  const count = document.getElementById('audit-count');
+  if (!list || !count) return;
+  const totalPages = Math.max(1, Math.ceil(auditCache.length / AUDIT_PAGE_SIZE));
+  auditPageNum = Math.min(auditPageNum, totalPages);
+  count.textContent = auditCache.length ? `${auditCache.length} total` : '';
+  list.innerHTML = '';
+  empty.style.display = auditCache.length ? 'none' : 'block';
+
+  const start = (auditPageNum - 1) * AUDIT_PAGE_SIZE;
+  auditCache.slice(start, start + AUDIT_PAGE_SIZE).forEach((row) => {
+    const item = document.createElement('div');
+    item.className = 'audit-item';
+    const actionClass = row.action.toLowerCase();
+    const changed = auditChangedFields(row);
+    item.innerHTML = `
+      <div class="audit-head">
+        <span class="audit-action ${actionClass}">${auditActionText(row.action)}</span>
+        <span><b>${escapeHtml(row.table_name)}</b></span>
+        ${row.record_label ? `<span>— ${escapeHtml(row.record_label)}</span>` : ''}
+      </div>
+      <div class="audit-meta">${escapeHtml(row.actor_email || 'System')} · ${new Date(row.created_at).toLocaleString()}</div>
+      ${changed ? `<div class="audit-details"><span class="audit-label">Changed:</span>\n${escapeHtml(changed)}</div>` : ''}
+    `;
+    list.appendChild(item);
+  });
+
+  renderPager('audit-pager', auditPageNum, totalPages, (dir) => {
+    auditPageNum += dir;
+    renderAuditLogs();
+  });
+}
+
+['audit-filter-action', 'audit-filter-table'].forEach((id) => {
+  document.getElementById(id)?.addEventListener('change', loadAuditLogs);
+});
+document.getElementById('audit-filter-user')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') loadAuditLogs();
+});
+document.getElementById('audit-filter-clear')?.addEventListener('click', () => {
+  document.getElementById('audit-filter-action').value = '';
+  document.getElementById('audit-filter-table').value = '';
+  document.getElementById('audit-filter-user').value = '';
+  loadAuditLogs();
+});
+
+document.getElementById('download-audit-btn')?.addEventListener('click', () => {
+  const rows = auditCache.map((r) => ({
+    'Date & Time': new Date(r.created_at).toLocaleString(),
+    'User': r.actor_email || '',
+    'Action': auditActionText(r.action),
+    'Module': r.table_name,
+    'Record': r.record_label || '',
+    'Record ID': r.record_id || '',
+    'Changed Fields': auditChangedFields(r),
+  }));
+  downloadSheet('Audit Logs', rows, 'Audit Logs');
 });
 
 // ---------- Tabs ----------

@@ -71,6 +71,7 @@
         <button class="tab" data-tab="daily">Daily Log</button>
         <button class="tab" data-tab="team">Team</button>
         <button class="tab" data-tab="notifications">Notifications<span id="sidebar-notif-badge" class="notif-badge hidden">0</span></button>
+        <button class="tab hidden" id="audit-tab" data-tab="audit">Audit Logs</button>
         <button class="tab" data-tab="settings">Settings</button>
       </nav>
 
@@ -355,6 +356,35 @@
         <div id="notif-page-list" class="notif-list notif-page-list"></div>
         <p class="empty-state" id="notif-page-empty">No activity yet.</p>
         <div id="notif-page-pager" class="pager"></div>
+      </div>
+    </section>
+
+    <!-- AUDIT LOGS TAB -->
+    <section id="tab-audit" class="tab-panel">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Audit Logs</h2>
+          <div class="panel-head-right">
+            <span class="count" id="audit-count"></span>
+            <button id="download-audit-btn" class="btn btn-ghost">Download</button>
+          </div>
+        </div>
+        <div class="filters">
+          <select id="audit-filter-action">
+            <option value="">All actions</option>
+            <option value="INSERT">Created</option>
+            <option value="UPDATE">Updated</option>
+            <option value="DELETE">Deleted</option>
+          </select>
+          <select id="audit-filter-table">
+            <option value="">All modules</option>
+          </select>
+          <input type="text" id="audit-filter-user" placeholder="Filter by user email" />
+          <button id="audit-filter-clear" class="btn btn-ghost btn-small">Clear</button>
+        </div>
+        <div id="audit-list" class="audit-list"></div>
+        <p class="empty-state" id="audit-empty">No audit activity yet.</p>
+        <div id="audit-pager" class="pager"></div>
       </div>
     </section>
 
