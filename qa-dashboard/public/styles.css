@@ -1658,3 +1658,29 @@ button, input, select, textarea {
 .audit-item {
   border-color: var(--line);
 }
+
+
+/* Alignment fix for project/bug action buttons */
+.ledger {
+  table-layout: fixed;
+}
+
+.row-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  min-width: 180px;
+}
+
+.icon-btn {
+  min-width: 72px;
+  text-align: center;
+}
+
+.ledger td,
+.ledger th {
+  vertical-align: middle;
+}
+
