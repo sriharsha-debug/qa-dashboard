@@ -271,3 +271,33 @@ for each row execute function write_audit_log();
 drop trigger if exists audit_profiles on profiles;
 create trigger audit_profiles after insert or update or delete on profiles
 for each row execute function write_audit_log();
+
+
+-- Migration v18: bugs per project (with page field)
+-- See migration-v18.sql for details/comments.
+
+create table if not exists bugs (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid references auth.users(id),
+  project_id uuid not null references projects(id) on delete cascade,
+  title text not null,
+  page text not null,
+  description text,
+  severity text not null default 'Medium' check (severity in ('Low', 'Medium', 'High', 'Critical')),
+  status text not null default 'Open' check (status in ('Open', 'In Progress', 'Fixed', 'Retest', 'Closed', 'Reopened')),
+  reported_by text,
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_bugs_project on bugs(project_id);
+alter table bugs enable row level security;
+create policy "bugs_owner_or_leader" on bugs
+  for all
+  using (owner_id = auth.uid() or is_team_leader())
+  with check (owner_id = auth.uid() or is_team_leader());
+
+drop trigger if exists audit_bugs on bugs;
+create trigger audit_bugs after insert or update or delete on bugs
+for each row execute function write_audit_log();

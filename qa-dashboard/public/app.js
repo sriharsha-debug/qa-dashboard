@@ -12,6 +12,7 @@ let currentUser = null;
 let currentProfile = null;
 let notifPollTimer = null;
 let tcCache = [];
+let bugCache = [];
 let reportsCache = [];
 let auditCache = [];
 let auditPageNum = 1;
@@ -1248,6 +1249,8 @@ async function showProjectDetails(id) {
   loadApkShares(id);
   tcPageNum = 1;
   loadTestCases(id);
+  bugPageNum = 1;
+  loadBugs(id);
 }
 
 // ---------- Test execution ----------
@@ -1400,6 +1403,166 @@ function renderTestCases(cases, projectId) {
         return;
       }
       loadTestCases(projectId);
+    });
+  });
+}
+
+// ---------- Bugs ----------
+
+const bugForm = document.getElementById('bug-form');
+const bugList = document.getElementById('bug-list');
+const bugEmpty = document.getElementById('bug-empty');
+const bugSummary = document.getElementById('bug-summary');
+
+function bugSeverityColor(sev) {
+  return { Low: '#34D399', Medium: '#FBBF24', High: '#FB923C', Critical: '#F87171' }[sev] || '#7FA0A6';
+}
+
+function bugStatusColor(status) {
+  return {
+    Open: '#F87171',
+    'In Progress': '#FBBF24',
+    Fixed: '#34D399',
+    Retest: '#60A5FA',
+    Closed: '#7FA0A6',
+    Reopened: '#EF4444',
+  }[status] || '#7FA0A6';
+}
+
+bugForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearFormError('bug-error');
+  const project_id = detailsSelect.value;
+  if (!project_id) return;
+
+  const title = document.getElementById('bug-title').value.trim();
+  if (!title || title.length < 3) {
+    showFormError('bug-error', 'Bug title must be at least 3 characters.');
+    flashFields(bugForm, 'field-error');
+    return;
+  }
+  const page = document.getElementById('bug-page').value.trim();
+  if (!page) {
+    showFormError('bug-error', 'Page is required — which screen or module is this bug on?');
+    flashFields(bugForm, 'field-error');
+    return;
+  }
+
+  const payload = {
+    project_id,
+    title,
+    page,
+    severity: document.getElementById('bug-severity').value,
+    status: document.getElementById('bug-status').value,
+    reported_by: document.getElementById('bug-reported-by').value.trim() || null,
+    description: document.getElementById('bug-description').value.trim() || null,
+    notes: document.getElementById('bug-notes').value.trim() || null,
+    owner_id: currentUser ? currentUser.id : null,
+  };
+  const { error } = await sb.from('bugs').insert(payload);
+  if (error) {
+    showFormError('bug-error', error.message);
+    flashFields(bugForm, 'field-error');
+    return;
+  }
+  const proj = projectsCache.find((p) => p.id === project_id);
+  notify(`${actorLabel()} logged a bug for "${proj ? proj.name : 'a project'}"`, 'bug', 'create');
+  celebrate('Bug logged!', '🐞');
+  flashFields(bugForm, 'field-success');
+  bugForm.reset();
+  document.getElementById('bug-severity').value = 'Medium';
+  document.getElementById('bug-status').value = 'Open';
+  loadBugs(project_id);
+});
+
+async function loadBugs(projectId) {
+  const { data, error } = await sb
+    .from('bugs')
+    .select('*')
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: true });
+  if (error) {
+    console.error(error);
+    return;
+  }
+  bugCache = data || [];
+  renderBugs(bugCache, projectId);
+}
+
+let bugPageNum = 1;
+const BUG_PAGE_SIZE = 8;
+
+function renderBugs(bugs, projectId) {
+  const counts = { Open: 0, 'In Progress': 0, Fixed: 0, Retest: 0, Closed: 0, Reopened: 0 };
+  bugs.forEach((b) => { counts[b.status] = (counts[b.status] || 0) + 1; });
+  bugSummary.textContent = bugs.length
+    ? `${bugs.length} total · ${counts.Open} open · ${counts['In Progress']} in progress · ${counts.Fixed} fixed · ${counts.Closed} closed`
+    : '';
+
+  const totalPages = Math.max(1, Math.ceil(bugs.length / BUG_PAGE_SIZE));
+  if (bugPageNum > totalPages) bugPageNum = totalPages;
+  const start = (bugPageNum - 1) * BUG_PAGE_SIZE;
+  const pageBugs = bugs.slice(start, start + BUG_PAGE_SIZE);
+
+  bugList.innerHTML = '';
+  bugEmpty.style.display = bugs.length ? 'none' : 'block';
+
+  pageBugs.forEach((b) => {
+    const row = document.createElement('div');
+    row.className = 'tc-row';
+    row.innerHTML = `
+      <div class="tc-row-top">
+        <div>
+          <div class="tc-row-title">${escapeHtml(b.title)}</div>
+          <div class="tc-row-meta">
+            <span class="pill" style="${pillStyle('#818CF8')}">Page: ${escapeHtml(b.page)}</span>
+            <span class="priority-pill priority-${escapeHtml(b.severity)}">${escapeHtml(b.severity)}</span>
+            ${b.reported_by ? `<span>Reported by ${escapeHtml(b.reported_by)}</span>` : ''}
+          </div>
+          ${b.description ? `<div class="tc-row-desc">${escapeHtml(b.description)}</div>` : ''}
+        </div>
+        <div class="tc-row-actions">
+          <select class="status-select pill bug-status-select" style="${pillStyle(bugStatusColor(b.status))}" data-id="${b.id}">
+            ${['Open', 'In Progress', 'Fixed', 'Retest', 'Closed', 'Reopened'].map((s) => `<option value="${s}" ${s === b.status ? 'selected' : ''}>${s}</option>`).join('')}
+          </select>
+          <button class="icon-btn" data-bug-delete="${b.id}">remove</button>
+        </div>
+      </div>
+    `;
+    bugList.appendChild(row);
+  });
+
+  renderPager('bug-pager', bugPageNum, totalPages, (dir) => {
+    bugPageNum += dir;
+    renderBugs(bugs, projectId);
+  });
+
+  bugList.querySelectorAll('.bug-status-select').forEach((sel) => {
+    sel.addEventListener('change', async () => {
+      const newStatus = sel.value;
+      const { error } = await sb
+        .from('bugs')
+        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .eq('id', sel.dataset.id);
+      if (error) {
+        alert(error.message);
+        return;
+      }
+      if (newStatus === 'Fixed') celebrate('Bug fixed!', '🎉');
+      loadBugs(projectId);
+    });
+  });
+
+  bugList.querySelectorAll('[data-bug-delete]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Remove this bug?')) return;
+      await flashRowRemoving(btn.closest('.tc-row'));
+      const { error } = await sb.from('bugs').delete().eq('id', btn.dataset.bugDelete);
+      if (error) {
+        alert(error.message);
+        return;
+      }
+      loadBugs(projectId);
     });
   });
 }
@@ -2166,6 +2329,22 @@ document.getElementById('download-tc-btn').addEventListener('click', () => {
     'Notes': c.notes || '',
   }));
   downloadSheet(`${safeFileName(p ? p.name : 'Project')} - Test Cases`, rows, 'Test Cases');
+});
+
+// Bugs panel → downloads only the currently selected project's bugs.
+document.getElementById('download-bugs-btn').addEventListener('click', () => {
+  const id = detailsSelect.value;
+  const p = projectsCache.find((x) => x.id === id);
+  const rows = bugCache.map((b) => ({
+    'Title': b.title,
+    'Page': b.page,
+    'Severity': b.severity,
+    'Status': b.status,
+    'Reported By': b.reported_by || '',
+    'Description': b.description || '',
+    'Notes': b.notes || '',
+  }));
+  downloadSheet(`${safeFileName(p ? p.name : 'Project')} - Bugs`, rows, 'Bugs');
 });
 
 // Daily Log tab (History) → downloads only the currently filtered daily logs.

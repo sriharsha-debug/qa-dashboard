@@ -1094,6 +1094,7 @@ select option:focus {
   border: 1px solid var(--line-strong);
   color: var(--ink-soft);
 }
+.priority-Critical { color: var(--blocked); border-color: var(--blocked); box-shadow: 0 0 14px rgba(243, 86, 75, 0.5); font-weight: 600; }
 .priority-High { color: var(--blocked); border-color: var(--blocked); box-shadow: 0 0 10px rgba(243, 86, 75, 0.3); }
 .priority-Medium { color: var(--pending); border-color: var(--pending); }
 .priority-Low { color: var(--ink-soft); }

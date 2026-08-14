@@ -82,7 +82,19 @@ Run `migration-v17.sql` in Supabase SQL Editor after `migration-v16.sql`.
 
 This adds an **Audit Logs** tab for the team leader. It records create, update, and delete activity for projects, daily reports, test cases, APK shares, and profiles, including user email, action, module, record, timestamp, and changed fields. Existing names and existing dashboard sections are unchanged.
 
-## 6. Open your dashboard
+## 6. Add Bugs (per project, with Page)
+
+Run `migration-v18.sql` in Supabase SQL Editor after `migration-v17.sql`.
+
+This adds a **Bugs** section inside Project Details, under Test execution. Each
+bug is logged against a project with: title, **page** (the screen/module it
+was found on), severity (Low/Medium/High/Critical), status (Open/In
+Progress/Fixed/Retest/Closed/Reopened), description, reported by, and notes.
+Bug activity is included in the Audit Logs the same as everything else.
+(Brand new Supabase projects don't need this step — `supabase-schema.sql`
+already includes it.)
+
+## 7. Open your dashboard
 
 Vercel gives you a URL like `https://your-project.vercel.app`. Open it,
 sign in with the email + password you created in Supabase Auth, and
