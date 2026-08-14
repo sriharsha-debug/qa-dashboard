@@ -1685,10 +1685,16 @@ button, input, select, textarea {
 }
 
 
-
-/* Global alignment fixes */
-.row-actions{display:flex!important;align-items:center!important;justify-content:flex-end!important;gap:10px!important;flex-wrap:nowrap!important}
-.row-actions .icon-btn{min-width:90px}
-.ledger td,.ledger th,table td,table th{vertical-align:middle!important}
-tr td:last-child{white-space:nowrap}
-.pill{display:inline-flex;align-items:center;justify-content:center}
+/* FORCE PROJECT/BUG ALIGNMENT FIX */
+.ledger{table-layout:fixed!important;width:100%!important;min-width:1200px!important}
+.ledger th:nth-child(1){width:28%!important}
+.ledger th:nth-child(2){width:14%!important}
+.ledger th:nth-child(3){width:10%!important}
+.ledger th:nth-child(4){width:16%!important}
+.ledger th:nth-child(5){width:20%!important}
+.ledger th:nth-child(6){width:12%!important}
+.ledger td{overflow:hidden;text-overflow:ellipsis}
+.row-actions{display:flex!important;justify-content:flex-end!important;align-items:center!important;gap:12px!important;flex-wrap:nowrap!important}
+.row-actions a,.row-actions button{position:static!important;margin:0!important}
+.bug-actions,.testcase-actions{display:flex!important;align-items:center!important;gap:14px!important;flex-wrap:nowrap!important}
+.bug-actions>*,.testcase-actions>*{margin:0!important}
