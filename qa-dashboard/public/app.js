@@ -1,6 +1,7 @@
 const gate = document.getElementById('gate');
 const app = document.getElementById('app');
 const whoEmail = document.getElementById('who-email');
+const whoName = document.getElementById('who-name');
 const loginForm = document.getElementById('login-form');
 const loginError = document.getElementById('login-error');
 
@@ -131,11 +132,13 @@ async function onLogin(user) {
   gate.classList.add('hidden');
   app.classList.remove('hidden');
   await ensureProfile(user);
-  // Show the signed-in user's profile name in the header instead of their email.
-  // Fall back to the email prefix only when a display name is not available.
-  whoEmail.textContent = (currentProfile && currentProfile.display_name)
+  // Show the signed-in user's profile name beside Project Tracker.
+  // Keep the signed-in email in its original top-right location.
+  const headerName = (currentProfile && currentProfile.display_name)
     ? currentProfile.display_name
     : (user.email ? user.email.split('@')[0] : 'User');
+  whoName.textContent = headerName;
+  whoEmail.textContent = user.email || '';
   loadStatuses().then(loadProjects);
   loadReports();
   loadTeam();
