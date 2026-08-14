@@ -1684,3 +1684,11 @@ button, input, select, textarea {
   vertical-align: middle;
 }
 
+
+
+/* Global alignment fixes */
+.row-actions{display:flex!important;align-items:center!important;justify-content:flex-end!important;gap:10px!important;flex-wrap:nowrap!important}
+.row-actions .icon-btn{min-width:90px}
+.ledger td,.ledger th,table td,table th{vertical-align:middle!important}
+tr td:last-child{white-space:nowrap}
+.pill{display:inline-flex;align-items:center;justify-content:center}
