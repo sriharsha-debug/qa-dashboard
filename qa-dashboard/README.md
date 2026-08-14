@@ -94,6 +94,40 @@ Bug activity is included in the Audit Logs the same as everything else.
 (Brand new Supabase projects don't need this step — `supabase-schema.sql`
 already includes it.)
 
+> **Seeing "Could not find the table 'public.bugs' in the schema cache"?**
+> That means this migration (or the full `supabase-schema.sql`, for a brand
+> new project) hasn't been run yet on your Supabase project. Open
+> **Supabase → SQL Editor → New query**, paste the file, click **Run**, then
+> reload the dashboard.
+
+### Importing bugs from a multi-tab tester bug sheet
+
+If your testers keep bugs in one Google Sheet with a separate tab per
+module/role (e.g. `Super Admin`, `University Admin`, `Student`, `Faculty`,
+`Professor_UI` — like the screenshot tab bar at the bottom of Sheets), the
+**Import bugs from Google Sheet** panel (Bugs tab → per project) can pull in
+every tab in one go:
+
+1. Share the sheet as **Anyone with the link → Viewer**.
+2. Paste the sheet's link into **Google Sheet link**.
+3. In **Tab names to import**, type the exact tab names, comma-separated —
+   e.g. `Super Admin, University Admin, Student, Faculty, Professor_UI`.
+   (Leave this blank to import just the one tab from the link, the old way.)
+4. Click **Fetch from link**. Each tab is fetched and parsed on its own —
+   they can even use different column layouts — then merged into one review
+   list, tagged with the tab they came from. A summary line shows how many
+   bugs were found per tab.
+5. Uncheck anything you don't want, then **Add selected to Bugs**.
+
+Recognized columns, in any order (a title-like column and a page/module-like
+column are required, the rest are optional):
+- **Title** or **Sub Module**
+- **Page** or **Module** (falls back to the tab name if the column is blank/missing)
+- **Severity**, **Status**, **Reported By**
+- **Description**, **Steps to Reproduce**, **Expected Result**, **Actual Result**
+  (all of these are combined into the bug's Description)
+- **Bug Id**, **Date**, **Notes** (kept in Notes, for traceability back to the sheet row)
+
 ## 7. Open your dashboard
 
 Vercel gives you a URL like `https://your-project.vercel.app`. Open it,

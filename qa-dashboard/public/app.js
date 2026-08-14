@@ -1605,11 +1605,13 @@ function renderBugs(bugs, projectId) {
 // ---------- Import bugs from Google Sheet ----------
 
 const bugImportSheetUrl = document.getElementById('bug-import-sheet-url');
+const bugImportSheetTabs = document.getElementById('bug-import-sheet-tabs');
 const bugImportFetchBtn = document.getElementById('bug-import-fetch-btn');
 const bugImportText = document.getElementById('bug-import-text');
 const bugImportParseBtn = document.getElementById('bug-import-parse-btn');
 const bugImportPreview = document.getElementById('bug-import-preview');
 const bugImportPreviewList = document.getElementById('bug-import-preview-list');
+const bugImportTabSummary = document.getElementById('bug-import-tab-summary');
 let bugImportRows = [];
 
 // Parses a single CSV/TSV line, respecting double-quoted fields (RFC4180-ish).
@@ -1652,20 +1654,33 @@ function normalizeHeaderKey(h) {
 const BUG_HEADER_ALIASES = {
   title: 'title',
   bugtitle: 'title',
+  submodule: 'title',
+  sub_module: 'title',
   page: 'page',
   screen: 'page',
+  module: 'page',
   severity: 'severity',
   status: 'status',
   reportedby: 'reported_by',
   reporter: 'reported_by',
   description: 'description',
   desc: 'description',
-  stepstoreproduce: 'description',
+  stepstoreproduce: 'steps',
+  steps: 'steps',
+  expectedresult: 'expected',
+  expected: 'expected',
+  actualresult: 'actual',
+  actual: 'actual',
+  bugid: 'bug_id',
+  id: 'bug_id',
+  date: 'date',
   notes: 'notes',
   note: 'notes',
 };
 
-function rowsToBugObjects(rows) {
+// tabName (optional): used as a fallback Page/Module when a row doesn't have
+// its own, and to tag each parsed bug with the sheet tab it came from.
+function rowsToBugObjects(rows, tabName) {
   if (!rows.length) return [];
   const firstRowKeys = rows[0].map((c) => BUG_HEADER_ALIASES[normalizeHeaderKey(c)]).filter(Boolean);
   const hasHeader = firstRowKeys.includes('title') && firstRowKeys.includes('page');
@@ -1687,15 +1702,33 @@ function rowsToBugObjects(rows) {
     fieldMap.forEach((field, idx) => {
       if (field) obj[field] = (row[idx] || '').trim();
     });
+    if (!obj.page && tabName) obj.page = tabName; // fall back to the tab/sheet name
     if (!obj.title || !obj.page) return; // Title and Page are required
+
+    // Steps to Reproduce / Expected / Actual (from testers' bug-sheet layout)
+    // are folded into one description, in order.
+    const descParts = [];
+    if (obj.description) descParts.push(obj.description);
+    if (obj.steps) descParts.push(obj.steps);
+    if (obj.expected) descParts.push(`Expected Result: ${obj.expected}`);
+    if (obj.actual) descParts.push(`Actual Result: ${obj.actual}`);
+
+    // Bug Id / Date from the sheet (not columns in the bugs table) are kept
+    // in Notes for traceability back to the original sheet row.
+    const noteParts = [];
+    if (obj.bug_id) noteParts.push(`Sheet Bug ID: ${obj.bug_id}`);
+    if (obj.date) noteParts.push(`Date: ${obj.date}`);
+    if (obj.notes) noteParts.push(obj.notes);
+
     objs.push({
       title: obj.title.slice(0, 200),
       page: obj.page.slice(0, 120),
       severity: normalizeSeverity(obj.severity),
       status: normalizeBugStatus(obj.status),
       reported_by: obj.reported_by ? obj.reported_by.slice(0, 80) : null,
-      description: obj.description ? obj.description.slice(0, 1000) : null,
-      notes: obj.notes ? obj.notes.slice(0, 500) : null,
+      description: descParts.length ? descParts.join('\n\n').slice(0, 1000) : null,
+      notes: noteParts.length ? noteParts.join(' | ').slice(0, 500) : null,
+      _tab: tabName || null,
     });
   });
   return objs;
@@ -1711,8 +1744,21 @@ function extractSheetIdAndGid(url) {
   return { id: idMatch[1], gid: gidMatch ? gidMatch[1] : null };
 }
 
+// Fetches one worksheet tab as CSV via Google's gviz endpoint, addressed by
+// its tab name (works for any sheet shared as "Anyone with the link can view",
+// without needing to know that tab's numeric gid).
+async function fetchSheetTabCsv(sheetId, tabName) {
+  const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tabName)}`;
+  const res = await fetch(csvUrl);
+  if (!res.ok) throw new Error('not ok');
+  const text = await res.text();
+  if (!text.trim()) throw new Error('empty');
+  return text.trim();
+}
+
 bugImportFetchBtn.addEventListener('click', async () => {
   clearFormError('bug-import-error');
+  bugImportTabSummary.classList.add('hidden');
   const url = bugImportSheetUrl.value.trim();
   if (!url) {
     showFormError('bug-import-error', 'Paste a Google Sheet link above first.');
@@ -1723,18 +1769,63 @@ bugImportFetchBtn.addEventListener('click', async () => {
     showFormError('bug-import-error', 'That doesn\'t look like a Google Sheets link.');
     return;
   }
+
+  const tabNames = bugImportSheetTabs.value
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean);
+
   const original = bugImportFetchBtn.textContent;
   bugImportFetchBtn.textContent = 'Fetching...';
   bugImportFetchBtn.disabled = true;
+
   try {
-    const csvUrl = `https://docs.google.com/spreadsheets/d/${parts.id}/gviz/tq?tqx=out:csv${parts.gid ? `&gid=${parts.gid}` : ''}`;
-    const res = await fetch(csvUrl);
-    if (!res.ok) throw new Error('not ok');
-    const text = await res.text();
-    if (!text.trim()) throw new Error('empty');
-    bugImportText.value = text.trim();
-  } catch {
-    showFormError('bug-import-error', 'Couldn\'t fetch that sheet automatically (it may not be shared publicly, or your browser blocked the request). Open the sheet, select all the rows, copy them, and paste into the box below instead.');
+    if (!tabNames.length) {
+      // Single tab/link: fetch the CSV and let the person review/edit it in
+      // the textarea before parsing, same as before.
+      try {
+        const csvUrl = `https://docs.google.com/spreadsheets/d/${parts.id}/gviz/tq?tqx=out:csv${parts.gid ? `&gid=${parts.gid}` : ''}`;
+        const res = await fetch(csvUrl);
+        if (!res.ok) throw new Error('not ok');
+        const text = await res.text();
+        if (!text.trim()) throw new Error('empty');
+        bugImportText.value = text.trim();
+      } catch {
+        showFormError('bug-import-error', 'Couldn\'t fetch that sheet automatically (it may not be shared publicly, or your browser blocked the request). Open the sheet, select all the rows, copy them, and paste into the box below instead.');
+      }
+      return;
+    }
+
+    // Multiple tabs: fetch + parse each on its own, then merge into one
+    // preview. Each tab keeps its own header row, so this handles testers
+    // who use different column layouts per tab.
+    const combined = [];
+    const summaryParts = [];
+    const failedTabs = [];
+    for (const tabName of tabNames) {
+      try {
+        const text = await fetchSheetTabCsv(parts.id, tabName);
+        const rows = parseDelimitedText(text);
+        const objs = rowsToBugObjects(rows, tabName);
+        combined.push(...objs);
+        summaryParts.push(`${tabName}: ${objs.length} bug${objs.length === 1 ? '' : 's'}`);
+      } catch {
+        failedTabs.push(tabName);
+      }
+    }
+
+    if (failedTabs.length) {
+      summaryParts.push(`Couldn't fetch: ${failedTabs.join(', ')} (check the tab name is spelled exactly as in the sheet, and the sheet is shared as "Anyone with the link can view")`);
+    }
+    bugImportTabSummary.textContent = summaryParts.join('  •  ');
+    bugImportTabSummary.classList.remove('hidden');
+
+    if (!combined.length) {
+      showFormError('bug-import-error', 'No valid rows found in any of those tabs — make sure each row has at least a Title/Sub Module and a Page/Module.');
+      return;
+    }
+    bugImportRows = combined;
+    renderBugImportPreview(combined);
   } finally {
     bugImportFetchBtn.textContent = original;
     bugImportFetchBtn.disabled = false;
@@ -1744,6 +1835,7 @@ bugImportFetchBtn.addEventListener('click', async () => {
 bugImportParseBtn.addEventListener('click', () => {
   clearFormError('bug-import-error');
   bugImportPreview.classList.add('hidden');
+  bugImportTabSummary.classList.add('hidden');
   const raw = bugImportText.value.trim();
   if (!raw) {
     showFormError('bug-import-error', 'Paste sheet rows above first (or fetch from a link).');
@@ -1776,6 +1868,7 @@ function renderBugImportPreview(bugs) {
         <div class="ai-preview-item-title">
           ${escapeHtml(b.title)}
           <span class="pill" style="${pillStyle('#818CF8')}">Page: ${escapeHtml(b.page)}</span>
+          ${b._tab ? `<span class="pill" style="${pillStyle('#38BDF8')}">Tab: ${escapeHtml(b._tab)}</span>` : ''}
           <span class="priority-pill priority-${escapeHtml(b.severity)}">${escapeHtml(b.severity)}</span>
           <span class="pill" style="${pillStyle(bugStatusColor(b.status))}">${escapeHtml(b.status)}</span>
         </div>
@@ -1790,7 +1883,9 @@ function renderBugImportPreview(bugs) {
 document.getElementById('bug-import-discard').addEventListener('click', () => {
   bugImportRows = [];
   bugImportPreview.classList.add('hidden');
+  bugImportTabSummary.classList.add('hidden');
   bugImportSheetUrl.value = '';
+  bugImportSheetTabs.value = '';
   bugImportText.value = '';
 });
 
@@ -1827,7 +1922,9 @@ document.getElementById('bug-import-add-selected').addEventListener('click', asy
 
   bugImportRows = [];
   bugImportPreview.classList.add('hidden');
+  bugImportTabSummary.classList.add('hidden');
   bugImportSheetUrl.value = '';
+  bugImportSheetTabs.value = '';
   bugImportText.value = '';
   loadBugs(projectId);
 });

@@ -277,19 +277,23 @@
           </div>
           <p class="gate-copy" style="margin:0 0 14px;text-align:left;">
             Paste a shareable Google Sheet link to auto-fetch its rows, or copy
-            rows straight from the sheet and paste them below. Expected columns
-            (any order, header row optional): <b>Title, Page, Severity, Status,
-            Reported By, Description, Notes</b> — Title and Page are required,
-            the rest are optional.
+            rows straight from the sheet and paste them below. Recognized columns
+            (any order, header row optional): <b>Title / Sub Module, Page / Module,
+            Severity, Status, Reported By, Description / Steps to Reproduce,
+            Expected Result, Actual Result, Bug Id, Date, Notes</b> — a title-like
+            and a page/module-like column are required, the rest are optional.
           </p>
           <div class="grid-form">
             <label class="span-2">Google Sheet link (shared as "Anyone with the link can view")
               <input type="url" id="bug-import-sheet-url" placeholder="https://docs.google.com/spreadsheets/d/..." maxlength="500" />
             </label>
+            <label class="span-2">Tab names to import (comma-separated — leave blank for a single tab/link above). Each tab is fetched and parsed on its own, so different testers' tabs can use different column layouts.
+              <input type="text" id="bug-import-sheet-tabs" placeholder="Super Admin, University Admin, Student, Faculty, Professor_UI" maxlength="500" />
+            </label>
             <div class="span-2 form-actions" style="justify-content:flex-start;">
               <button type="button" id="bug-import-fetch-btn" class="btn btn-ghost">Fetch from link</button>
             </div>
-            <label class="span-2">Or paste rows copied from your sheet
+            <label class="span-2">Or paste rows copied from your sheet (single tab only)
               <textarea id="bug-import-text" rows="4" placeholder="Title&#9;Page&#9;Severity&#9;Status&#9;Reported By&#9;Description&#9;Notes"></textarea>
             </label>
             <div class="span-2 form-actions" style="justify-content:flex-start;">
@@ -297,6 +301,7 @@
             </div>
           </div>
           <p id="bug-import-error" class="login-error hidden"></p>
+          <p id="bug-import-tab-summary" class="gate-copy hidden" style="margin:0 0 14px;text-align:left;"></p>
 
           <div id="bug-import-preview" class="ai-preview hidden">
             <p class="detail-label">Review and add</p>
