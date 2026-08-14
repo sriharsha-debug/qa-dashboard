@@ -279,8 +279,9 @@
             Paste a shareable Google Sheet link to auto-fetch its rows, or copy
             rows straight from the sheet and paste them below. Recognized columns
             (any order, header row optional): <b>Title / Sub Module, Page / Module,
-            Severity, Status, Reported By, Description / Steps to Reproduce,
-            Expected Result, Actual Result, Bug Id, Date, Notes</b> — a title-like
+            Severity, Status, Reported By, Steps to Reproduce, Expected Result,
+            Actual Result, Description, Developer Status, Developer Comments,
+            Retest Status, Manager Comments, Bug Id, Date, Notes</b> — a title-like
             and a page/module-like column are required, the rest are optional.
           </p>
           <div class="grid-form">
@@ -329,6 +330,12 @@
             <label>Page
               <input type="text" id="bug-page" placeholder="e.g. Checkout page" required maxlength="120" />
             </label>
+            <label>Module
+              <input type="text" id="bug-module" placeholder="e.g. University Admin" maxlength="120" />
+            </label>
+            <label class="span-2">Sub module
+              <input type="text" id="bug-sub-module" placeholder="e.g. Departments – Create Department" maxlength="200" />
+            </label>
             <label>Severity
               <select id="bug-severity">
                 <option value="Low">Low</option>
@@ -350,8 +357,38 @@
             <label>Reported by
               <input type="text" id="bug-reported-by" placeholder="Name" maxlength="80" />
             </label>
-            <label class="span-2">Description
-              <textarea id="bug-description" rows="2" placeholder="Steps to reproduce / expected vs actual" maxlength="1000"></textarea>
+            <label>Developer status
+              <select id="bug-developer-status">
+                <option value="Not Started" selected>Not Started</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Fixed">Fixed</option>
+                <option value="Cannot Reproduce">Cannot Reproduce</option>
+                <option value="Need Info">Need Info</option>
+                <option value="Won't Fix">Won't Fix</option>
+              </select>
+            </label>
+            <label class="span-2">Steps to reproduce
+              <textarea id="bug-steps" rows="2" placeholder="1. Go to... 2. Click... 3. ..." maxlength="1000"></textarea>
+            </label>
+            <label>Expected result
+              <textarea id="bug-expected" rows="2" placeholder="What should happen" maxlength="1000"></textarea>
+            </label>
+            <label>Actual result
+              <textarea id="bug-actual" rows="2" placeholder="What happens instead" maxlength="1000"></textarea>
+            </label>
+            <label>Retest status
+              <select id="bug-retest-status">
+                <option value="Not Retested" selected>Not Retested</option>
+                <option value="Pass">Pass</option>
+                <option value="Fail">Fail</option>
+                <option value="Blocked">Blocked</option>
+              </select>
+            </label>
+            <label>Developer comments
+              <textarea id="bug-developer-comments" rows="2" placeholder="Notes from the developer" maxlength="1000"></textarea>
+            </label>
+            <label>Manager comments
+              <textarea id="bug-manager-comments" rows="2" placeholder="Notes from the QA/project manager" maxlength="1000"></textarea>
             </label>
             <label class="span-2">Notes
               <input type="text" id="bug-notes" placeholder="Additional notes" maxlength="500" />

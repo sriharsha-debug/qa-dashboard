@@ -100,6 +100,22 @@ already includes it.)
 > **Supabase → SQL Editor → New query**, paste the file, click **Run**, then
 > reload the dashboard.
 
+## 6b. Full bug-sheet fields (Module, Steps, Dev/Retest status, comments)
+
+Run `migration-v19.sql` in Supabase SQL Editor after `migration-v18.sql`.
+(Brand new Supabase projects don't need this step — `supabase-schema.sql`
+already includes it.)
+
+This rounds the Bugs section out into a proper bug-tracking sheet. Each bug
+now also has: **Module** and **Sub Module** (business-area grouping, on top
+of the existing Page field), **Steps to Reproduce**, **Expected Result**,
+**Actual Result**, **Developer Status** (Not Started / In Progress / Fixed /
+Cannot Reproduce / Need Info / Won't Fix), **Developer Comments**, **Retest
+Status** (Not Retested / Pass / Fail / Blocked), and **Manager Comments**.
+Developer Status and Retest Status can be changed inline from the bug list,
+the same way Status already could. All the new columns are optional, so
+existing bugs are unaffected.
+
 ### Importing bugs from a multi-tab tester bug sheet
 
 If your testers keep bugs in one Google Sheet with a separate tab per
@@ -124,9 +140,9 @@ column are required, the rest are optional):
 - **Title** or **Sub Module**
 - **Page** or **Module** (falls back to the tab name if the column is blank/missing)
 - **Severity**, **Status**, **Reported By**
-- **Description**, **Steps to Reproduce**, **Expected Result**, **Actual Result**
-  (all of these are combined into the bug's Description)
-- **Bug Id**, **Date**, **Notes** (kept in Notes, for traceability back to the sheet row)
+- **Steps to Reproduce**, **Expected Result**, **Actual Result**, **Description**
+- **Developer Status**, **Developer Comments**, **Retest Status**, **Manager Comments**
+- **Bug Id**, **Date**, **Notes** (Bug Id/Date are kept in Notes, for traceability back to the sheet row)
 
 ## 7. Open your dashboard
 

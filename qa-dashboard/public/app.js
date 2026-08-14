@@ -1456,12 +1456,40 @@ function bugStatusColor(status) {
   }[status] || '#7FA0A6';
 }
 
+function devStatusColor(status) {
+  return {
+    'Not Started': '#7FA0A6',
+    'In Progress': '#FBBF24',
+    Fixed: '#34D399',
+    'Cannot Reproduce': '#A78BFA',
+    'Need Info': '#60A5FA',
+    "Won't Fix": '#F87171',
+  }[status] || '#7FA0A6';
+}
+
+function retestStatusColor(status) {
+  return {
+    'Not Retested': '#7FA0A6',
+    Pass: '#34D399',
+    Fail: '#F87171',
+    Blocked: '#FBBF24',
+  }[status] || '#7FA0A6';
+}
+
 function normalizeSeverity(v) {
   return ['Low', 'Medium', 'High', 'Critical'].includes(v) ? v : 'Medium';
 }
 
 function normalizeBugStatus(v) {
   return ['Open', 'In Progress', 'Fixed', 'Retest', 'Closed', 'Reopened'].includes(v) ? v : 'Open';
+}
+
+function normalizeDeveloperStatus(v) {
+  return ['Not Started', 'In Progress', 'Fixed', 'Cannot Reproduce', 'Need Info', "Won't Fix"].includes(v) ? v : 'Not Started';
+}
+
+function normalizeRetestStatus(v) {
+  return ['Not Retested', 'Pass', 'Fail', 'Blocked'].includes(v) ? v : 'Not Retested';
 }
 
 bugForm.addEventListener('submit', async (e) => {
@@ -1487,10 +1515,18 @@ bugForm.addEventListener('submit', async (e) => {
     project_id,
     title,
     page,
+    module: document.getElementById('bug-module').value.trim() || null,
+    sub_module: document.getElementById('bug-sub-module').value.trim() || null,
     severity: document.getElementById('bug-severity').value,
     status: document.getElementById('bug-status').value,
     reported_by: document.getElementById('bug-reported-by').value.trim() || null,
-    description: document.getElementById('bug-description').value.trim() || null,
+    steps_to_reproduce: document.getElementById('bug-steps').value.trim() || null,
+    expected_result: document.getElementById('bug-expected').value.trim() || null,
+    actual_result: document.getElementById('bug-actual').value.trim() || null,
+    developer_status: document.getElementById('bug-developer-status').value,
+    retest_status: document.getElementById('bug-retest-status').value,
+    developer_comments: document.getElementById('bug-developer-comments').value.trim() || null,
+    manager_comments: document.getElementById('bug-manager-comments').value.trim() || null,
     notes: document.getElementById('bug-notes').value.trim() || null,
     owner_id: currentUser ? currentUser.id : null,
   };
@@ -1507,6 +1543,8 @@ bugForm.addEventListener('submit', async (e) => {
   bugForm.reset();
   document.getElementById('bug-severity').value = 'Medium';
   document.getElementById('bug-status').value = 'Open';
+  document.getElementById('bug-developer-status').value = 'Not Started';
+  document.getElementById('bug-retest-status').value = 'Not Retested';
   loadBugs(project_id);
 });
 
@@ -1545,20 +1583,40 @@ function renderBugs(bugs, projectId) {
   pageBugs.forEach((b) => {
     const row = document.createElement('div');
     row.className = 'tc-row';
+    const stepsBlock = [
+      b.steps_to_reproduce ? `<div><b>Steps:</b> ${escapeHtml(b.steps_to_reproduce)}</div>` : '',
+      b.expected_result ? `<div><b>Expected:</b> ${escapeHtml(b.expected_result)}</div>` : '',
+      b.actual_result ? `<div><b>Actual:</b> ${escapeHtml(b.actual_result)}</div>` : '',
+    ].filter(Boolean).join('');
+    const commentsBlock = [
+      b.developer_comments ? `<div><b>Dev comments:</b> ${escapeHtml(b.developer_comments)}</div>` : '',
+      b.manager_comments ? `<div><b>Manager comments:</b> ${escapeHtml(b.manager_comments)}</div>` : '',
+    ].filter(Boolean).join('');
     row.innerHTML = `
       <div class="tc-row-top">
         <div>
           <div class="tc-row-title">${escapeHtml(b.title)}</div>
           <div class="tc-row-meta">
+            ${b.module ? `<span class="pill" style="${pillStyle('#38BDF8')}">Module: ${escapeHtml(b.module)}</span>` : ''}
+            ${b.sub_module ? `<span class="pill" style="${pillStyle('#38BDF8')}">Sub module: ${escapeHtml(b.sub_module)}</span>` : ''}
             <span class="pill" style="${pillStyle('#818CF8')}">Page: ${escapeHtml(b.page)}</span>
             <span class="priority-pill priority-${escapeHtml(b.severity)}">${escapeHtml(b.severity)}</span>
             ${b.reported_by ? `<span>Reported by ${escapeHtml(b.reported_by)}</span>` : ''}
           </div>
+          ${stepsBlock ? `<div class="tc-row-desc">${stepsBlock}</div>` : ''}
           ${b.description ? `<div class="tc-row-desc">${escapeHtml(b.description)}</div>` : ''}
+          ${commentsBlock ? `<div class="tc-row-desc">${commentsBlock}</div>` : ''}
+          ${b.notes ? `<div class="tc-row-desc"><b>Notes:</b> ${escapeHtml(b.notes)}</div>` : ''}
         </div>
         <div class="tc-row-actions">
           <select class="status-select pill bug-status-select" style="${pillStyle(bugStatusColor(b.status))}" data-id="${b.id}">
             ${['Open', 'In Progress', 'Fixed', 'Retest', 'Closed', 'Reopened'].map((s) => `<option value="${s}" ${s === b.status ? 'selected' : ''}>${s}</option>`).join('')}
+          </select>
+          <select class="status-select pill bug-dev-status-select" style="${pillStyle(devStatusColor(b.developer_status))}" data-id="${b.id}">
+            ${['Not Started', 'In Progress', 'Fixed', 'Cannot Reproduce', 'Need Info', "Won't Fix"].map((s) => `<option value="${s}" ${s === b.developer_status ? 'selected' : ''}>Dev: ${s}</option>`).join('')}
+          </select>
+          <select class="status-select pill bug-retest-status-select" style="${pillStyle(retestStatusColor(b.retest_status))}" data-id="${b.id}">
+            ${['Not Retested', 'Pass', 'Fail', 'Blocked'].map((s) => `<option value="${s}" ${s === b.retest_status ? 'selected' : ''}>Retest: ${s}</option>`).join('')}
           </select>
           <button class="icon-btn" data-bug-delete="${b.id}">remove</button>
         </div>
@@ -1584,6 +1642,34 @@ function renderBugs(bugs, projectId) {
         return;
       }
       if (newStatus === 'Fixed') celebrate('Bug fixed!', '🎉');
+      loadBugs(projectId);
+    });
+  });
+
+  bugList.querySelectorAll('.bug-dev-status-select').forEach((sel) => {
+    sel.addEventListener('change', async () => {
+      const { error } = await sb
+        .from('bugs')
+        .update({ developer_status: sel.value, updated_at: new Date().toISOString() })
+        .eq('id', sel.dataset.id);
+      if (error) {
+        alert(error.message);
+        return;
+      }
+      loadBugs(projectId);
+    });
+  });
+
+  bugList.querySelectorAll('.bug-retest-status-select').forEach((sel) => {
+    sel.addEventListener('change', async () => {
+      const { error } = await sb
+        .from('bugs')
+        .update({ retest_status: sel.value, updated_at: new Date().toISOString() })
+        .eq('id', sel.dataset.id);
+      if (error) {
+        alert(error.message);
+        return;
+      }
       loadBugs(projectId);
     });
   });
@@ -1654,11 +1740,11 @@ function normalizeHeaderKey(h) {
 const BUG_HEADER_ALIASES = {
   title: 'title',
   bugtitle: 'title',
-  submodule: 'title',
-  sub_module: 'title',
+  submodule: 'sub_module',
+  sub_module: 'sub_module',
   page: 'page',
   screen: 'page',
-  module: 'page',
+  module: 'module',
   severity: 'severity',
   status: 'status',
   reportedby: 'reported_by',
@@ -1671,6 +1757,14 @@ const BUG_HEADER_ALIASES = {
   expected: 'expected',
   actualresult: 'actual',
   actual: 'actual',
+  developerstatus: 'developer_status',
+  devstatus: 'developer_status',
+  retest: 'retest_status',
+  retststatus: 'retest_status',
+  retestresult: 'retest_status',
+  developercomments: 'developer_comments',
+  devcomments: 'developer_comments',
+  managercomments: 'manager_comments',
   bugid: 'bug_id',
   id: 'bug_id',
   date: 'date',
@@ -1683,7 +1777,10 @@ const BUG_HEADER_ALIASES = {
 function rowsToBugObjects(rows, tabName) {
   if (!rows.length) return [];
   const firstRowKeys = rows[0].map((c) => BUG_HEADER_ALIASES[normalizeHeaderKey(c)]).filter(Boolean);
-  const hasHeader = firstRowKeys.includes('title') && firstRowKeys.includes('page');
+  // A "Sub Module" column can stand in for Title, and a "Module" column can
+  // stand in for Page — either one in each pair is enough to recognize the header.
+  const hasHeader = (firstRowKeys.includes('title') || firstRowKeys.includes('sub_module'))
+    && (firstRowKeys.includes('page') || firstRowKeys.includes('module'));
 
   let fieldMap; // index -> field name
   let dataRows;
@@ -1702,16 +1799,9 @@ function rowsToBugObjects(rows, tabName) {
     fieldMap.forEach((field, idx) => {
       if (field) obj[field] = (row[idx] || '').trim();
     });
-    if (!obj.page && tabName) obj.page = tabName; // fall back to the tab/sheet name
+    if (!obj.page) obj.page = obj.module || tabName || ''; // fall back to Module column, then the tab/sheet name
+    if (!obj.title) obj.title = obj.sub_module || '';
     if (!obj.title || !obj.page) return; // Title and Page are required
-
-    // Steps to Reproduce / Expected / Actual (from testers' bug-sheet layout)
-    // are folded into one description, in order.
-    const descParts = [];
-    if (obj.description) descParts.push(obj.description);
-    if (obj.steps) descParts.push(obj.steps);
-    if (obj.expected) descParts.push(`Expected Result: ${obj.expected}`);
-    if (obj.actual) descParts.push(`Actual Result: ${obj.actual}`);
 
     // Bug Id / Date from the sheet (not columns in the bugs table) are kept
     // in Notes for traceability back to the original sheet row.
@@ -1723,10 +1813,19 @@ function rowsToBugObjects(rows, tabName) {
     objs.push({
       title: obj.title.slice(0, 200),
       page: obj.page.slice(0, 120),
+      module: obj.module ? obj.module.slice(0, 120) : null,
+      sub_module: obj.sub_module ? obj.sub_module.slice(0, 200) : null,
       severity: normalizeSeverity(obj.severity),
       status: normalizeBugStatus(obj.status),
       reported_by: obj.reported_by ? obj.reported_by.slice(0, 80) : null,
-      description: descParts.length ? descParts.join('\n\n').slice(0, 1000) : null,
+      description: obj.description ? obj.description.slice(0, 1000) : null,
+      steps_to_reproduce: obj.steps ? obj.steps.slice(0, 1000) : null,
+      expected_result: obj.expected ? obj.expected.slice(0, 1000) : null,
+      actual_result: obj.actual ? obj.actual.slice(0, 1000) : null,
+      developer_status: obj.developer_status ? normalizeDeveloperStatus(obj.developer_status) : 'Not Started',
+      retest_status: obj.retest_status ? normalizeRetestStatus(obj.retest_status) : 'Not Retested',
+      developer_comments: obj.developer_comments ? obj.developer_comments.slice(0, 1000) : null,
+      manager_comments: obj.manager_comments ? obj.manager_comments.slice(0, 1000) : null,
       notes: noteParts.length ? noteParts.join(' | ').slice(0, 500) : null,
       _tab: tabName || null,
     });
@@ -1867,11 +1966,15 @@ function renderBugImportPreview(bugs) {
       <div>
         <div class="ai-preview-item-title">
           ${escapeHtml(b.title)}
+          ${b.module ? `<span class="pill" style="${pillStyle('#38BDF8')}">Module: ${escapeHtml(b.module)}</span>` : ''}
           <span class="pill" style="${pillStyle('#818CF8')}">Page: ${escapeHtml(b.page)}</span>
           ${b._tab ? `<span class="pill" style="${pillStyle('#38BDF8')}">Tab: ${escapeHtml(b._tab)}</span>` : ''}
           <span class="priority-pill priority-${escapeHtml(b.severity)}">${escapeHtml(b.severity)}</span>
           <span class="pill" style="${pillStyle(bugStatusColor(b.status))}">${escapeHtml(b.status)}</span>
         </div>
+        ${b.steps_to_reproduce ? `<div class="ai-preview-item-desc"><b>Steps:</b> ${escapeHtml(b.steps_to_reproduce)}</div>` : ''}
+        ${b.expected_result ? `<div class="ai-preview-item-desc"><b>Expected:</b> ${escapeHtml(b.expected_result)}</div>` : ''}
+        ${b.actual_result ? `<div class="ai-preview-item-desc"><b>Actual:</b> ${escapeHtml(b.actual_result)}</div>` : ''}
         ${b.description ? `<div class="ai-preview-item-desc">${escapeHtml(b.description)}</div>` : ''}
       </div>
     `;
@@ -1903,10 +2006,19 @@ document.getElementById('bug-import-add-selected').addEventListener('click', asy
     project_id: projectId,
     title: b.title,
     page: b.page,
+    module: b.module,
+    sub_module: b.sub_module,
     severity: b.severity,
     status: b.status,
     reported_by: b.reported_by,
     description: b.description,
+    steps_to_reproduce: b.steps_to_reproduce,
+    expected_result: b.expected_result,
+    actual_result: b.actual_result,
+    developer_status: b.developer_status,
+    retest_status: b.retest_status,
+    developer_comments: b.developer_comments,
+    manager_comments: b.manager_comments,
     notes: b.notes,
     owner_id: currentUser ? currentUser.id : null,
   }));
@@ -2699,11 +2811,20 @@ document.getElementById('download-bugs-btn').addEventListener('click', () => {
   const p = projectsCache.find((x) => x.id === id);
   const rows = bugCache.map((b) => ({
     'Title': b.title,
+    'Module': b.module || '',
+    'Sub Module': b.sub_module || '',
     'Page': b.page,
     'Severity': b.severity,
     'Status': b.status,
     'Reported By': b.reported_by || '',
+    'Steps to Reproduce': b.steps_to_reproduce || '',
+    'Expected Result': b.expected_result || '',
+    'Actual Result': b.actual_result || '',
     'Description': b.description || '',
+    'Developer Status': b.developer_status || '',
+    'Developer Comments': b.developer_comments || '',
+    'Retest Status': b.retest_status || '',
+    'Manager Comments': b.manager_comments || '',
     'Notes': b.notes || '',
   }));
   downloadSheet(`${safeFileName(p ? p.name : 'Project')} - Bugs`, rows, 'Bugs');

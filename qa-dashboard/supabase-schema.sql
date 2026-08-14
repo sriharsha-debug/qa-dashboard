@@ -301,3 +301,27 @@ create policy "bugs_owner_or_leader" on bugs
 drop trigger if exists audit_bugs on bugs;
 create trigger audit_bugs after insert or update or delete on bugs
 for each row execute function write_audit_log();
+
+
+-- Migration v19: professional bug-sheet columns on bugs
+-- See migration-v19.sql for details/comments.
+
+alter table bugs add column if not exists module text;
+alter table bugs add column if not exists sub_module text;
+alter table bugs add column if not exists steps_to_reproduce text;
+alter table bugs add column if not exists expected_result text;
+alter table bugs add column if not exists actual_result text;
+alter table bugs add column if not exists developer_comments text;
+alter table bugs add column if not exists manager_comments text;
+
+alter table bugs add column if not exists developer_status text
+  not null default 'Not Started';
+alter table bugs drop constraint if exists bugs_developer_status_check;
+alter table bugs add constraint bugs_developer_status_check
+  check (developer_status in ('Not Started', 'In Progress', 'Fixed', 'Cannot Reproduce', 'Need Info', 'Won''t Fix'));
+
+alter table bugs add column if not exists retest_status text
+  not null default 'Not Retested';
+alter table bugs drop constraint if exists bugs_retest_status_check;
+alter table bugs add constraint bugs_retest_status_check
+  check (retest_status in ('Not Retested', 'Pass', 'Fail', 'Blocked'));
