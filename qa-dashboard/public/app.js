@@ -1375,12 +1375,12 @@ function renderTestCases(cases, projectId) {
           </div>
           ${c.description ? `<div class="tc-row-desc">${escapeHtml(c.description)}</div>` : ''}
         </div>
-        <div class="tc-row-actions">
-          <select class="status-select pill tc-status-select" style="${pillStyle(tcStatusColor(c.status))}" data-id="${c.id}">
-            ${['Not Run', 'Pass', 'Fail', 'Blocked'].map((s) => `<option value="${s}" ${s === c.status ? 'selected' : ''}>${s}</option>`).join('')}
-          </select>
-          <button class="icon-btn" data-tc-delete="${c.id}">remove</button>
-        </div>
+      </div>
+      <div class="tc-row-actions">
+        <select class="status-select pill tc-status-select" style="${pillStyle(tcStatusColor(c.status))}" data-id="${c.id}">
+          ${['Not Run', 'Pass', 'Fail', 'Blocked'].map((s) => `<option value="${s}" ${s === c.status ? 'selected' : ''}>${s}</option>`).join('')}
+        </select>
+        <button class="icon-btn" data-tc-delete="${c.id}">remove</button>
       </div>
     `;
     tcList.appendChild(row);
@@ -1723,18 +1723,18 @@ function renderBugs(bugs, projectId) {
           ${commentsBlock ? `<div class="tc-row-desc">${commentsBlock}</div>` : ''}
           ${b.notes ? `<div class="tc-row-desc"><b>Notes:</b> ${escapeHtml(b.notes)}</div>` : ''}
         </div>
-        <div class="tc-row-actions">
-          <select class="status-select pill bug-status-select" style="${pillStyle(bugStatusColor(b.status))}" data-id="${b.id}">
-            ${['Open', 'In Progress', 'Fixed', 'Retest', 'Closed', 'Reopened'].map((s) => `<option value="${s}" ${s === b.status ? 'selected' : ''}>${s}</option>`).join('')}
-          </select>
-          <select class="status-select pill bug-dev-status-select" style="${pillStyle(devStatusColor(b.developer_status))}" data-id="${b.id}">
-            ${['Not Started', 'In Progress', 'Fixed', 'Cannot Reproduce', 'Need Info', "Won't Fix"].map((s) => `<option value="${s}" ${s === b.developer_status ? 'selected' : ''}>Dev: ${s}</option>`).join('')}
-          </select>
-          <select class="status-select pill bug-retest-status-select" style="${pillStyle(retestStatusColor(b.retest_status))}" data-id="${b.id}">
-            ${['Not Retested', 'Pass', 'Fail', 'Blocked'].map((s) => `<option value="${s}" ${s === b.retest_status ? 'selected' : ''}>Retest: ${s}</option>`).join('')}
-          </select>
-          <button class="icon-btn" data-bug-delete="${b.id}">remove</button>
-        </div>
+      </div>
+      <div class="tc-row-actions">
+        <select class="status-select pill bug-status-select" style="${pillStyle(bugStatusColor(b.status))}" data-id="${b.id}">
+          ${['Open', 'In Progress', 'Fixed', 'Retest', 'Closed', 'Reopened'].map((s) => `<option value="${s}" ${s === b.status ? 'selected' : ''}>${s}</option>`).join('')}
+        </select>
+        <select class="status-select pill bug-dev-status-select" style="${pillStyle(devStatusColor(b.developer_status))}" data-id="${b.id}">
+          ${['Not Started', 'In Progress', 'Fixed', 'Cannot Reproduce', 'Need Info', "Won't Fix"].map((s) => `<option value="${s}" ${s === b.developer_status ? 'selected' : ''}>Dev: ${s}</option>`).join('')}
+        </select>
+        <select class="status-select pill bug-retest-status-select" style="${pillStyle(retestStatusColor(b.retest_status))}" data-id="${b.id}">
+          ${['Not Retested', 'Pass', 'Fail', 'Blocked'].map((s) => `<option value="${s}" ${s === b.retest_status ? 'selected' : ''}>Retest: ${s}</option>`).join('')}
+        </select>
+        <button class="icon-btn" data-bug-delete="${b.id}">remove</button>
       </div>
     `;
     bugList.appendChild(row);
