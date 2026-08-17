@@ -1819,37 +1819,45 @@ const bugImportPreviewList = document.getElementById('bug-import-preview-list');
 const bugImportTabSummary = document.getElementById('bug-import-tab-summary');
 let bugImportRows = [];
 
-// Parses a single CSV/TSV line, respecting double-quoted fields (RFC4180-ish).
-function parseDelimitedLine(line, delim) {
-  const out = [];
+// Parses CSV/TSV text into rows of cells, correctly handling quoted fields
+// that contain embedded newlines (very common for a "Steps to Reproduce"
+// cell with multiple numbered lines) - a newline only ends a row when it's
+// outside quotes, not whenever it appears.
+function parseDelimitedText(text) {
+  const raw = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  if (!raw.trim()) return [];
+  const delim = raw.includes('\t') ? '\t' : ',';
+
+  const rows = [];
+  let row = [];
   let cur = '';
   let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
+
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
     if (inQuotes) {
       if (ch === '"') {
-        if (line[i + 1] === '"') { cur += '"'; i++; } else { inQuotes = false; }
+        if (raw[i + 1] === '"') { cur += '"'; i++; } else { inQuotes = false; }
       } else {
         cur += ch;
       }
     } else if (ch === '"') {
       inQuotes = true;
     } else if (ch === delim) {
-      out.push(cur);
+      row.push(cur.trim());
+      cur = '';
+    } else if (ch === '\n') {
+      row.push(cur.trim());
+      if (row.some((c) => c !== '')) rows.push(row);
+      row = [];
       cur = '';
     } else {
       cur += ch;
     }
   }
-  out.push(cur);
-  return out;
-}
-
-function parseDelimitedText(text) {
-  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter((l) => l.trim() !== '');
-  if (!lines.length) return [];
-  const delim = lines[0].includes('\t') ? '\t' : ',';
-  return lines.map((l) => parseDelimitedLine(l, delim).map((c) => c.trim()));
+  row.push(cur.trim());
+  if (row.some((c) => c !== '')) rows.push(row);
+  return rows;
 }
 
 function normalizeHeaderKey(h) {
