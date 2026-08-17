@@ -578,17 +578,38 @@ h2 {
 }
 .panel-head {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
+  row-gap: 10px;
+  column-gap: 16px;
   margin-bottom: 16px;
   padding-bottom: 10px;
   border-bottom: 1px dashed var(--line-strong);
 }
+.panel-head > h2 {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  margin: 0;
+}
+#details-name {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  min-width: 120px;
+}
 .count { font-family: var(--font-mono); font-size: 12px; color: var(--ink-soft); }
-.panel-head-right { display: flex; align-items: center; gap: 10px; }
+.panel-head-right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
 
 /* ---------- Bulk select / delete ---------- */
-.bulk-bar { display: flex; align-items: center; gap: 10px; }
+.bulk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .bulk-bar.hidden { display: none; }
 .bulk-select-all {
   display: flex;
@@ -853,7 +874,7 @@ select option:focus {
 .row-actions { display: flex; gap: 12px; white-space: nowrap; }
 
 /* Daily log filters + report cards */
-.filters { display: flex; gap: 8px; align-items: center; }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; flex: 1 1 auto; justify-content: flex-end; min-width: 0; }
 .filters select, .filters input { font-size: 12px; padding: 6px 8px; }
 
 .reports-list { display: flex; flex-direction: column; gap: 12px; }
