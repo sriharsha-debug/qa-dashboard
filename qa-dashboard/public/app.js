@@ -35,6 +35,85 @@ function flashRowRemoving(rowEl, delay = 220) {
   });
 }
 
+// ---------- Bulk select / select all / delete selected ----------
+// Generic helper used by Projects, Test execution, Bugs, APK shares and
+// Daily report History. Each list gets its own instance: a "select all"
+// checkbox, per-row checkboxes (rendered by the list's own render function),
+// and a "Delete selected" button that batch-deletes the checked rows.
+function createBulkSelector({ checkboxSelector, selectAllId, deleteBtnId, table, itemLabel, onDeleted }) {
+  const selected = new Set();
+  const selectAllCb = document.getElementById(selectAllId);
+  const deleteBtn = document.getElementById(deleteBtnId);
+
+  function checkboxes() {
+    return Array.from(document.querySelectorAll(checkboxSelector));
+  }
+
+  function updateUI() {
+    const n = selected.size;
+    if (deleteBtn) {
+      deleteBtn.classList.toggle('hidden', n === 0);
+      deleteBtn.textContent = n ? `Delete selected (${n})` : 'Delete selected';
+    }
+    if (selectAllCb) {
+      const boxes = checkboxes();
+      const checkedCount = boxes.filter((cb) => selected.has(cb.dataset.id)).length;
+      selectAllCb.checked = boxes.length > 0 && checkedCount === boxes.length;
+      selectAllCb.indeterminate = checkedCount > 0 && checkedCount < boxes.length;
+    }
+  }
+
+  // Call after every render: wires up the checkboxes currently in the DOM
+  // and drops any selected ids that are no longer present (deleted/filtered out).
+  function onRendered() {
+    const present = new Set(checkboxes().map((cb) => cb.dataset.id));
+    Array.from(selected).forEach((id) => {
+      if (!present.has(id)) selected.delete(id);
+    });
+    checkboxes().forEach((cb) => {
+      cb.checked = selected.has(cb.dataset.id);
+      cb.addEventListener('change', () => {
+        if (cb.checked) selected.add(cb.dataset.id);
+        else selected.delete(cb.dataset.id);
+        updateUI();
+      });
+    });
+    updateUI();
+  }
+
+  if (selectAllCb) {
+    selectAllCb.addEventListener('change', () => {
+      const checked = selectAllCb.checked;
+      checkboxes().forEach((cb) => {
+        cb.checked = checked;
+        if (checked) selected.add(cb.dataset.id);
+        else selected.delete(cb.dataset.id);
+      });
+      updateUI();
+    });
+  }
+
+  if (deleteBtn) {
+    deleteBtn.addEventListener('click', async () => {
+      const ids = Array.from(selected);
+      if (!ids.length) return;
+      const label = itemLabel || 'item';
+      if (!confirm(`Delete ${ids.length} selected ${label}${ids.length > 1 ? 's' : ''}? This cannot be undone.`)) return;
+      deleteBtn.disabled = true;
+      const { error } = await sb.from(table).delete().in('id', ids);
+      deleteBtn.disabled = false;
+      if (error) {
+        alert(error.message);
+        return;
+      }
+      selected.clear();
+      if (onDeleted) await onDeleted(ids);
+    });
+  }
+
+  return { onRendered, selected };
+}
+
 // ---------- Supabase client + Auth ----------
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -769,6 +848,19 @@ async function loadProjects() {
   renderBugsSelect();
 }
 
+const projectsBulk = createBulkSelector({
+  checkboxSelector: '#projects-tbody .row-checkbox',
+  selectAllId: 'projects-select-all',
+  deleteBtnId: 'projects-bulk-delete',
+  table: 'projects',
+  itemLabel: 'project',
+  onDeleted: async () => {
+    notify(`${actorLabel()} bulk-deleted projects`, 'project', 'delete');
+    await loadProjects();
+    await loadReports();
+  },
+});
+
 function statusColor(name) {
   const s = statusesCache.find((x) => x.name === name);
   return (s && s.color) || '#7FA0A6';
@@ -801,6 +893,7 @@ function renderProjects(projects) {
   filtered.forEach((p, i) => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
+      <td class="col-checkbox"><input type="checkbox" class="row-checkbox" data-id="${p.id}" /></td>
       <td class="col-idx">${String(i + 1).padStart(2, '0')}</td>
       <td><button class="project-link" data-edit="${p.id}">${escapeHtml(p.name)}</button></td>
       <td>
@@ -859,6 +952,8 @@ function renderProjects(projects) {
       loadReports();
     });
   });
+
+  projectsBulk.onRendered();
 }
 
 function renderProjectSelects(projects) {
@@ -1340,6 +1435,17 @@ async function loadTestCases(projectId) {
 let tcPageNum = 1;
 const TC_PAGE_SIZE = 8;
 
+const tcBulk = createBulkSelector({
+  checkboxSelector: '#tc-list .row-checkbox',
+  selectAllId: 'tc-select-all',
+  deleteBtnId: 'tc-bulk-delete',
+  table: 'test_cases',
+  itemLabel: 'test case',
+  onDeleted: async () => {
+    await loadTestCases(detailsSelect.value);
+  },
+});
+
 function renderTestCases(cases, projectId) {
   const counts = { 'Not Run': 0, Pass: 0, Fail: 0, Blocked: 0 };
   const catCounts = {};
@@ -1366,6 +1472,7 @@ function renderTestCases(cases, projectId) {
     row.className = 'tc-row';
     row.innerHTML = `
       <div class="tc-row-top">
+        <div class="tc-row-checkbox-wrap"><input type="checkbox" class="row-checkbox" data-id="${c.id}" /></div>
         <div>
           <div class="tc-row-title">${escapeHtml(c.title)}</div>
           <div class="tc-row-meta">
@@ -1423,6 +1530,8 @@ function renderTestCases(cases, projectId) {
       loadTestCases(projectId);
     });
   });
+
+  tcBulk.onRendered();
 }
 
 // ---------- Bugs (own tab, own project selector) ----------
@@ -1680,6 +1789,17 @@ async function loadBugs(projectId) {
 let bugPageNum = 1;
 const BUG_PAGE_SIZE = 8;
 
+const bugBulk = createBulkSelector({
+  checkboxSelector: '#bug-list .row-checkbox',
+  selectAllId: 'bug-select-all',
+  deleteBtnId: 'bug-bulk-delete',
+  table: 'bugs',
+  itemLabel: 'bug',
+  onDeleted: async () => {
+    await loadBugs(bugsSelect.value);
+  },
+});
+
 function renderBugs(bugs, projectId) {
   const counts = { Open: 0, 'In Progress': 0, Fixed: 0, Retest: 0, Closed: 0, Reopened: 0 };
   bugs.forEach((b) => { counts[b.status] = (counts[b.status] || 0) + 1; });
@@ -1709,6 +1829,7 @@ function renderBugs(bugs, projectId) {
     ].filter(Boolean).join('');
     row.innerHTML = `
       <div class="tc-row-top">
+        <div class="tc-row-checkbox-wrap"><input type="checkbox" class="row-checkbox" data-id="${b.id}" /></div>
         <div>
           <div class="tc-row-title"><button type="button" class="project-link" data-bug-edit="${b.id}">${escapeHtml(b.title)}</button></div>
           <div class="tc-row-meta">
@@ -1805,6 +1926,8 @@ function renderBugs(bugs, projectId) {
       loadBugs(projectId);
     });
   });
+
+  bugBulk.onRendered();
 }
 
 // ---------- Import bugs from Google Sheet ----------
@@ -2228,6 +2351,17 @@ async function loadApkShares(projectId) {
   renderApkShares(data);
 }
 
+const apkBulk = createBulkSelector({
+  checkboxSelector: '#apk-list .row-checkbox',
+  selectAllId: 'apk-select-all',
+  deleteBtnId: 'apk-bulk-delete',
+  table: 'apk_shares',
+  itemLabel: 'APK entry',
+  onDeleted: async () => {
+    showProjectDetails(detailsSelect.value);
+  },
+});
+
 function renderApkShares(shares) {
   apkList.innerHTML = '';
   apkCount.textContent = shares.length ? `${shares.length} logged` : '';
@@ -2237,6 +2371,7 @@ function renderApkShares(shares) {
     const row = document.createElement('div');
     row.className = 'apk-row';
     row.innerHTML = `
+      <div class="apk-row-checkbox-wrap"><input type="checkbox" class="row-checkbox" data-id="${a.id}" /></div>
       <div class="apk-row-main">
         <div class="apk-row-top">
           <span class="apk-version">${escapeHtml(a.version || 'Build')}</span>
@@ -2260,6 +2395,8 @@ function renderApkShares(shares) {
     });
     apkList.appendChild(row);
   });
+
+  apkBulk.onRendered();
 }
 
 function todayStr() {
@@ -2764,14 +2901,26 @@ async function loadReports() {
   reportsCache = data || [];
 }
 
+const reportsBulk = createBulkSelector({
+  checkboxSelector: '#reports-list .card-checkbox',
+  selectAllId: 'reports-select-all',
+  deleteBtnId: 'reports-bulk-delete',
+  table: 'daily_reports',
+  itemLabel: 'entry',
+  onDeleted: async () => {
+    await loadReports();
+  },
+});
+
 function renderReports(reports) {
   reportsList.innerHTML = '';
   reportsEmpty.style.display = reports.length ? 'none' : 'block';
 
   reports.forEach((r) => {
     const card = document.createElement('div');
-    card.className = 'report-card';
+    card.className = 'report-card has-checkbox';
     card.innerHTML = `
+      <input type="checkbox" class="card-checkbox" data-id="${r.id}" />
       <div class="report-head">
         <span class="proj-name">${escapeHtml(r.projects ? r.projects.name : 'Unknown project')}</span>
         <span>${r.report_date}</span>
@@ -2808,6 +2957,8 @@ function renderReports(reports) {
     });
     reportsList.appendChild(card);
   });
+
+  reportsBulk.onRendered();
 }
 
 // ---------- Celebration toasts ----------

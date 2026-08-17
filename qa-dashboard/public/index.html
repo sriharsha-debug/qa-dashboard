@@ -92,6 +92,9 @@
         <div class="panel-head">
           <h2>Projects</h2>
           <div class="panel-head-right">
+            <div class="bulk-bar" id="projects-bulk-bar">
+              <button type="button" id="projects-bulk-delete" class="btn btn-danger btn-sm hidden">Delete selected</button>
+            </div>
             <select id="admin-filter-projects" class="hidden"></select>
             <span class="count" id="project-count"></span>
             <button id="download-projects-btn" class="btn btn-ghost">Download</button>
@@ -101,6 +104,7 @@
           <table class="ledger" id="projects-table">
             <thead>
               <tr>
+                <th class="col-checkbox"><input type="checkbox" id="projects-select-all" title="Select all" /></th>
                 <th class="col-idx">No.</th>
                 <th>Project</th>
                 <th>Status</th>
@@ -146,6 +150,10 @@
           <div class="panel-head">
             <h2>Test execution</h2>
             <div class="panel-head-right">
+              <div class="bulk-bar" id="tc-bulk-bar">
+                <label class="bulk-select-all"><input type="checkbox" id="tc-select-all" /> Select all</label>
+                <button type="button" id="tc-bulk-delete" class="btn btn-danger btn-sm hidden">Delete selected</button>
+              </div>
               <span class="count" id="tc-summary"></span>
               <button id="download-tc-btn" class="btn btn-ghost">Download</button>
             </div>
@@ -228,7 +236,13 @@
         <div class="panel">
           <div class="panel-head">
             <h2>APK shares</h2>
-            <span class="count" id="apk-count"></span>
+            <div class="panel-head-right">
+              <div class="bulk-bar" id="apk-bulk-bar">
+                <label class="bulk-select-all"><input type="checkbox" id="apk-select-all" /> Select all</label>
+                <button type="button" id="apk-bulk-delete" class="btn btn-danger btn-sm hidden">Delete selected</button>
+              </div>
+              <span class="count" id="apk-count"></span>
+            </div>
           </div>
           <form id="apk-form" class="grid-form">
             <label>Version / label
@@ -318,6 +332,10 @@
           <div class="panel-head">
             <h2>Bugs</h2>
             <div class="panel-head-right">
+              <div class="bulk-bar" id="bug-bulk-bar">
+                <label class="bulk-select-all"><input type="checkbox" id="bug-select-all" /> Select all</label>
+                <button type="button" id="bug-bulk-delete" class="btn btn-danger btn-sm hidden">Delete selected</button>
+              </div>
               <span class="count" id="bug-summary"></span>
               <button id="download-bugs-btn" class="btn btn-ghost">Download</button>
             </div>
@@ -461,6 +479,10 @@
         <div class="panel-head">
           <h2>History</h2>
           <div class="filters">
+            <div class="bulk-bar" id="reports-bulk-bar">
+              <label class="bulk-select-all"><input type="checkbox" id="reports-select-all" /> Select all</label>
+              <button type="button" id="reports-bulk-delete" class="btn btn-danger btn-sm hidden">Delete selected</button>
+            </div>
             <select id="admin-filter-reports" class="hidden"></select>
             <select id="filter-project">
               <option value="">All projects</option>

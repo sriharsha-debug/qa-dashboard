@@ -587,6 +587,45 @@ h2 {
 .count { font-family: var(--font-mono); font-size: 12px; color: var(--ink-soft); }
 .panel-head-right { display: flex; align-items: center; gap: 10px; }
 
+/* ---------- Bulk select / delete ---------- */
+.bulk-bar { display: flex; align-items: center; gap: 10px; }
+.bulk-bar.hidden { display: none; }
+.bulk-select-all {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.bulk-select-all input[type="checkbox"] { cursor: pointer; }
+.btn-danger {
+  background: rgba(243, 86, 75, 0.14);
+  color: #F3564B;
+  border-color: rgba(243, 86, 75, 0.5);
+}
+.btn-danger:hover {
+  background: rgba(243, 86, 75, 0.24);
+  box-shadow: 0 6px 22px rgba(243, 86, 75, 0.25);
+}
+.btn-sm { padding: 6px 12px; font-size: 12px; }
+.col-checkbox { width: 34px; text-align: center; }
+.row-checkbox, .card-checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #2DD4BF;
+}
+.tc-row-checkbox-wrap { display: flex; align-items: flex-start; padding-top: 2px; }
+.tc-row-top { align-items: flex-start; }
+.apk-row-checkbox-wrap { display: flex; align-items: flex-start; padding-top: 2px; }
+.report-card { position: relative; }
+.report-card .card-checkbox { position: absolute; top: 16px; left: 16px; }
+.report-card.has-checkbox { padding-left: 40px; }
+
 /* Forms */
 .inline-form { display: flex; gap: 10px; flex-wrap: wrap; }
 .inline-form input[type="text"] { flex: 1; min-width: 200px; }
@@ -1619,13 +1658,18 @@ button, input, select, textarea {
     color: var(--ink-soft);
   }
 
-  #tab-projects .ledger td:nth-child(1)::before { content: 'No.'; }
-  #tab-projects .ledger td:nth-child(2)::before { content: 'Project'; }
-  #tab-projects .ledger td:nth-child(3)::before { content: 'Status'; }
-  #tab-projects .ledger td:nth-child(4)::before { content: 'PM'; }
-  #tab-projects .ledger td:nth-child(5)::before { content: 'Start – End'; }
-  #tab-projects .ledger td:nth-child(6)::before { content: 'Tester'; }
-  #tab-projects .ledger td:nth-child(7)::before { content: 'Actions'; }
+  #tab-projects .ledger td:nth-child(1)::before { content: 'Select'; }
+  #tab-projects .ledger td:nth-child(2)::before { content: 'No.'; }
+  #tab-projects .ledger td:nth-child(3)::before { content: 'Project'; }
+  #tab-projects .ledger td:nth-child(4)::before { content: 'Status'; }
+  #tab-projects .ledger td:nth-child(5)::before { content: 'PM'; }
+  #tab-projects .ledger td:nth-child(6)::before { content: 'Start – End'; }
+  #tab-projects .ledger td:nth-child(7)::before { content: 'Tester'; }
+  #tab-projects .ledger td:nth-child(8)::before { content: 'Actions'; }
+
+  #tab-projects .ledger td.col-checkbox {
+    grid-template-columns: minmax(74px, 34%) auto;
+  }
 
   #tab-projects .ledger td > * {
     min-width: 0;
