@@ -3057,6 +3057,66 @@ function downloadSheet(filename, rows, sheetName) {
   XLSX.writeFile(wb, `${filename}.xlsx`);
 }
 
+// A "template" download is just headers + one filled-in example row, so a
+// blank file always has something to download (unlike downloadSheet, which
+// needs existing data).
+function downloadTemplateSheet(filename, headers, exampleRow, sheetName) {
+  const ws = XLSX.utils.aoa_to_sheet([headers, exampleRow]);
+  ws['!cols'] = headers.map(() => ({ wch: 22 }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, (sheetName || 'Template').slice(0, 31));
+  XLSX.writeFile(wb, `${filename}.xlsx`);
+}
+
+// Test execution → blank template matching the Add test case fields exactly,
+// so filled-in rows can be copied straight into the form / a future import.
+document.getElementById('download-tc-template-btn').addEventListener('click', () => {
+  downloadTemplateSheet(
+    'Test Cases Template',
+    ['Title', 'Priority', 'Category', 'Status', 'Description', 'Notes'],
+    [
+      'Verify login with valid credentials',
+      'High',
+      'Functional',
+      'Not Run',
+      'Enter a valid username and password, click Login, verify the user lands on the dashboard',
+      'Priority: Low/Medium/High. Category: Functional/Positive/Negative/Edge Case/Security/Validation/UI-UX/Performance/Accessibility/Compatibility/Regression/UAT. Status: Not Run/Pass/Fail/Blocked.',
+    ],
+    'Test Cases'
+  );
+});
+
+// Bugs → blank template using the exact column headers the "Import bugs from
+// Google Sheet" panel already recognizes (see BUG_HEADER_ALIASES), so a filled
+// template can be copied straight into a Google Sheet and imported as-is.
+document.getElementById('download-bugs-template-btn').addEventListener('click', () => {
+  downloadTemplateSheet(
+    'Bugs Template',
+    ['Title', 'Page', 'Module', 'Sub Module', 'Severity', 'Status', 'Reported By', 'Steps to Reproduce', 'Expected Result', 'Actual Result', 'Description', 'Developer Status', 'Developer Comments', 'Retest Status', 'Manager Comments', 'Bug Id', 'Date', 'Notes'],
+    [
+      'Login button unresponsive on checkout',
+      'Checkout page',
+      'University Admin',
+      'Departments – Create Department',
+      'High',
+      'Open',
+      'Jane Doe',
+      '1. Go to checkout page\n2. Fill in valid details\n3. Click Login',
+      'User is redirected to the dashboard after logging in',
+      'Nothing happens, button stays disabled',
+      'Clicking the login button does not navigate anywhere',
+      'Not Started',
+      '',
+      'Not Retested',
+      '',
+      'BUG-001',
+      '2026-08-17',
+      'Only reproduced on Chrome so far',
+    ],
+    'Bugs'
+  );
+});
+
 // Projects tab → downloads only the projects ledger.
 document.getElementById('download-projects-btn').addEventListener('click', () => {
   const rows = projectsCache.map((p) => ({
