@@ -304,12 +304,17 @@ h2 {
    centered label, which visually sets them apart from the rectangular
    inputs and the rounded-rect dropdowns above. Three sizes cover every
    button on every tab: .btn (default, 40px tall), .btn-sm/.btn-small
-   (compact, 32px tall, for dense table rows), nothing smaller is used. */
+   (compact, 32px tall, for dense table rows), nothing smaller is used.
+   Interactions use a restrained, professional easing (expo-out) — a small
+   lift on hover, a soft press on click, and a quick light sweep — rather
+   than a springy bounce. */
 .btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
+  overflow: hidden;
   font-family: var(--font-mono);
   font-size: 13px;
   font-weight: 600;
@@ -322,10 +327,34 @@ h2 {
   color: var(--ink);
   cursor: pointer;
   border-radius: 999px;
-  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.18s ease, background 0.15s ease;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), background 0.15s ease, border-color 0.15s ease;
 }
-.btn:hover { transform: translateY(-2px) scale(1.03); box-shadow: 0 6px 22px rgba(45, 212, 191, 0.25); border-color: rgba(255,255,255,0.3); }
-.btn:active { transform: scale(0.94); transition-duration: 0.08s; }
+.btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 40%, rgba(255,255,255,0.16) 50%, transparent 60%);
+  background-size: 220% 100%;
+  background-position: 120% 0;
+  transition: background-position 0.55s ease;
+  pointer-events: none;
+}
+.btn:hover::before { background-position: -20% 0; }
+.btn:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(45, 212, 191, 0.20); border-color: rgba(255,255,255,0.3); }
+.btn:active { transform: translateY(0) scale(0.97); transition-duration: 0.08s; }
+.btn:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+@keyframes rippleOut {
+  0% { transform: scale(0); opacity: 0.45; }
+  100% { transform: scale(1); opacity: 0; }
+}
+.btn-ripple {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,0.9), rgba(255,255,255,0) 70%);
+  transform: scale(0);
+  animation: rippleOut 0.55s ease-out;
+  pointer-events: none;
+}
 .btn-primary {
   background: var(--grad-cool);
   color: #06131A;
@@ -337,7 +366,16 @@ h2 {
 .btn-ghost { border-color: var(--line-strong); color: var(--ink-soft); background: rgba(255,255,255,0.02); font-weight: 500; }
 
 /* App shell */
-.app { max-width: 1180px; margin: 0 auto; padding: 32px 24px 80px; position: relative; z-index: 1; }
+.app { max-width: 1180px; margin: 0 auto; padding: 32px 24px 80px; position: relative; z-index: 1; animation: paneEnter 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
+
+@keyframes paneEnter {
+  0% { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes fieldEnter {
+  0% { opacity: 0; transform: translateY(6px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
 
 .topbar {
   display: flex;
@@ -348,42 +386,26 @@ h2 {
   margin-bottom: 20px;
   position: relative;
 }
-@keyframes driveAcross {
-  0% { left: -6%; opacity: 0; }
-  6% { opacity: 1; }
-  94% { opacity: 1; }
-  100% { left: 104%; opacity: 0; }
+@keyframes headerSweep {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }
-@keyframes driveAcrossPos {
-  0% { left: -6%; }
-  100% { left: 104%; }
-}
-@keyframes sparkleTwinkle {
-  0%, 100% { opacity: 0; transform: scale(0.4); }
-  50% { opacity: 1; transform: scale(1); }
-}
-.road-car {
+/* A slow, subtle animated gradient line under the header — ambient motion
+   without being a decorative character. Present on every page since the
+   topbar is shared across all tabs. */
+.topbar::after {
+  content: "";
   position: absolute;
-  bottom: -9px;
-  left: -6%;
-  font-size: 18px;
-  line-height: 1;
-  animation: driveAcross 14s linear infinite;
-  filter: drop-shadow(0 0 5px var(--cyan)) drop-shadow(0 0 8px var(--accent2));
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--cyan), var(--purple), transparent);
+  background-size: 200% 100%;
+  animation: headerSweep 5s linear infinite;
+  opacity: 0.55;
   pointer-events: none;
-  transform: scaleX(-1);
 }
-.car-sparkle {
-  position: absolute;
-  bottom: -6px;
-  left: -6%;
-  font-size: 10px;
-  pointer-events: none;
-  animation: driveAcrossPos 14s linear infinite, sparkleTwinkle 0.8s ease-in-out infinite;
-}
-.car-sparkle.s1 { animation-delay: 0.4s, 0s; }
-.car-sparkle.s2 { animation-delay: 0.8s, 0.25s; }
-.car-sparkle.s3 { animation-delay: 1.2s, 0.5s; }
 .who { display: flex; align-items: center; gap: 12px; }
 .who-email { font-family: var(--font-mono); font-size: 12px; color: var(--ink-soft); }
  .header-user-name {
@@ -566,7 +588,12 @@ h2 {
 }
 
 .tab-panel { display: none; flex-direction: column; gap: 20px; }
-.tab-panel.active { display: flex; }
+.tab-panel.active { display: flex; animation: paneEnter 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+.tab-panel.active > .panel { animation: fieldEnter 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.tab-panel.active > .panel:nth-of-type(1) { animation-delay: 0.02s; }
+.tab-panel.active > .panel:nth-of-type(2) { animation-delay: 0.07s; }
+.tab-panel.active > .panel:nth-of-type(3) { animation-delay: 0.12s; }
+.tab-panel.active > .panel:nth-of-type(4) { animation-delay: 0.17s; }
 
 @media (max-width: 1024px) {
   .app { padding: 24px 18px 60px; }
@@ -682,6 +709,10 @@ h2 {
   0% { box-shadow: 0 0 0 0 rgba(45, 212, 191, 0.5); }
   100% { box-shadow: 0 0 0 8px rgba(45, 212, 191, 0); }
 }
+@keyframes focusPulsePurple {
+  0% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.5); }
+  100% { box-shadow: 0 0 0 8px rgba(139, 92, 246, 0); }
+}
 @keyframes fieldSuccessPulse {
   0% { box-shadow: 0 0 0 0 rgba(45, 212, 191, 0.55); }
   100% { box-shadow: 0 0 0 10px rgba(45, 212, 191, 0); }
@@ -715,7 +746,7 @@ input, textarea {
   color: var(--ink);
   border-radius: 10px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10), 0 1px 6px rgba(0, 0, 0, 0.12);
-  transition: border-color 0.15s ease, box-shadow 0.2s ease, transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s ease;
+  transition: border-color 0.15s ease, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s ease;
 }
 textarea { min-height: 80px; }
 input::placeholder, textarea::placeholder { color: #6C74A0; }
@@ -726,8 +757,7 @@ input:focus, textarea:focus {
   outline: none;
   border-color: var(--cyan);
   box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.16);
-  transform: scale(1.01);
-  animation: focusPulse 0.5s ease-out;
+  animation: focusPulse 0.45s ease-out;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(45, 212, 191, 0.06)),
     rgba(255, 255, 255, 0.06);
@@ -756,18 +786,21 @@ select {
   -webkit-appearance: none;
   cursor: pointer;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10), 0 1px 6px rgba(0, 0, 0, 0.12);
-  transition: border-color 0.15s ease, box-shadow 0.2s ease, transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.2s ease;
+  transition: border-color 0.15s ease, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s ease;
 }
 select:hover {
   border-color: rgba(139, 92, 246, 0.6);
   background-color: rgba(139, 92, 246, 0.09);
 }
+select:active {
+  transform: scale(0.985);
+  transition-duration: 0.08s;
+}
 select:focus {
   outline: none;
   border-color: var(--purple);
   box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.16);
-  transform: scale(1.01);
-  animation: focusPulse 0.5s ease-out;
+  animation: focusPulsePurple 0.45s ease-out;
 }
 
 /* Color-coded field states: entering / saving / removing */
@@ -1055,6 +1088,14 @@ select option:focus {
 .bugsheet-link:hover { color: var(--ink); }
 .no-link { color: var(--ink-soft); font-size: 12px; }
 
+@keyframes overlayFadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+@keyframes modalPopIn {
+  0% { opacity: 0; transform: translateY(10px) scale(0.97); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -1065,6 +1106,7 @@ select option:focus {
   justify-content: center;
   padding: 20px;
   z-index: 50;
+  animation: overlayFadeIn 0.2s ease-out;
 }
 .modal {
   background: var(--panel-solid);
@@ -1077,6 +1119,7 @@ select option:focus {
   width: 100%;
   max-width: 480px;
   padding: 24px 26px;
+  animation: modalPopIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .modal-large {
   max-width: 640px;

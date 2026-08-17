@@ -5,6 +5,24 @@ const whoName = document.getElementById('who-name');
 const loginForm = document.getElementById('login-form');
 const loginError = document.getElementById('login-error');
 
+// Subtle, professional press feedback on every button in the app: a soft
+// ripple expands from the click point and fades out. Delegated to one
+// document-level listener so it works for buttons rendered dynamically on
+// any tab, not just the ones present at page load.
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.btn');
+  if (!btn) return;
+  const rect = btn.getBoundingClientRect();
+  const ripple = document.createElement('span');
+  const size = Math.max(rect.width, rect.height) * 1.4;
+  ripple.className = 'btn-ripple';
+  ripple.style.width = ripple.style.height = `${size}px`;
+  ripple.style.left = `${e.clientX - rect.left - size / 2}px`;
+  ripple.style.top = `${e.clientY - rect.top - size / 2}px`;
+  btn.appendChild(ripple);
+  ripple.addEventListener('animationend', () => ripple.remove());
+});
+
 let projectsCache = [];
 let statusesCache = [];
 let teamCache = [];
