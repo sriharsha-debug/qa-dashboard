@@ -40,13 +40,24 @@ function flashRowRemoving(rowEl, delay = 220) {
 // Daily report History. Each list gets its own instance: a "select all"
 // checkbox, per-row checkboxes (rendered by the list's own render function),
 // and a "Delete selected" button that batch-deletes the checked rows.
-function createBulkSelector({ checkboxSelector, selectAllId, deleteBtnId, table, itemLabel, onDeleted }) {
+//
+// For paginated lists (Test execution, Bugs) only ~8 rows exist in the DOM
+// at a time, so "select all" / the selection count must be based on the
+// FULL underlying list (getAllIds), not just the checkboxes currently on
+// screen — otherwise "select all" + delete would only ever touch one page.
+function createBulkSelector({ checkboxSelector, selectAllId, deleteBtnId, table, itemLabel, getAllIds, onDeleted }) {
   const selected = new Set();
   const selectAllCb = document.getElementById(selectAllId);
   const deleteBtn = document.getElementById(deleteBtnId);
 
-  function checkboxes() {
+  function visibleCheckboxes() {
     return Array.from(document.querySelectorAll(checkboxSelector));
+  }
+
+  // All ids the list currently represents (every page), falling back to
+  // whatever's on screen for non-paginated lists.
+  function allIds() {
+    return getAllIds ? getAllIds() : visibleCheckboxes().map((cb) => cb.dataset.id);
   }
 
   function updateUI() {
@@ -56,21 +67,23 @@ function createBulkSelector({ checkboxSelector, selectAllId, deleteBtnId, table,
       deleteBtn.textContent = n ? `Delete selected (${n})` : 'Delete selected';
     }
     if (selectAllCb) {
-      const boxes = checkboxes();
-      const checkedCount = boxes.filter((cb) => selected.has(cb.dataset.id)).length;
-      selectAllCb.checked = boxes.length > 0 && checkedCount === boxes.length;
-      selectAllCb.indeterminate = checkedCount > 0 && checkedCount < boxes.length;
+      const ids = allIds();
+      const checkedCount = ids.filter((id) => selected.has(id)).length;
+      selectAllCb.checked = ids.length > 0 && checkedCount === ids.length;
+      selectAllCb.indeterminate = checkedCount > 0 && checkedCount < ids.length;
     }
   }
 
-  // Call after every render: wires up the checkboxes currently in the DOM
-  // and drops any selected ids that are no longer present (deleted/filtered out).
+  // Call after every render (including a page change): syncs the checkboxes
+  // currently in the DOM to the selection state, and drops any selected ids
+  // that no longer exist anywhere in the underlying list (e.g. deleted
+  // elsewhere / filtered out). Selections on OTHER pages are preserved.
   function onRendered() {
-    const present = new Set(checkboxes().map((cb) => cb.dataset.id));
+    const present = new Set(allIds());
     Array.from(selected).forEach((id) => {
       if (!present.has(id)) selected.delete(id);
     });
-    checkboxes().forEach((cb) => {
+    visibleCheckboxes().forEach((cb) => {
       cb.checked = selected.has(cb.dataset.id);
       cb.addEventListener('change', () => {
         if (cb.checked) selected.add(cb.dataset.id);
@@ -84,11 +97,11 @@ function createBulkSelector({ checkboxSelector, selectAllId, deleteBtnId, table,
   if (selectAllCb) {
     selectAllCb.addEventListener('change', () => {
       const checked = selectAllCb.checked;
-      checkboxes().forEach((cb) => {
-        cb.checked = checked;
-        if (checked) selected.add(cb.dataset.id);
-        else selected.delete(cb.dataset.id);
-      });
+      const ids = allIds();
+      if (checked) ids.forEach((id) => selected.add(id));
+      else ids.forEach((id) => selected.delete(id));
+      // Reflect the change on whichever checkboxes happen to be visible.
+      visibleCheckboxes().forEach((cb) => { cb.checked = selected.has(cb.dataset.id); });
       updateUI();
     });
   }
@@ -100,7 +113,15 @@ function createBulkSelector({ checkboxSelector, selectAllId, deleteBtnId, table,
       const label = itemLabel || 'item';
       if (!confirm(`Delete ${ids.length} selected ${label}${ids.length > 1 ? 's' : ''}? This cannot be undone.`)) return;
       deleteBtn.disabled = true;
-      const { error } = await sb.from(table).delete().in('id', ids);
+      // Batch defensively in case a very large selection is made — Supabase's
+      // .in() filter works fine at normal sizes, but this keeps requests small.
+      const batchSize = 200;
+      let error = null;
+      for (let i = 0; i < ids.length; i += batchSize) {
+        const batch = ids.slice(i, i + batchSize);
+        const res = await sb.from(table).delete().in('id', batch);
+        if (res.error) { error = res.error; break; }
+      }
       deleteBtn.disabled = false;
       if (error) {
         alert(error.message);
@@ -1428,8 +1449,8 @@ async function loadTestCases(projectId) {
     console.error(error);
     return;
   }
-  renderTestCases(data, projectId);
   tcCache = data || [];
+  renderTestCases(data, projectId);
 }
 
 let tcPageNum = 1;
@@ -1441,6 +1462,7 @@ const tcBulk = createBulkSelector({
   deleteBtnId: 'tc-bulk-delete',
   table: 'test_cases',
   itemLabel: 'test case',
+  getAllIds: () => tcCache.map((c) => c.id),
   onDeleted: async () => {
     await loadTestCases(detailsSelect.value);
   },
@@ -1795,6 +1817,7 @@ const bugBulk = createBulkSelector({
   deleteBtnId: 'bug-bulk-delete',
   table: 'bugs',
   itemLabel: 'bug',
+  getAllIds: () => bugCache.map((b) => b.id),
   onDeleted: async () => {
     await loadBugs(bugsSelect.value);
   },
