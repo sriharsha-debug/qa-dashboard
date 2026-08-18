@@ -566,7 +566,6 @@ document.getElementById('admin-filter-projects').addEventListener('change', () =
 document.getElementById('admin-filter-reports').addEventListener('change', () => loadReports());
 
 function renderTeam(members) {
-  renderTeamInto('team-list', 'team-count', members);
   const settingsPanel = document.getElementById('settings-permissions-panel');
   if (isLeader()) {
     settingsPanel.classList.remove('hidden');
@@ -574,6 +573,7 @@ function renderTeam(members) {
   } else {
     settingsPanel.classList.add('hidden');
   }
+  renderCleanupTargets(members);
 }
 
 function renderTeamInto(listId, countId, members) {
@@ -666,23 +666,76 @@ document.getElementById('password-form').addEventListener('submit', async (e) =>
   document.getElementById('password-success').classList.remove('hidden');
 });
 
+function renderCleanupTargets(members) {
+  const row = document.getElementById('cleanup-target-row');
+  const select = document.getElementById('cleanup-target-select');
+  if (!isLeader()) {
+    row.classList.add('hidden');
+    select.innerHTML = '<option value="">Myself</option>';
+    select.value = '';
+    updateCleanupLabels();
+    return;
+  }
+  row.classList.remove('hidden');
+  const prev = select.value;
+  const opts = ['<option value="">Myself</option>']
+    .concat(
+      members
+        .filter((m) => m.id !== (currentUser && currentUser.id))
+        .map((m) => `<option value="${m.id}">${escapeHtml(m.display_name || m.email)}</option>`)
+    );
+  select.innerHTML = opts.join('');
+  if ([...select.options].some((o) => o.value === prev)) select.value = prev;
+  updateCleanupLabels();
+}
+
+function cleanupTargetId() {
+  const select = document.getElementById('cleanup-target-select');
+  return (isLeader() && select.value) ? select.value : (currentUser ? currentUser.id : null);
+}
+
+function cleanupTargetLabel() {
+  const select = document.getElementById('cleanup-target-select');
+  if (isLeader() && select.value) {
+    const opt = select.options[select.selectedIndex];
+    return opt ? opt.textContent : 'this member';
+  }
+  return 'my';
+}
+
+function updateCleanupLabels() {
+  const isMe = cleanupTargetLabel() === 'my';
+  const who = isMe ? 'my' : `${cleanupTargetLabel()}'s`;
+  document.getElementById('cleanup-notif-label').textContent = isMe ? 'My notifications' : `${who} notifications`;
+  document.getElementById('cleanup-daily-label').textContent = isMe ? 'My daily logs older than' : `${who} daily logs older than`;
+}
+
+document.getElementById('cleanup-target-select').addEventListener('change', () => {
+  updateCleanupLabels();
+  updateCleanupNotifCount();
+});
+
 async function updateCleanupNotifCount() {
-  if (!currentUser) return;
+  const targetId = cleanupTargetId();
+  if (!targetId) return;
   const { count } = await sb
     .from('notifications')
     .select('*', { count: 'exact', head: true })
-    .eq('actor_id', currentUser.id);
+    .eq('actor_id', targetId);
   document.getElementById('cleanup-notif-count').textContent = `${count || 0} logged`;
 }
 
 document.getElementById('cleanup-notif-btn').addEventListener('click', async () => {
   clearFormError('cleanup-error');
   document.getElementById('cleanup-success').classList.add('hidden');
-  if (!confirm('Clear all notifications you triggered? This cannot be undone.')) return;
+  const targetId = cleanupTargetId();
+  if (!targetId) return;
+  const isMe = cleanupTargetLabel() === 'my';
+  if (!confirm(`Clear all notifications ${isMe ? 'you' : cleanupTargetLabel()} triggered? This cannot be undone.`)) return;
   const { error, count } = await sb
     .from('notifications')
     .delete({ count: 'exact' })
-    .eq('actor_id', currentUser.id);
+    .eq('actor_id', targetId);
   if (error) {
     showFormError('cleanup-error', error.message);
     return;
@@ -701,16 +754,19 @@ document.getElementById('cleanup-notif-btn').addEventListener('click', async () 
 document.getElementById('cleanup-daily-btn').addEventListener('click', async () => {
   clearFormError('cleanup-error');
   document.getElementById('cleanup-success').classList.add('hidden');
+  const targetId = cleanupTargetId();
+  if (!targetId) return;
+  const isMe = cleanupTargetLabel() === 'my';
   const cutoff = document.getElementById('cleanup-daily-date').value;
   if (!cutoff) {
     showFormError('cleanup-error', 'Pick a date first — entries older than that will be removed.');
     return;
   }
-  if (!confirm(`Remove all your daily log entries before ${cutoff}? This cannot be undone.`)) return;
+  if (!confirm(`Remove all ${isMe ? 'your' : `${cleanupTargetLabel()}'s`} daily log entries before ${cutoff}? This cannot be undone.`)) return;
   const { error, count } = await sb
     .from('daily_reports')
     .delete({ count: 'exact' })
-    .eq('owner_id', currentUser.id)
+    .eq('owner_id', targetId)
     .lt('report_date', cutoff);
   if (error) {
     showFormError('cleanup-error', error.message);
@@ -1691,6 +1747,7 @@ bugForm.addEventListener('submit', async (e) => {
     steps_to_reproduce: document.getElementById('bug-steps').value.trim() || null,
     expected_result: document.getElementById('bug-expected').value.trim() || null,
     actual_result: document.getElementById('bug-actual').value.trim() || null,
+    description: document.getElementById('bug-description').value.trim() || null,
     developer_status: document.getElementById('bug-developer-status').value,
     retest_status: document.getElementById('bug-retest-status').value,
     developer_comments: document.getElementById('bug-developer-comments').value.trim() || null,
@@ -2968,6 +3025,7 @@ function renderReports(reports) {
         ${r.project_manager ? `<span>PM: ${escapeHtml(r.project_manager)}</span>` : ''}
         ${r.logged_by_email ? `<span>Logged by: ${escapeHtml(r.logged_by_email)}</span>` : ''}
       </div>
+      <button class="icon-btn report-edit" data-edit="${r.id}">edit</button>
       <button class="icon-btn report-delete" data-delete="${r.id}">remove</button>
       <button class="icon-btn report-share" data-share="${r.id}">share</button>
       <div class="report-body">
@@ -2996,11 +3054,115 @@ function renderReports(reports) {
     card.querySelector('[data-share]').addEventListener('click', () => {
       openWhatsAppModal(r, r.projects ? r.projects.name : 'Project');
     });
+    card.querySelector('[data-edit]').addEventListener('click', () => {
+      openReportModal(r.id);
+    });
     reportsList.appendChild(card);
   });
 
   reportsBulk.onRendered();
 }
+
+// ---------- Daily log detail / edit modal ----------
+
+const reportModal = document.getElementById('report-modal');
+const reportEditForm = document.getElementById('report-edit-form');
+const reProjectSelect = document.getElementById('re-project');
+
+function openReportModal(id) {
+  const r = reportsCache.find((x) => x.id === id);
+  if (!r) return;
+  clearFormError('report-edit-error');
+  reProjectSelect.innerHTML = projectsCache.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+  document.getElementById('re-id').value = r.id;
+  document.getElementById('re-date').value = r.report_date || '';
+  reProjectSelect.value = r.project_id;
+  document.getElementById('re-pm').value = r.project_manager || '';
+  document.getElementById('re-tasks').value = r.assigned_tasks || '';
+  document.getElementById('re-bugsheet').value = r.bugsheet || '';
+  document.getElementById('re-testcases').value = r.test_cases ?? 0;
+  document.getElementById('re-uibugs').value = r.ui_bugs ?? 0;
+  document.getElementById('re-funcbugs').value = r.functionality_bugs ?? 0;
+  document.getElementById('re-signoff').checked = !!r.sign_off;
+  document.getElementById('re-remarks').value = r.remarks || '';
+  document.getElementById('re-notes').value = r.notes || '';
+  reportModal.classList.remove('hidden');
+}
+
+function closeReportModal() {
+  reportModal.classList.add('hidden');
+}
+
+document.getElementById('report-modal-close').addEventListener('click', closeReportModal);
+reportModal.addEventListener('click', (e) => {
+  if (e.target === reportModal) closeReportModal();
+});
+
+reportEditForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearFormError('report-edit-error');
+  const id = document.getElementById('re-id').value;
+  const project_id = reProjectSelect.value;
+  if (!project_id) {
+    showFormError('report-edit-error', 'Select a project.');
+    return;
+  }
+  const reportDate = document.getElementById('re-date').value;
+  if (!reportDate) {
+    showFormError('report-edit-error', 'Date is required.');
+    return;
+  }
+  const testCases = document.getElementById('re-testcases').value;
+  const uiBugs = document.getElementById('re-uibugs').value;
+  const funcBugs = document.getElementById('re-funcbugs').value;
+  const numericFields = [
+    ['Test cases', testCases],
+    ['UI bugs', uiBugs],
+    ['Functionality bugs', funcBugs],
+  ];
+  for (const [label, val] of numericFields) {
+    if (val === '' || Number(val) < 0 || !Number.isInteger(Number(val))) {
+      showFormError('report-edit-error', `${label} must be a whole number, 0 or higher.`);
+      return;
+    }
+  }
+
+  const payload = {
+    report_date: reportDate,
+    project_id,
+    project_manager: document.getElementById('re-pm').value.trim() || null,
+    assigned_tasks: document.getElementById('re-tasks').value.trim() || null,
+    bugsheet: document.getElementById('re-bugsheet').value.trim() || null,
+    test_cases: Number(testCases),
+    ui_bugs: Number(uiBugs),
+    functionality_bugs: Number(funcBugs),
+    remarks: document.getElementById('re-remarks').value.trim() || null,
+    sign_off: document.getElementById('re-signoff').checked,
+    notes: document.getElementById('re-notes').value.trim() || null,
+  };
+
+  const { error } = await sb.from('daily_reports').update(payload).eq('id', id);
+  if (error) {
+    showFormError('report-edit-error', error.message);
+    return;
+  }
+  notify(`${actorLabel()} updated a daily log entry`, 'daily_report', 'update');
+  closeReportModal();
+  loadReports();
+});
+
+document.getElementById('report-edit-delete').addEventListener('click', async () => {
+  const id = document.getElementById('re-id').value;
+  if (!id) return;
+  if (!confirm('Remove this entry? This cannot be undone.')) return;
+  const { error } = await sb.from('daily_reports').delete().eq('id', id);
+  if (error) {
+    showFormError('report-edit-error', error.message);
+    return;
+  }
+  closeReportModal();
+  loadReports();
+});
 
 // ---------- Celebration toasts ----------
 

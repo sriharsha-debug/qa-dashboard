@@ -66,7 +66,6 @@
         <button class="tab" data-tab="details">Project Details</button>
         <button class="tab" data-tab="bugs">Bugs</button>
         <button class="tab" data-tab="daily">Daily Log</button>
-        <button class="tab" data-tab="team">Team</button>
         <button class="tab" data-tab="notifications">Notifications<span id="sidebar-notif-badge" class="notif-badge hidden">0</span></button>
         <button class="tab hidden" id="audit-tab" data-tab="audit">Audit Logs</button>
         <button class="tab" data-tab="settings">Settings</button>
@@ -392,6 +391,9 @@
             <label>Actual result
               <textarea id="bug-actual" rows="2" placeholder="What happens instead" maxlength="1000"></textarea>
             </label>
+            <label class="span-2">Bug description
+              <textarea id="bug-description" rows="2" placeholder="Overview of the bug" maxlength="1000"></textarea>
+            </label>
             <label>Retest status
               <select id="bug-retest-status">
                 <option value="Not Retested" selected>Not Retested</option>
@@ -496,21 +498,6 @@
       </div>
     </section>
 
-    <!-- TEAM TAB -->
-    <section id="tab-team" class="tab-panel">
-      <div class="panel">
-        <div class="panel-head">
-          <h2>Team members</h2>
-          <span class="count" id="team-count"></span>
-        </div>
-        <p class="gate-copy" style="margin:0 0 14px;text-align:left;">
-          Everyone shares the same projects and daily logs. As leader, you can promote
-          or demote anyone here.
-        </p>
-        <div id="team-list" class="team-list"></div>
-      </div>
-    </section>
-
     <!-- NOTIFICATIONS TAB -->
     <section id="tab-notifications" class="tab-panel">
       <div class="panel">
@@ -610,16 +597,24 @@
         <div class="panel-head">
           <h2>Data & storage cleanup</h2>
         </div>
-        <div class="cleanup-row">
+        <div class="cleanup-row" id="cleanup-target-row">
           <div>
-            <p class="detail-label">My notifications</p>
-            <p class="detail-value" id="cleanup-notif-count">—</p>
+            <p class="detail-label">Clear data for</p>
+            <select id="cleanup-target-select">
+              <option value="">Myself</option>
+            </select>
           </div>
-          <button id="cleanup-notif-btn" class="btn btn-ghost">Clear all my notifications</button>
         </div>
         <div class="cleanup-row">
           <div>
-            <p class="detail-label">My daily logs older than</p>
+            <p class="detail-label" id="cleanup-notif-label">My notifications</p>
+            <p class="detail-value" id="cleanup-notif-count">—</p>
+          </div>
+          <button id="cleanup-notif-btn" class="btn btn-ghost">Clear all notifications</button>
+        </div>
+        <div class="cleanup-row">
+          <div>
+            <p class="detail-label" id="cleanup-daily-label">My daily logs older than</p>
             <input type="date" id="cleanup-daily-date" />
           </div>
           <button id="cleanup-daily-btn" class="btn btn-ghost">Clear old daily logs</button>
@@ -727,6 +722,61 @@
         <button id="whatsapp-copy" class="btn btn-primary">Copy message</button>
         <a id="whatsapp-open" class="btn btn-ghost" target="_blank" rel="noopener">Open in WhatsApp</a>
       </div>
+    </div>
+  </div>
+
+  <!-- Daily log detail / edit modal -->
+  <div id="report-modal" class="modal-overlay hidden">
+    <div class="modal modal-large">
+      <div class="modal-head">
+        <h2>Daily log entry</h2>
+        <button id="report-modal-close" class="icon-btn">close</button>
+      </div>
+      <form id="report-edit-form" class="grid-form">
+        <input type="hidden" id="re-id" />
+        <label>Date
+          <input type="date" id="re-date" required />
+        </label>
+        <label>Project
+          <select id="re-project" required></select>
+        </label>
+        <label>Project manager
+          <input type="text" id="re-pm" placeholder="Name" maxlength="80" />
+        </label>
+        <label class="span-2">Assigned tasks
+          <textarea id="re-tasks" rows="3" placeholder="Task 1: ..." maxlength="2000"></textarea>
+        </label>
+        <label>Bugsheet
+          <input type="text" id="re-bugsheet" placeholder="Link or reference" maxlength="500" />
+        </label>
+        <label>Test cases
+          <input type="number" id="re-testcases" min="0" max="100000" step="1" required />
+        </label>
+        <label>UI bugs
+          <input type="number" id="re-uibugs" min="0" max="100000" step="1" required />
+        </label>
+        <label>Functionality bugs
+          <input type="number" id="re-funcbugs" min="0" max="100000" step="1" required />
+        </label>
+        <label class="signoff-field">
+          <span>Sign off</span>
+          <span class="toggle">
+            <input type="checkbox" id="re-signoff" />
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          </span>
+        </label>
+        <label class="span-2">Remarks
+          <input type="text" id="re-remarks" placeholder="Short remark" maxlength="300" />
+        </label>
+        <label class="span-2">Notes
+          <textarea id="re-notes" rows="2" placeholder="Additional notes" maxlength="1000"></textarea>
+        </label>
+        <p id="report-edit-error" class="login-error hidden span-2"></p>
+        <div class="span-2 form-actions">
+          <button type="button" id="report-edit-delete" class="btn btn-ghost">Remove entry</button>
+          <button type="submit" class="btn btn-primary">Save entry</button>
+        </div>
+      </form>
     </div>
   </div>
 
