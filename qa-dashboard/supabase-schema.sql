@@ -330,3 +330,9 @@ alter table bugs add column if not exists retest_status text
 alter table bugs drop constraint if exists bugs_retest_status_check;
 alter table bugs add constraint bugs_retest_status_check
   check (retest_status in ('Not Retested', 'Pass', 'Fail', 'Blocked'));
+
+
+-- Migration v21: human-readable Bug ID on bugs
+-- See migration-v21.sql for details/comments.
+
+alter table bugs add column if not exists bug_id text;

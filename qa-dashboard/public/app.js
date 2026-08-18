@@ -265,9 +265,11 @@ async function onLogin(user) {
   loadNotificationsPage();
   if (isLeader()) {
     document.getElementById('audit-tab').classList.remove('hidden');
+    document.getElementById('team-tab').classList.remove('hidden');
     loadAuditLogs();
   } else {
     document.getElementById('audit-tab').classList.add('hidden');
+    document.getElementById('team-tab').classList.add('hidden');
   }
   initSettingsTab();
   runFallbackCleanup();
@@ -569,6 +571,7 @@ function renderTeam(members) {
   const settingsPanel = document.getElementById('settings-permissions-panel');
   if (isLeader()) {
     settingsPanel.classList.remove('hidden');
+    renderTeamInto('team-list', 'team-count', members);
     renderTeamInto('settings-team-list', 'settings-team-count', members);
   } else {
     settingsPanel.classList.add('hidden');
@@ -1738,6 +1741,7 @@ bugForm.addEventListener('submit', async (e) => {
   const payload = {
     project_id,
     title,
+    bug_id: document.getElementById('bug-bugid').value.trim() || null,
     page,
     module: document.getElementById('bug-module').value.trim() || null,
     sub_module: document.getElementById('bug-sub-module').value.trim() || null,
@@ -1784,6 +1788,7 @@ function openBugModal(id) {
   clearFormError('bug-edit-error');
   document.getElementById('be-id').value = b.id;
   document.getElementById('be-title').value = b.title || '';
+  document.getElementById('be-bugid').value = b.bug_id || '';
   document.getElementById('be-page').value = b.page || '';
   document.getElementById('be-module').value = b.module || '';
   document.getElementById('be-sub-module').value = b.sub_module || '';
@@ -1827,6 +1832,7 @@ bugEditForm.addEventListener('submit', async (e) => {
   }
   const payload = {
     title,
+    bug_id: document.getElementById('be-bugid').value.trim() || null,
     page,
     module: document.getElementById('be-module').value.trim() || null,
     sub_module: document.getElementById('be-sub-module').value.trim() || null,
@@ -1929,7 +1935,7 @@ function renderBugs(bugs, projectId) {
       <div class="tc-row-top">
         <div class="tc-row-checkbox-wrap"><input type="checkbox" class="row-checkbox" data-id="${b.id}" /></div>
         <div>
-          <div class="tc-row-title"><button type="button" class="project-link" data-bug-edit="${b.id}">${escapeHtml(b.title)}</button></div>
+          <div class="tc-row-title"><button type="button" class="project-link" data-bug-edit="${b.id}">${b.bug_id ? `[${escapeHtml(b.bug_id)}] ` : ''}${escapeHtml(b.title)}</button></div>
           <div class="tc-row-meta">
             ${b.module ? `<span class="pill" style="${pillStyle('#38BDF8')}">Module: ${escapeHtml(b.module)}</span>` : ''}
             ${b.sub_module ? `<span class="pill" style="${pillStyle('#38BDF8')}">Sub module: ${escapeHtml(b.sub_module)}</span>` : ''}
@@ -2151,15 +2157,16 @@ function rowsToBugObjects(rows, tabName) {
     if (!obj.title) obj.title = obj.sub_module || '';
     if (!obj.title || !obj.page) return; // Title and Page are required
 
-    // Bug Id / Date from the sheet (not columns in the bugs table) are kept
-    // in Notes for traceability back to the original sheet row.
+    // Date from the sheet (not a column in the bugs table) is kept in Notes
+    // for traceability back to the original sheet row. Bug Id now has its
+    // own column, so it's stored directly instead.
     const noteParts = [];
-    if (obj.bug_id) noteParts.push(`Sheet Bug ID: ${obj.bug_id}`);
     if (obj.date) noteParts.push(`Date: ${obj.date}`);
     if (obj.notes) noteParts.push(obj.notes);
 
     objs.push({
       title: obj.title.slice(0, 200),
+      bug_id: obj.bug_id ? obj.bug_id.slice(0, 60) : null,
       page: obj.page.slice(0, 120),
       module: obj.module ? obj.module.slice(0, 120) : null,
       sub_module: obj.sub_module ? obj.sub_module.slice(0, 200) : null,
@@ -2313,7 +2320,7 @@ function renderBugImportPreview(bugs) {
       <input type="checkbox" class="bug-import-check" data-idx="${i}" checked />
       <div>
         <div class="ai-preview-item-title">
-          ${escapeHtml(b.title)}
+          ${b.bug_id ? `[${escapeHtml(b.bug_id)}] ` : ''}${escapeHtml(b.title)}
           ${b.module ? `<span class="pill" style="${pillStyle('#38BDF8')}">Module: ${escapeHtml(b.module)}</span>` : ''}
           <span class="pill" style="${pillStyle('#818CF8')}">Page: ${escapeHtml(b.page)}</span>
           ${b._tab ? `<span class="pill" style="${pillStyle('#38BDF8')}">Tab: ${escapeHtml(b._tab)}</span>` : ''}
@@ -2353,6 +2360,7 @@ document.getElementById('bug-import-add-selected').addEventListener('click', asy
   const rows = selected.map((b) => ({
     project_id: projectId,
     title: b.title,
+    bug_id: b.bug_id,
     page: b.page,
     module: b.module,
     sub_module: b.sub_module,
@@ -3352,6 +3360,7 @@ document.getElementById('download-bugs-btn').addEventListener('click', () => {
   const p = projectsCache.find((x) => x.id === id);
   const rows = bugCache.map((b) => ({
     'Title': b.title,
+    'Bug Id': b.bug_id || '',
     'Module': b.module || '',
     'Sub Module': b.sub_module || '',
     'Page': b.page,

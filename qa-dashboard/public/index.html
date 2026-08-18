@@ -66,6 +66,7 @@
         <button class="tab" data-tab="details">Project Details</button>
         <button class="tab" data-tab="bugs">Bugs</button>
         <button class="tab" data-tab="daily">Daily Log</button>
+        <button class="tab hidden" id="team-tab" data-tab="team">Team</button>
         <button class="tab" data-tab="notifications">Notifications<span id="sidebar-notif-badge" class="notif-badge hidden">0</span></button>
         <button class="tab hidden" id="audit-tab" data-tab="audit">Audit Logs</button>
         <button class="tab" data-tab="settings">Settings</button>
@@ -342,6 +343,9 @@
             <label class="span-2">Bug title
               <input type="text" id="bug-title" placeholder="e.g. Submit button unresponsive on checkout" required maxlength="200" />
             </label>
+            <label>Bug ID
+              <input type="text" id="bug-bugid" placeholder="e.g. BUG-001" maxlength="60" />
+            </label>
             <label>Page
               <input type="text" id="bug-page" placeholder="e.g. Checkout page" required maxlength="120" />
             </label>
@@ -495,6 +499,21 @@
         </div>
         <div id="reports-list" class="reports-list"></div>
         <p class="empty-state" id="reports-empty">No entries yet.</p>
+      </div>
+    </section>
+
+    <!-- TEAM TAB (leader only) -->
+    <section id="tab-team" class="tab-panel">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Team members</h2>
+          <span class="count" id="team-count"></span>
+        </div>
+        <p class="gate-copy" style="margin:0 0 14px;text-align:left;">
+          Everyone shares the same projects and daily logs. As leader, you can promote
+          or demote anyone here.
+        </p>
+        <div id="team-list" class="team-list"></div>
       </div>
     </section>
 
@@ -791,6 +810,9 @@
         <input type="hidden" id="be-id" />
         <label class="span-2">Bug title
           <input type="text" id="be-title" required maxlength="200" />
+        </label>
+        <label>Bug ID
+          <input type="text" id="be-bugid" placeholder="e.g. BUG-001" maxlength="60" />
         </label>
         <label>Page
           <input type="text" id="be-page" required maxlength="120" />
