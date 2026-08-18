@@ -2556,22 +2556,17 @@ function todayStr() {
   return d.toISOString().slice(0, 10);
 }
 
-function buildBatchWhatsAppMessage(reports, dateStr) {
+async function buildBatchWhatsAppMessage(reports, dateStr) {
   const niceDate = new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB');
   let msg = `*QA Daily Updates — ${niceDate}*\n`;
   msg += `_${reports.length} project${reports.length === 1 ? '' : 's'} updated_\n`;
 
-  reports.forEach((r, i) => {
+  for (let i = 0; i < reports.length; i++) {
+    const r = reports[i];
     const projectName = r.projects ? r.projects.name : 'Project';
-    msg += `\n*${i + 1}. ${projectName}*\n`;
-    if (r.project_manager) msg += `• PM: ${r.project_manager}\n`;
-    if (r.assigned_tasks) msg += `• Assigned Tasks:\n${r.assigned_tasks}\n`;
-    msg += `• Test Cases: ${r.test_cases}  • UI Bugs: ${r.ui_bugs}  • Func Bugs: ${r.functionality_bugs}\n`;
-    if (r.bugsheet) msg += `• Bugsheet: ${r.bugsheet}\n`;
-    msg += `• Sign Off: ${r.sign_off ? 'Yes' : 'No'}\n`;
-    if (r.remarks) msg += `• Remarks: ${r.remarks}\n`;
-    if (r.notes) msg += `• Notes: ${r.notes}\n`;
-  });
+    const bugStats = await getBugStatsForDay(r.project_id, r.report_date);
+    msg += `\n${i + 1}. ${formatDailyUpdateBlock(r, projectName, bugStats)}`;
+  }
 
   return msg;
 }
@@ -2597,7 +2592,7 @@ document.getElementById('share-day-btn').addEventListener('click', async () => {
     return;
   }
 
-  const message = buildBatchWhatsAppMessage(data, dateStr);
+  const message = await buildBatchWhatsAppMessage(data, dateStr);
   whatsappMessageEl.value = message;
   whatsappOpenLink.href = `https://wa.me/?text=${encodeURIComponent(message)}`;
   whatsappCopyBtn.textContent = 'Copy message';
@@ -2964,37 +2959,77 @@ reportForm.addEventListener('submit', async (e) => {
   loadReports();
   loadProjects();
 
-  openWhatsAppModal(payload, project ? project.name : 'Project');
+  await openWhatsAppModal(payload, project ? project.name : 'Project');
 });
 
-// ---------- WhatsApp daily update message ----------
+// ---------- Auto bug tracking for Daily Log ----------
+// Nothing here is written to the database — bug counts are always computed
+// live from the `bugs` table (using its auto `created_at` timestamp), so a
+// tester never has to manually count or type in how many bugs were added.
+// This keeps every Daily Log entry (and every shared update) in sync with
+// the real Bugs list, automatically.
 
-const whatsappModal = document.getElementById('whatsapp-modal');
+function nextDateStr(dateStr) {
+  const d = new Date(`${dateStr}T00:00:00`);
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+async function getBugStatsForDay(projectId, dateStr) {
+  const { data, error } = await sb
+    .from('bugs')
+    .select('id, title, severity')
+    .eq('project_id', projectId)
+    .gte('created_at', `${dateStr}T00:00:00`)
+    .lt('created_at', `${nextDateStr(dateStr)}T00:00:00`);
+  if (error) {
+    console.error(error);
+    return { total: 0, bySeverity: {}, titles: [] };
+  }
+  const bySeverity = {};
+  (data || []).forEach((b) => { bySeverity[b.severity] = (bySeverity[b.severity] || 0) + 1; });
+  return { total: (data || []).length, bySeverity, titles: (data || []).map((b) => b.title) };
+}
+
+// The one shared format for "bugs identified" — used in the Daily Log list,
+// in single-entry shares, in the batch "Share day's updates" message, and in
+// auto-only cards, so the number always reads the same way everywhere.
+function formatBugStatsLine(stats) {
+  if (!stats || !stats.total) return 'Bugs identified: 0';
+  const order = ['Critical', 'High', 'Medium', 'Low'];
+  const parts = order.filter((s) => stats.bySeverity[s]).map((s) => `${stats.bySeverity[s]} ${s}`);
+  return `Bugs identified: ${stats.total}${parts.length ? ` (${parts.join(', ')})` : ''}`;
+}
+
+
 const whatsappMessageEl = document.getElementById('whatsapp-message');
 const whatsappOpenLink = document.getElementById('whatsapp-open');
 const whatsappCopyBtn = document.getElementById('whatsapp-copy');
 
-function buildWhatsAppMessage(payload, projectName) {
-  const dateStr = new Date(payload.report_date + 'T00:00:00').toLocaleDateString('en-GB');
-  let msg = `*QA Daily Update*\n`;
-  msg += `Date: ${dateStr}\n`;
-  msg += `Project: ${projectName}\n`;
+function formatDailyUpdateBlock(payload, projectName, bugStats) {
+  let msg = `*${projectName}*\n`;
   if (payload.project_manager) msg += `• PM: ${payload.project_manager}\n`;
   if (payload.assigned_tasks) msg += `• Assigned Tasks:\n${payload.assigned_tasks}\n`;
-  msg += `\n`;
-  msg += `• Test Cases: ${payload.test_cases}\n`;
-  msg += `• UI Bugs: ${payload.ui_bugs}\n`;
-  msg += `• Functionality Bugs: ${payload.functionality_bugs}\n`;
+  msg += `• Test Cases: ${payload.test_cases ?? 0}\n`;
+  msg += `• ${formatBugStatsLine(bugStats)}\n`;
   if (payload.bugsheet) msg += `• Bugsheet: ${payload.bugsheet}\n`;
-  msg += `\n`;
   msg += `• Sign Off: ${payload.sign_off ? 'Yes' : 'No'}\n`;
   if (payload.remarks) msg += `• Remarks: ${payload.remarks}\n`;
   if (payload.notes) msg += `• Notes: ${payload.notes}\n`;
   return msg;
 }
 
-function openWhatsAppModal(payload, projectName) {
-  const message = buildWhatsAppMessage(payload, projectName);
+async function buildWhatsAppMessage(payload, projectName) {
+  const dateStr = new Date(payload.report_date + 'T00:00:00').toLocaleDateString('en-GB');
+  const bugStats = await getBugStatsForDay(payload.project_id, payload.report_date);
+  let msg = `*QA Daily Update*\n`;
+  msg += `Date: ${dateStr}\n\n`;
+  msg += formatDailyUpdateBlock(payload, projectName, bugStats);
+  return msg;
+}
+
+async function openWhatsAppModal(payload, projectName) {
+  const message = await buildWhatsAppMessage(payload, projectName);
   whatsappMessageEl.value = message;
   whatsappOpenLink.href = `https://wa.me/?text=${encodeURIComponent(message)}`;
   whatsappCopyBtn.textContent = 'Copy message';
@@ -3049,7 +3084,7 @@ async function loadReports() {
     console.error(error);
     return;
   }
-  renderReports(data);
+  await renderReports(data);
   reportsCache = data || [];
 }
 
@@ -3064,11 +3099,11 @@ const reportsBulk = createBulkSelector({
   },
 });
 
-function renderReports(reports) {
+async function renderReports(reports) {
   reportsList.innerHTML = '';
-  reportsEmpty.style.display = reports.length ? 'none' : 'block';
 
-  reports.forEach((r) => {
+  for (const r of reports) {
+    const bugStats = await getBugStatsForDay(r.project_id, r.report_date);
     const card = document.createElement('div');
     card.className = 'report-card has-checkbox';
     card.innerHTML = `
@@ -3090,6 +3125,7 @@ function renderReports(reports) {
           <span>UI bugs: <b>${r.ui_bugs}</b></span>
           <span>Functionality bugs: <b>${r.functionality_bugs}</b></span>
         </div>
+        <div class="auto-bug-line"><span class="auto-badge">AUTO</span> ${formatBugStatsLine(bugStats)} <span class="auto-hint">— tracked live from the Bugs log</span></div>
         ${r.remarks ? `<div class="report-remarks">${escapeHtml(r.remarks)}</div>` : ''}
         ${r.notes ? `<div>${escapeHtml(r.notes)}</div>` : ''}
       </div>
@@ -3105,16 +3141,73 @@ function renderReports(reports) {
       }
       loadReports();
     });
-    card.querySelector('[data-share]').addEventListener('click', () => {
-      openWhatsAppModal(r, r.projects ? r.projects.name : 'Project');
+    card.querySelector('[data-share]').addEventListener('click', async () => {
+      await openWhatsAppModal(r, r.projects ? r.projects.name : 'Project');
     });
     card.querySelector('[data-edit]').addEventListener('click', () => {
       openReportModal(r.id);
     });
     reportsList.appendChild(card);
-  });
+  }
 
   reportsBulk.onRendered();
+  await renderAutoOnlyReportCards(reports);
+}
+
+// For a project + day where bugs were added but nobody filed a manual daily
+// update, show a lightweight read-only "auto" card so the activity still
+// shows up in the Daily Log — instead of silently going unrecorded. Nothing
+// is written to the database for this; it's derived live from the Bugs log
+// each time the tab is opened. Scoped to the date filter (or today, if no
+// date is chosen) to keep this cheap.
+async function renderAutoOnlyReportCards(existingReports) {
+  const projectFilter = document.getElementById('filter-project').value;
+  const dateFilter = document.getElementById('filter-date').value || todayStr();
+  const loggedPairs = new Set(existingReports.map((r) => `${r.project_id}|${r.report_date}`));
+  const projectsToCheck = projectFilter
+    ? projectsCache.filter((p) => p.id === projectFilter)
+    : projectsCache;
+
+  const autoCards = [];
+  for (const p of projectsToCheck) {
+    if (loggedPairs.has(`${p.id}|${dateFilter}`)) continue;
+    const bugStats = await getBugStatsForDay(p.id, dateFilter);
+    if (!bugStats.total) continue;
+    autoCards.push({ project: p, date: dateFilter, bugStats });
+  }
+
+  reportsEmpty.style.display = (existingReports.length || autoCards.length) ? 'none' : 'block';
+
+  autoCards.forEach(({ project, date, bugStats }) => {
+    const card = document.createElement('div');
+    card.className = 'report-card auto-card';
+    card.innerHTML = `
+      <div class="report-head">
+        <span class="proj-name">${escapeHtml(project.name)}</span>
+        <span>${date}</span>
+        <span class="auto-badge">AUTO — no manual update filed</span>
+      </div>
+      <button class="icon-btn report-share" data-auto-share>share</button>
+      <div class="report-body">
+        <div class="auto-bug-line"><span class="auto-badge">AUTO</span> ${formatBugStatsLine(bugStats)} <span class="auto-hint">— tracked live from the Bugs log</span></div>
+      </div>
+    `;
+    card.querySelector('[data-auto-share]').addEventListener('click', async () => {
+      const syntheticPayload = {
+        report_date: date,
+        project_id: project.id,
+        project_manager: null,
+        assigned_tasks: null,
+        bugsheet: null,
+        test_cases: 0,
+        sign_off: false,
+        remarks: null,
+        notes: 'Auto-generated from the Bugs log — no manual daily update was filed.',
+      };
+      await openWhatsAppModal(syntheticPayload, project.name);
+    });
+    reportsList.appendChild(card);
+  });
 }
 
 // ---------- Daily log detail / edit modal ----------

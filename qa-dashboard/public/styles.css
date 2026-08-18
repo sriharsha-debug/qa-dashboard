@@ -1098,6 +1098,32 @@ select option:focus {
 }
 .report-metrics b { color: var(--ink); }
 .report-remarks { margin-top: 6px; font-style: italic; color: var(--ink-soft); }
+.auto-bug-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--ink);
+}
+.auto-badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--purple);
+  background: rgba(139, 92, 246, 0.14);
+  border: 1px solid var(--purple);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.auto-hint { color: var(--ink-soft); font-size: 11px; }
+.report-card.auto-card {
+  border-style: dashed;
+  background: var(--panel);
+}
 .assigned-tasks { margin-bottom: 4px; }
 .assigned-tasks .detail-label { display: block; margin-bottom: 2px; }
 .report-delete, .report-share { justify-self: end; }
