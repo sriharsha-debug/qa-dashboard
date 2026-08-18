@@ -341,9 +341,6 @@
           </div>
 
           <form id="bug-form" class="grid-form">
-            <label class="span-2">Bug title
-              <input type="text" id="bug-title" placeholder="e.g. Submit button unresponsive on checkout" required maxlength="200" />
-            </label>
             <label>Bug ID
               <input type="text" id="bug-bugid" placeholder="e.g. BUG-001" maxlength="60" />
             </label>
@@ -356,13 +353,20 @@
             <label class="span-2">Sub module
               <input type="text" id="bug-sub-module" placeholder="e.g. Departments – Create Department" maxlength="200" />
             </label>
-            <label>Severity
-              <select id="bug-severity">
-                <option value="Low">Low</option>
-                <option value="Medium" selected>Medium</option>
-                <option value="High">High</option>
-                <option value="Critical">Critical</option>
-              </select>
+            <label class="span-2">Bug title
+              <input type="text" id="bug-title" placeholder="e.g. Submit button unresponsive on checkout" required maxlength="200" />
+            </label>
+            <label class="span-2">Bug description
+              <textarea id="bug-description" rows="2" placeholder="Overview of the bug" maxlength="1000"></textarea>
+            </label>
+            <label class="span-2">Steps to reproduce
+              <textarea id="bug-steps" rows="2" placeholder="1. Go to... 2. Click... 3. ..." maxlength="1000"></textarea>
+            </label>
+            <label>Expected result
+              <textarea id="bug-expected" rows="2" placeholder="What should happen" maxlength="1000"></textarea>
+            </label>
+            <label>Actual result
+              <textarea id="bug-actual" rows="2" placeholder="What happens instead" maxlength="1000"></textarea>
             </label>
             <label>Issue type
               <select id="bug-issue-type">
@@ -377,6 +381,20 @@
                 <option value="Other">Other</option>
               </select>
             </label>
+            <label>Severity
+              <select id="bug-severity">
+                <option value="Low">Low</option>
+                <option value="Medium" selected>Medium</option>
+                <option value="High">High</option>
+                <option value="Critical">Critical</option>
+              </select>
+            </label>
+            <label>Reported by
+              <input type="text" id="bug-reported-by" placeholder="Name" maxlength="80" />
+            </label>
+            <label>Reported date
+              <input type="date" id="bug-reported-date" />
+            </label>
             <label>Status
               <select id="bug-status">
                 <option value="Open" selected>Open</option>
@@ -386,15 +404,6 @@
                 <option value="Closed">Closed</option>
                 <option value="Reopened">Reopened</option>
               </select>
-            </label>
-            <label>Reported by
-              <input type="text" id="bug-reported-by" placeholder="Name" maxlength="80" />
-            </label>
-            <label>Reported date
-              <input type="date" id="bug-reported-date" />
-            </label>
-            <label>Closing date
-              <input type="date" id="bug-closed-date" />
             </label>
             <label>Developer status
               <select id="bug-developer-status">
@@ -406,17 +415,11 @@
                 <option value="Won't Fix">Won't Fix</option>
               </select>
             </label>
-            <label class="span-2">Steps to reproduce
-              <textarea id="bug-steps" rows="2" placeholder="1. Go to... 2. Click... 3. ..." maxlength="1000"></textarea>
+            <label>Developer comments
+              <textarea id="bug-developer-comments" rows="2" placeholder="Notes from the developer" maxlength="1000"></textarea>
             </label>
-            <label>Expected result
-              <textarea id="bug-expected" rows="2" placeholder="What should happen" maxlength="1000"></textarea>
-            </label>
-            <label>Actual result
-              <textarea id="bug-actual" rows="2" placeholder="What happens instead" maxlength="1000"></textarea>
-            </label>
-            <label class="span-2">Bug description
-              <textarea id="bug-description" rows="2" placeholder="Overview of the bug" maxlength="1000"></textarea>
+            <label>Manager comments
+              <textarea id="bug-manager-comments" rows="2" placeholder="Notes from the QA/project manager" maxlength="1000"></textarea>
             </label>
             <label>Retest status
               <select id="bug-retest-status">
@@ -426,14 +429,11 @@
                 <option value="Blocked">Blocked</option>
               </select>
             </label>
-            <label>Developer comments
-              <textarea id="bug-developer-comments" rows="2" placeholder="Notes from the developer" maxlength="1000"></textarea>
-            </label>
-            <label>Manager comments
-              <textarea id="bug-manager-comments" rows="2" placeholder="Notes from the QA/project manager" maxlength="1000"></textarea>
-            </label>
             <label class="span-2">Notes
               <input type="text" id="bug-notes" placeholder="Additional notes" maxlength="500" />
+            </label>
+            <label>Closing date
+              <input type="date" id="bug-closed-date" />
             </label>
             <div class="span-2 form-actions">
               <button type="submit" class="btn btn-primary">Add bug</button>
@@ -828,9 +828,6 @@
       </div>
       <form id="bug-edit-form" class="grid-form">
         <input type="hidden" id="be-id" />
-        <label class="span-2">Bug title
-          <input type="text" id="be-title" required maxlength="200" />
-        </label>
         <label>Bug ID
           <input type="text" id="be-bugid" placeholder="e.g. BUG-001" maxlength="60" />
         </label>
@@ -843,13 +840,20 @@
         <label class="span-2">Sub module
           <input type="text" id="be-sub-module" maxlength="200" />
         </label>
-        <label>Severity
-          <select id="be-severity">
-            <option value="Low">Low</option>
-            <option value="Medium">Medium</option>
-            <option value="High">High</option>
-            <option value="Critical">Critical</option>
-          </select>
+        <label class="span-2">Bug title
+          <input type="text" id="be-title" required maxlength="200" />
+        </label>
+        <label class="span-2">Description
+          <textarea id="be-description" rows="2" maxlength="1000"></textarea>
+        </label>
+        <label class="span-2">Steps to reproduce
+          <textarea id="be-steps" rows="3" maxlength="1000"></textarea>
+        </label>
+        <label>Expected result
+          <textarea id="be-expected" rows="2" maxlength="1000"></textarea>
+        </label>
+        <label>Actual result
+          <textarea id="be-actual" rows="2" maxlength="1000"></textarea>
         </label>
         <label>Issue type
           <select id="be-issue-type">
@@ -864,6 +868,20 @@
             <option value="Other">Other</option>
           </select>
         </label>
+        <label>Severity
+          <select id="be-severity">
+            <option value="Low">Low</option>
+            <option value="Medium">Medium</option>
+            <option value="High">High</option>
+            <option value="Critical">Critical</option>
+          </select>
+        </label>
+        <label>Reported by
+          <input type="text" id="be-reported-by" maxlength="80" />
+        </label>
+        <label>Reported date
+          <input type="date" id="be-reported-date" />
+        </label>
         <label>Status
           <select id="be-status">
             <option value="Open">Open</option>
@@ -873,15 +891,6 @@
             <option value="Closed">Closed</option>
             <option value="Reopened">Reopened</option>
           </select>
-        </label>
-        <label>Reported by
-          <input type="text" id="be-reported-by" maxlength="80" />
-        </label>
-        <label>Reported date
-          <input type="date" id="be-reported-date" />
-        </label>
-        <label>Closing date
-          <input type="date" id="be-closed-date" />
         </label>
         <label>Developer status
           <select id="be-developer-status">
@@ -893,6 +902,12 @@
             <option value="Won't Fix">Won't Fix</option>
           </select>
         </label>
+        <label>Developer comments
+          <textarea id="be-developer-comments" rows="2" maxlength="1000"></textarea>
+        </label>
+        <label>Manager comments
+          <textarea id="be-manager-comments" rows="2" maxlength="1000"></textarea>
+        </label>
         <label>Retest status
           <select id="be-retest-status">
             <option value="Not Retested">Not Retested</option>
@@ -901,26 +916,11 @@
             <option value="Blocked">Blocked</option>
           </select>
         </label>
-        <label class="span-2">Steps to reproduce
-          <textarea id="be-steps" rows="3" maxlength="1000"></textarea>
-        </label>
-        <label>Expected result
-          <textarea id="be-expected" rows="2" maxlength="1000"></textarea>
-        </label>
-        <label>Actual result
-          <textarea id="be-actual" rows="2" maxlength="1000"></textarea>
-        </label>
-        <label class="span-2">Description
-          <textarea id="be-description" rows="2" maxlength="1000"></textarea>
-        </label>
-        <label>Developer comments
-          <textarea id="be-developer-comments" rows="2" maxlength="1000"></textarea>
-        </label>
-        <label>Manager comments
-          <textarea id="be-manager-comments" rows="2" maxlength="1000"></textarea>
-        </label>
         <label class="span-2">Notes
           <input type="text" id="be-notes" maxlength="500" />
+        </label>
+        <label>Closing date
+          <input type="date" id="be-closed-date" />
         </label>
         <p id="bug-edit-error" class="login-error hidden span-2"></p>
         <div class="span-2 form-actions">
