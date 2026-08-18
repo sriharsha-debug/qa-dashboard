@@ -346,3 +346,10 @@ alter table bugs add column if not exists issue_type text
 alter table bugs drop constraint if exists bugs_issue_type_check;
 alter table bugs add constraint bugs_issue_type_check
   check (issue_type in ('Functional', 'UI/UX', 'Backend', 'Frontend', 'API', 'Performance', 'Security', 'Database', 'Other'));
+
+
+-- Migration v23: Reported Date and Closing Date on bugs
+-- See migration-v23.sql for details/comments.
+
+alter table bugs add column if not exists reported_date date;
+alter table bugs add column if not exists closed_date date;

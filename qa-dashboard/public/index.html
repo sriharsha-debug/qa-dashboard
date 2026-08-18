@@ -290,9 +290,10 @@
             Paste a shareable Google Sheet link to auto-fetch its rows, or copy
             rows straight from the sheet and paste them below. Recognized columns
             (any order, header row optional): <b>Title / Sub Module, Page / Module,
-            Severity, Issue Type, Status, Reported By, Steps to Reproduce, Expected Result,
+            Severity, Issue Type, Status, Reported By, Reported Date, Closing Date,
+            Steps to Reproduce, Expected Result,
             Actual Result, Description, Developer Status, Developer Comments,
-            Retest Status, Manager Comments, Bug Id, Date, Notes</b> — a title-like
+            Retest Status, Manager Comments, Bug Id, Notes</b> — a title-like
             and a page/module-like column are required, the rest are optional.
           </p>
           <div class="grid-form">
@@ -388,6 +389,12 @@
             </label>
             <label>Reported by
               <input type="text" id="bug-reported-by" placeholder="Name" maxlength="80" />
+            </label>
+            <label>Reported date
+              <input type="date" id="bug-reported-date" />
+            </label>
+            <label>Closing date
+              <input type="date" id="bug-closed-date" />
             </label>
             <label>Developer status
               <select id="bug-developer-status">
@@ -869,6 +876,12 @@
         </label>
         <label>Reported by
           <input type="text" id="be-reported-by" maxlength="80" />
+        </label>
+        <label>Reported date
+          <input type="date" id="be-reported-date" />
+        </label>
+        <label>Closing date
+          <input type="date" id="be-closed-date" />
         </label>
         <label>Developer status
           <select id="be-developer-status">

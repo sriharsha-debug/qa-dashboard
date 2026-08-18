@@ -1723,6 +1723,19 @@ function normalizeIssueType(v) {
   return ['Functional', 'UI/UX', 'Backend', 'Frontend', 'API', 'Performance', 'Security', 'Database', 'Other'].includes(v) ? v : 'Functional';
 }
 
+// Best-effort: accepts "YYYY-MM-DD" as-is, otherwise tries to parse common
+// spreadsheet date formats (e.g. "17/08/2026", "Aug 17 2026"). Returns null
+// if the value can't be understood, rather than guessing.
+function parseSheetDate(v) {
+  if (!v) return null;
+  const s = v.trim();
+  if (!s) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
+
 bugForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   clearFormError('bug-error');
@@ -1753,6 +1766,8 @@ bugForm.addEventListener('submit', async (e) => {
     issue_type: document.getElementById('bug-issue-type').value,
     status: document.getElementById('bug-status').value,
     reported_by: document.getElementById('bug-reported-by').value.trim() || null,
+    reported_date: document.getElementById('bug-reported-date').value || null,
+    closed_date: document.getElementById('bug-closed-date').value || null,
     steps_to_reproduce: document.getElementById('bug-steps').value.trim() || null,
     expected_result: document.getElementById('bug-expected').value.trim() || null,
     actual_result: document.getElementById('bug-actual').value.trim() || null,
@@ -1802,6 +1817,8 @@ function openBugModal(id) {
   document.getElementById('be-issue-type').value = b.issue_type || 'Functional';
   document.getElementById('be-status').value = b.status || 'Open';
   document.getElementById('be-reported-by').value = b.reported_by || '';
+  document.getElementById('be-reported-date').value = b.reported_date || '';
+  document.getElementById('be-closed-date').value = b.closed_date || '';
   document.getElementById('be-developer-status').value = b.developer_status || 'Not Started';
   document.getElementById('be-retest-status').value = b.retest_status || 'Not Retested';
   document.getElementById('be-steps').value = b.steps_to_reproduce || '';
@@ -1847,6 +1864,8 @@ bugEditForm.addEventListener('submit', async (e) => {
     issue_type: document.getElementById('be-issue-type').value,
     status: document.getElementById('be-status').value,
     reported_by: document.getElementById('be-reported-by').value.trim() || null,
+    reported_date: document.getElementById('be-reported-date').value || null,
+    closed_date: document.getElementById('be-closed-date').value || null,
     developer_status: document.getElementById('be-developer-status').value,
     retest_status: document.getElementById('be-retest-status').value,
     steps_to_reproduce: document.getElementById('be-steps').value.trim() || null,
@@ -1951,6 +1970,8 @@ function renderBugs(bugs, projectId) {
             <span class="pill" style="${pillStyle('#34D399')}">${escapeHtml(b.issue_type || 'Functional')}</span>
             <span class="priority-pill priority-${escapeHtml(b.severity)}">${escapeHtml(b.severity)}</span>
             ${b.reported_by ? `<span>Reported by ${escapeHtml(b.reported_by)}</span>` : ''}
+            ${b.reported_date ? `<span>Reported: ${fmtDate(b.reported_date)}</span>` : ''}
+            ${b.closed_date ? `<span>Closed: ${fmtDate(b.closed_date)}</span>` : ''}
           </div>
           ${stepsBlock ? `<div class="tc-row-desc">${stepsBlock}</div>` : ''}
           ${b.description ? `<div class="tc-row-desc">${escapeHtml(b.description)}</div>` : ''}
@@ -2112,6 +2133,14 @@ const BUG_HEADER_ALIASES = {
   status: 'status',
   reportedby: 'reported_by',
   reporter: 'reported_by',
+  reporteddate: 'reported_date',
+  datereported: 'reported_date',
+  dateopened: 'reported_date',
+  date: 'reported_date',
+  closeddate: 'closed_date',
+  closingdate: 'closed_date',
+  dateclosed: 'closed_date',
+  resolveddate: 'closed_date',
   issuetype: 'issue_type',
   type: 'issue_type',
   category: 'issue_type',
@@ -2133,7 +2162,6 @@ const BUG_HEADER_ALIASES = {
   managercomments: 'manager_comments',
   bugid: 'bug_id',
   id: 'bug_id',
-  date: 'date',
   notes: 'notes',
   note: 'notes',
 };
@@ -2169,11 +2197,9 @@ function rowsToBugObjects(rows, tabName) {
     if (!obj.title) obj.title = obj.sub_module || '';
     if (!obj.title || !obj.page) return; // Title and Page are required
 
-    // Date from the sheet (not a column in the bugs table) is kept in Notes
-    // for traceability back to the original sheet row. Bug Id now has its
-    // own column, so it's stored directly instead.
+    // Notes from the sheet are kept as-is; Bug Id / Reported date / Closing
+    // date now have their own columns, so they're stored directly instead.
     const noteParts = [];
-    if (obj.date) noteParts.push(`Date: ${obj.date}`);
     if (obj.notes) noteParts.push(obj.notes);
 
     objs.push({
@@ -2186,6 +2212,8 @@ function rowsToBugObjects(rows, tabName) {
       issue_type: obj.issue_type ? normalizeIssueType(obj.issue_type) : 'Functional',
       status: normalizeBugStatus(obj.status),
       reported_by: obj.reported_by ? obj.reported_by.slice(0, 80) : null,
+      reported_date: parseSheetDate(obj.reported_date),
+      closed_date: parseSheetDate(obj.closed_date),
       description: obj.description ? obj.description.slice(0, 1000) : null,
       steps_to_reproduce: obj.steps ? obj.steps.slice(0, 1000) : null,
       expected_result: obj.expected ? obj.expected.slice(0, 1000) : null,
@@ -2341,6 +2369,7 @@ function renderBugImportPreview(bugs) {
           <span class="priority-pill priority-${escapeHtml(b.severity)}">${escapeHtml(b.severity)}</span>
           <span class="pill" style="${pillStyle(bugStatusColor(b.status))}">${escapeHtml(b.status)}</span>
         </div>
+        ${(b.reported_date || b.closed_date) ? `<div class="ai-preview-item-desc">${b.reported_date ? `<b>Reported:</b> ${fmtDate(b.reported_date)} ` : ''}${b.closed_date ? `<b>Closed:</b> ${fmtDate(b.closed_date)}` : ''}</div>` : ''}
         ${b.steps_to_reproduce ? `<div class="ai-preview-item-desc"><b>Steps:</b> ${escapeHtml(b.steps_to_reproduce)}</div>` : ''}
         ${b.expected_result ? `<div class="ai-preview-item-desc"><b>Expected:</b> ${escapeHtml(b.expected_result)}</div>` : ''}
         ${b.actual_result ? `<div class="ai-preview-item-desc"><b>Actual:</b> ${escapeHtml(b.actual_result)}</div>` : ''}
@@ -2382,6 +2411,8 @@ document.getElementById('bug-import-add-selected').addEventListener('click', asy
     issue_type: b.issue_type,
     status: b.status,
     reported_by: b.reported_by,
+    reported_date: b.reported_date,
+    closed_date: b.closed_date,
     description: b.description,
     steps_to_reproduce: b.steps_to_reproduce,
     expected_result: b.expected_result,
@@ -3295,7 +3326,7 @@ document.getElementById('download-tc-template-btn').addEventListener('click', ()
 document.getElementById('download-bugs-template-btn').addEventListener('click', () => {
   downloadTemplateSheet(
     'Bugs Template',
-    ['Title', 'Page', 'Module', 'Sub Module', 'Severity', 'Issue Type', 'Status', 'Reported By', 'Steps to Reproduce', 'Expected Result', 'Actual Result', 'Description', 'Developer Status', 'Developer Comments', 'Retest Status', 'Manager Comments', 'Bug Id', 'Date', 'Notes'],
+    ['Title', 'Page', 'Module', 'Sub Module', 'Severity', 'Issue Type', 'Status', 'Reported By', 'Reported Date', 'Closing Date', 'Steps to Reproduce', 'Expected Result', 'Actual Result', 'Description', 'Developer Status', 'Developer Comments', 'Retest Status', 'Manager Comments', 'Bug Id', 'Notes'],
     [
       'Login button unresponsive on checkout',
       'Checkout page',
@@ -3305,6 +3336,8 @@ document.getElementById('download-bugs-template-btn').addEventListener('click', 
       'Functional',
       'Open',
       'Jane Doe',
+      '2026-08-17',
+      '',
       '1. Go to checkout page\n2. Fill in valid details\n3. Click Login',
       'User is redirected to the dashboard after logging in',
       'Nothing happens, button stays disabled',
@@ -3314,7 +3347,6 @@ document.getElementById('download-bugs-template-btn').addEventListener('click', 
       'Not Retested',
       '',
       'BUG-001',
-      '2026-08-17',
       'Only reproduced on Chrome so far',
     ],
     'Bugs'
@@ -3384,6 +3416,8 @@ document.getElementById('download-bugs-btn').addEventListener('click', () => {
     'Issue Type': b.issue_type || '',
     'Status': b.status,
     'Reported By': b.reported_by || '',
+    'Reported Date': b.reported_date || '',
+    'Closing Date': b.closed_date || '',
     'Steps to Reproduce': b.steps_to_reproduce || '',
     'Expected Result': b.expected_result || '',
     'Actual Result': b.actual_result || '',
