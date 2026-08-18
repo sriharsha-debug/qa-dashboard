@@ -1719,6 +1719,10 @@ function normalizeRetestStatus(v) {
   return ['Not Retested', 'Pass', 'Fail', 'Blocked'].includes(v) ? v : 'Not Retested';
 }
 
+function normalizeIssueType(v) {
+  return ['Functional', 'UI/UX', 'Backend', 'Frontend', 'API', 'Performance', 'Security', 'Database', 'Other'].includes(v) ? v : 'Functional';
+}
+
 bugForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   clearFormError('bug-error');
@@ -1746,6 +1750,7 @@ bugForm.addEventListener('submit', async (e) => {
     module: document.getElementById('bug-module').value.trim() || null,
     sub_module: document.getElementById('bug-sub-module').value.trim() || null,
     severity: document.getElementById('bug-severity').value,
+    issue_type: document.getElementById('bug-issue-type').value,
     status: document.getElementById('bug-status').value,
     reported_by: document.getElementById('bug-reported-by').value.trim() || null,
     steps_to_reproduce: document.getElementById('bug-steps').value.trim() || null,
@@ -1771,6 +1776,7 @@ bugForm.addEventListener('submit', async (e) => {
   flashFields(bugForm, 'field-success');
   bugForm.reset();
   document.getElementById('bug-severity').value = 'Medium';
+  document.getElementById('bug-issue-type').value = 'Functional';
   document.getElementById('bug-status').value = 'Open';
   document.getElementById('bug-developer-status').value = 'Not Started';
   document.getElementById('bug-retest-status').value = 'Not Retested';
@@ -1793,6 +1799,7 @@ function openBugModal(id) {
   document.getElementById('be-module').value = b.module || '';
   document.getElementById('be-sub-module').value = b.sub_module || '';
   document.getElementById('be-severity').value = b.severity || 'Medium';
+  document.getElementById('be-issue-type').value = b.issue_type || 'Functional';
   document.getElementById('be-status').value = b.status || 'Open';
   document.getElementById('be-reported-by').value = b.reported_by || '';
   document.getElementById('be-developer-status').value = b.developer_status || 'Not Started';
@@ -1837,6 +1844,7 @@ bugEditForm.addEventListener('submit', async (e) => {
     module: document.getElementById('be-module').value.trim() || null,
     sub_module: document.getElementById('be-sub-module').value.trim() || null,
     severity: document.getElementById('be-severity').value,
+    issue_type: document.getElementById('be-issue-type').value,
     status: document.getElementById('be-status').value,
     reported_by: document.getElementById('be-reported-by').value.trim() || null,
     developer_status: document.getElementById('be-developer-status').value,
@@ -1940,6 +1948,7 @@ function renderBugs(bugs, projectId) {
             ${b.module ? `<span class="pill" style="${pillStyle('#38BDF8')}">Module: ${escapeHtml(b.module)}</span>` : ''}
             ${b.sub_module ? `<span class="pill" style="${pillStyle('#38BDF8')}">Sub module: ${escapeHtml(b.sub_module)}</span>` : ''}
             <span class="pill" style="${pillStyle('#818CF8')}">Page: ${escapeHtml(b.page)}</span>
+            <span class="pill" style="${pillStyle('#34D399')}">${escapeHtml(b.issue_type || 'Functional')}</span>
             <span class="priority-pill priority-${escapeHtml(b.severity)}">${escapeHtml(b.severity)}</span>
             ${b.reported_by ? `<span>Reported by ${escapeHtml(b.reported_by)}</span>` : ''}
           </div>
@@ -2103,6 +2112,9 @@ const BUG_HEADER_ALIASES = {
   status: 'status',
   reportedby: 'reported_by',
   reporter: 'reported_by',
+  issuetype: 'issue_type',
+  type: 'issue_type',
+  category: 'issue_type',
   description: 'description',
   desc: 'description',
   stepstoreproduce: 'steps',
@@ -2171,6 +2183,7 @@ function rowsToBugObjects(rows, tabName) {
       module: obj.module ? obj.module.slice(0, 120) : null,
       sub_module: obj.sub_module ? obj.sub_module.slice(0, 200) : null,
       severity: normalizeSeverity(obj.severity),
+      issue_type: obj.issue_type ? normalizeIssueType(obj.issue_type) : 'Functional',
       status: normalizeBugStatus(obj.status),
       reported_by: obj.reported_by ? obj.reported_by.slice(0, 80) : null,
       description: obj.description ? obj.description.slice(0, 1000) : null,
@@ -2324,6 +2337,7 @@ function renderBugImportPreview(bugs) {
           ${b.module ? `<span class="pill" style="${pillStyle('#38BDF8')}">Module: ${escapeHtml(b.module)}</span>` : ''}
           <span class="pill" style="${pillStyle('#818CF8')}">Page: ${escapeHtml(b.page)}</span>
           ${b._tab ? `<span class="pill" style="${pillStyle('#38BDF8')}">Tab: ${escapeHtml(b._tab)}</span>` : ''}
+          <span class="pill" style="${pillStyle('#34D399')}">${escapeHtml(b.issue_type || 'Functional')}</span>
           <span class="priority-pill priority-${escapeHtml(b.severity)}">${escapeHtml(b.severity)}</span>
           <span class="pill" style="${pillStyle(bugStatusColor(b.status))}">${escapeHtml(b.status)}</span>
         </div>
@@ -2365,6 +2379,7 @@ document.getElementById('bug-import-add-selected').addEventListener('click', asy
     module: b.module,
     sub_module: b.sub_module,
     severity: b.severity,
+    issue_type: b.issue_type,
     status: b.status,
     reported_by: b.reported_by,
     description: b.description,
@@ -3280,13 +3295,14 @@ document.getElementById('download-tc-template-btn').addEventListener('click', ()
 document.getElementById('download-bugs-template-btn').addEventListener('click', () => {
   downloadTemplateSheet(
     'Bugs Template',
-    ['Title', 'Page', 'Module', 'Sub Module', 'Severity', 'Status', 'Reported By', 'Steps to Reproduce', 'Expected Result', 'Actual Result', 'Description', 'Developer Status', 'Developer Comments', 'Retest Status', 'Manager Comments', 'Bug Id', 'Date', 'Notes'],
+    ['Title', 'Page', 'Module', 'Sub Module', 'Severity', 'Issue Type', 'Status', 'Reported By', 'Steps to Reproduce', 'Expected Result', 'Actual Result', 'Description', 'Developer Status', 'Developer Comments', 'Retest Status', 'Manager Comments', 'Bug Id', 'Date', 'Notes'],
     [
       'Login button unresponsive on checkout',
       'Checkout page',
       'University Admin',
       'Departments – Create Department',
       'High',
+      'Functional',
       'Open',
       'Jane Doe',
       '1. Go to checkout page\n2. Fill in valid details\n3. Click Login',
@@ -3365,6 +3381,7 @@ document.getElementById('download-bugs-btn').addEventListener('click', () => {
     'Sub Module': b.sub_module || '',
     'Page': b.page,
     'Severity': b.severity,
+    'Issue Type': b.issue_type || '',
     'Status': b.status,
     'Reported By': b.reported_by || '',
     'Steps to Reproduce': b.steps_to_reproduce || '',

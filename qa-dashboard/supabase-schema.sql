@@ -336,3 +336,13 @@ alter table bugs add constraint bugs_retest_status_check
 -- See migration-v21.sql for details/comments.
 
 alter table bugs add column if not exists bug_id text;
+
+
+-- Migration v22: Issue Type on bugs
+-- See migration-v22.sql for details/comments.
+
+alter table bugs add column if not exists issue_type text
+  not null default 'Functional';
+alter table bugs drop constraint if exists bugs_issue_type_check;
+alter table bugs add constraint bugs_issue_type_check
+  check (issue_type in ('Functional', 'UI/UX', 'Backend', 'Frontend', 'API', 'Performance', 'Security', 'Database', 'Other'));

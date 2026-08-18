@@ -290,7 +290,7 @@
             Paste a shareable Google Sheet link to auto-fetch its rows, or copy
             rows straight from the sheet and paste them below. Recognized columns
             (any order, header row optional): <b>Title / Sub Module, Page / Module,
-            Severity, Status, Reported By, Steps to Reproduce, Expected Result,
+            Severity, Issue Type, Status, Reported By, Steps to Reproduce, Expected Result,
             Actual Result, Description, Developer Status, Developer Comments,
             Retest Status, Manager Comments, Bug Id, Date, Notes</b> — a title-like
             and a page/module-like column are required, the rest are optional.
@@ -361,6 +361,19 @@
                 <option value="Medium" selected>Medium</option>
                 <option value="High">High</option>
                 <option value="Critical">Critical</option>
+              </select>
+            </label>
+            <label>Issue type
+              <select id="bug-issue-type">
+                <option value="Functional" selected>Functional</option>
+                <option value="UI/UX">UI/UX</option>
+                <option value="Backend">Backend</option>
+                <option value="Frontend">Frontend</option>
+                <option value="API">API</option>
+                <option value="Performance">Performance</option>
+                <option value="Security">Security</option>
+                <option value="Database">Database</option>
+                <option value="Other">Other</option>
               </select>
             </label>
             <label>Status
@@ -829,6 +842,19 @@
             <option value="Medium">Medium</option>
             <option value="High">High</option>
             <option value="Critical">Critical</option>
+          </select>
+        </label>
+        <label>Issue type
+          <select id="be-issue-type">
+            <option value="Functional">Functional</option>
+            <option value="UI/UX">UI/UX</option>
+            <option value="Backend">Backend</option>
+            <option value="Frontend">Frontend</option>
+            <option value="API">API</option>
+            <option value="Performance">Performance</option>
+            <option value="Security">Security</option>
+            <option value="Database">Database</option>
+            <option value="Other">Other</option>
           </select>
         </label>
         <label>Status
