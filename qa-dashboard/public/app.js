@@ -142,10 +142,11 @@ function createBulkSelector({ checkboxSelector, selectAllId, deleteBtnId, table,
       }
       deleteBtn.disabled = false;
       if (error) {
-        alert(error.message);
+        toastError(error.message);
         return;
       }
       selected.clear();
+      toast(`${ids.length} ${label}${ids.length > 1 ? 's' : ''} deleted.`, { emoji: '🗑️' });
       if (onDeleted) await onDeleted(ids);
     });
   }
@@ -435,13 +436,14 @@ document.getElementById('notif-clear-btn').addEventListener('click', async () =>
     .delete({ count: 'exact' })
     .eq('actor_id', currentUser.id);
   if (error) {
-    alert(error.message);
+    toastError(error.message);
     return;
   }
   if (!count) {
-    alert("Couldn't clear notifications right now — please try again, or contact your admin.");
+    toastError("Couldn't clear notifications right now — please try again, or contact your admin.");
     return;
   }
+  toast(`Cleared ${count} notification${count === 1 ? '' : 's'}.`, { emoji: '🧹' });
   loadNotificationsPage();
   refreshNotifications();
 });
@@ -454,13 +456,14 @@ notifClearAllBtn.addEventListener('click', async () => {
     .delete({ count: 'exact' })
     .not('id', 'is', null);
   if (error) {
-    alert(error.message);
+    toastError(error.message);
     return;
   }
   if (!count) {
-    alert("Couldn't clear notifications right now — please try again, or contact your admin.");
+    toastError("Couldn't clear notifications right now — please try again, or contact your admin.");
     return;
   }
+  toast(`Cleared ${count} notification${count === 1 ? '' : 's'} for everyone.`, { emoji: '🧹' });
   loadNotificationsPage();
   refreshNotifications();
 });
@@ -608,9 +611,10 @@ function renderTeamInto(listId, countId, members) {
     sel.addEventListener('change', async () => {
       const { error } = await sb.from('profiles').update({ role: sel.value }).eq('id', sel.dataset.id);
       if (error) {
-        alert(error.message);
+        toastError(error.message);
         return;
       }
+      toast('Role updated.', { emoji: '👤' });
       loadTeam();
     });
   });
@@ -642,6 +646,7 @@ document.getElementById('profile-form').addEventListener('submit', async (e) => 
   if (currentProfile) currentProfile.display_name = name;
   document.getElementById('profile-success').textContent = 'Profile saved.';
   document.getElementById('profile-success').classList.remove('hidden');
+  toast('Profile saved.', { emoji: '👤' });
   loadTeam();
 });
 
@@ -838,13 +843,14 @@ document.getElementById('audit-clear-btn')?.addEventListener('click', async () =
     .delete({ count: 'exact' })
     .not('id', 'is', null);
   if (error) {
-    alert(error.message);
+    toastError(error.message);
     return;
   }
   if (!count) {
-    alert("Couldn't clear audit logs — make sure migration-v20.sql has been run.");
+    toastError("Couldn't clear audit logs — make sure migration-v20.sql has been run.");
     return;
   }
+  toast(`Cleared ${count} audit log entr${count === 1 ? 'y' : 'ies'}.`, { emoji: '🧹' });
   loadAuditLogs();
 });
 
@@ -1027,10 +1033,11 @@ function renderProjects(projects) {
         })
         .eq('id', sel.dataset.id);
       if (error) {
-        alert(error.message);
+        toastError(error.message);
         return;
       }
       notify(`${actorLabel()} changed "${p ? p.name : 'a project'}" status to ${sel.value}`, 'project', 'status_change');
+      toast(`Status set to ${sel.value}.`, { emoji: '🔄' });
       loadProjects();
     });
   });
@@ -1042,10 +1049,11 @@ function renderProjects(projects) {
       await flashRowRemoving(btn.closest('tr'));
       const { error } = await sb.from('projects').delete().eq('id', btn.dataset.delete);
       if (error) {
-        alert(error.message);
+        toastError(error.message);
         return;
       }
       notify(`${actorLabel()} removed project "${p ? p.name : ''}"`, 'project', 'delete');
+      toast(`"${p ? p.name : 'Project'}" removed.`, { emoji: '🗑️' });
       loadProjects();
       loadReports();
     });
@@ -1086,6 +1094,7 @@ if (statusForm) statusForm.addEventListener('submit', async (e) => {
     return;
   }
   document.getElementById('new-status-name').value = '';
+  toast(`Status "${name}" added.`, { emoji: '🏷️' });
   await loadStatuses();
   loadProjects();
 });
@@ -1133,9 +1142,10 @@ function renderStatusManager(statuses) {
       }
       const { error } = await sb.from('statuses').update({ name: newName }).eq('id', input.dataset.id);
       if (error) {
-        alert(error.message);
+        toastError(error.message);
         return;
       }
+      toast('Status renamed.', { emoji: '🏷️' });
       await loadStatuses();
       loadProjects();
     });
@@ -1145,9 +1155,10 @@ function renderStatusManager(statuses) {
     sel.addEventListener('change', async () => {
       const { error } = await sb.from('statuses').update({ color: sel.value }).eq('id', sel.dataset.id);
       if (error) {
-        alert(error.message);
+        toastError(error.message);
         return;
       }
+      toast('Status color updated.', { emoji: '🎨' });
       await loadStatuses();
       loadProjects();
     });
@@ -1157,15 +1168,16 @@ function renderStatusManager(statuses) {
     btn.addEventListener('click', async () => {
       const { count } = await sb.from('statuses').select('*', { count: 'exact', head: true });
       if ((count || 0) <= 1) {
-        alert('Keep at least one status.');
+        toastError('Keep at least one status.');
         return;
       }
       if (!confirm('Remove this status? Projects using it will keep the label but lose its color.')) return;
       const { error } = await sb.from('statuses').delete().eq('id', btn.dataset.deleteStatus);
       if (error) {
-        alert(error.message);
+        toastError(error.message);
         return;
       }
+      toast('Status removed.', { emoji: '🗑️' });
       await loadStatuses();
       loadProjects();
     });
@@ -1299,6 +1311,7 @@ editForm.addEventListener('submit', async (e) => {
     }
     notify(`${actorLabel()} updated project "${payload.name}"`, 'project', 'update');
     flashFields(editForm, 'field-success');
+    celebrate(`"${payload.name}" updated!`, '💾');
   } else {
     payload.created_by_email = currentUser ? currentUser.email : null;
     payload.owner_id = currentUser ? currentUser.id : null;
@@ -1325,10 +1338,11 @@ editDeleteBtn.addEventListener('click', async () => {
   await new Promise((r) => setTimeout(r, 220));
   const { error } = await sb.from('projects').delete().eq('id', id);
   if (error) {
-    alert(error.message);
+    toastError(error.message);
     return;
   }
   notify(`${actorLabel()} removed project "${p ? p.name : ''}"`, 'project', 'delete');
+  toast(`"${p ? p.name : 'Project'}" removed.`, { emoji: '🗑️' });
   closeEditModal();
   loadProjects();
   loadReports();
@@ -1609,10 +1623,11 @@ function renderTestCases(cases, projectId) {
         })
         .eq('id', sel.dataset.id);
       if (error) {
-        alert(error.message);
+        toastError(error.message);
         return;
       }
       if (newStatus === 'Pass') celebrate('Nice, that passed!', '💪');
+      else toast(`Status set to ${newStatus}.`, { emoji: '🔄' });
       loadTestCases(projectId);
     });
   });
@@ -1623,9 +1638,10 @@ function renderTestCases(cases, projectId) {
       await flashRowRemoving(btn.closest('.tc-row'));
       const { error } = await sb.from('test_cases').delete().eq('id', btn.dataset.tcDelete);
       if (error) {
-        alert(error.message);
+        toastError(error.message);
         return;
       }
+      toast('Test case removed.', { emoji: '🗑️' });
       loadTestCases(projectId);
     });
   });
@@ -1883,6 +1899,7 @@ bugEditForm.addEventListener('submit', async (e) => {
     return;
   }
   notify(`${actorLabel()} updated bug "${title}"`, 'bug', 'update');
+  toast(`"${title}" updated!`, { emoji: '💾' });
   closeBugModal();
   loadBugs(bugsSelect.value);
 });
@@ -1898,6 +1915,7 @@ document.getElementById('bug-edit-delete').addEventListener('click', async () =>
     return;
   }
   notify(`${actorLabel()} removed bug "${title}"`, 'bug', 'delete');
+  toast(`"${title}" removed.`, { emoji: '🗑️' });
   closeBugModal();
   loadBugs(bugsSelect.value);
 });
@@ -2012,10 +2030,11 @@ function renderBugs(bugs, projectId) {
         .update({ status: newStatus, updated_at: new Date().toISOString() })
         .eq('id', sel.dataset.id);
       if (error) {
-        alert(error.message);
+        toastError(error.message);
         return;
       }
       if (newStatus === 'Fixed') celebrate('Bug fixed!', '🎉');
+      else toast(`Status set to ${newStatus}.`, { emoji: '🔄' });
       loadBugs(projectId);
     });
   });
@@ -2027,9 +2046,10 @@ function renderBugs(bugs, projectId) {
         .update({ developer_status: sel.value, updated_at: new Date().toISOString() })
         .eq('id', sel.dataset.id);
       if (error) {
-        alert(error.message);
+        toastError(error.message);
         return;
       }
+      toast(`Developer status set to ${sel.value}.`, { emoji: '🔧' });
       loadBugs(projectId);
     });
   });
@@ -2041,9 +2061,10 @@ function renderBugs(bugs, projectId) {
         .update({ retest_status: sel.value, updated_at: new Date().toISOString() })
         .eq('id', sel.dataset.id);
       if (error) {
-        alert(error.message);
+        toastError(error.message);
         return;
       }
+      toast(`Retest status set to ${sel.value}.`, { emoji: '🔁' });
       loadBugs(projectId);
     });
   });
@@ -2054,9 +2075,10 @@ function renderBugs(bugs, projectId) {
       await flashRowRemoving(btn.closest('.tc-row'));
       const { error } = await sb.from('bugs').delete().eq('id', btn.dataset.bugDelete);
       if (error) {
-        alert(error.message);
+        toastError(error.message);
         return;
       }
+      toast('Bug removed.', { emoji: '🗑️' });
       loadBugs(projectId);
     });
   });
@@ -2540,9 +2562,10 @@ function renderApkShares(shares) {
       await flashRowRemoving(row);
       const { error } = await sb.from('apk_shares').delete().eq('id', a.id);
       if (error) {
-        alert(error.message);
+        toastError(error.message);
         return;
       }
+      toast('APK entry removed.', { emoji: '🗑️' });
       showProjectDetails(detailsSelect.value);
     });
     apkList.appendChild(row);
@@ -2584,11 +2607,11 @@ document.getElementById('share-day-btn').addEventListener('click', async () => {
 
   const { data, error } = await query;
   if (error) {
-    alert(error.message);
+    toastError(error.message);
     return;
   }
   if (!data || !data.length) {
-    alert(`No daily entries found for ${new Date(dateStr + 'T00:00:00').toLocaleDateString()}. Log an entry first, or pick a different date in the filter above.`);
+    toastError(`No daily entries found for ${new Date(dateStr + 'T00:00:00').toLocaleDateString()}. Log an entry first, or pick a different date in the filter above.`);
     return;
   }
 
@@ -3005,6 +3028,7 @@ function formatBugStatsLine(stats) {
 const whatsappMessageEl = document.getElementById('whatsapp-message');
 const whatsappOpenLink = document.getElementById('whatsapp-open');
 const whatsappCopyBtn = document.getElementById('whatsapp-copy');
+const whatsappModal = document.getElementById('whatsapp-modal');
 
 function formatDailyUpdateBlock(payload, projectName, bugStats) {
   let msg = `*${projectName}*\n`;
@@ -3136,9 +3160,10 @@ async function renderReports(reports) {
       await flashRowRemoving(card);
       const { error } = await sb.from('daily_reports').delete().eq('id', r.id);
       if (error) {
-        alert(error.message);
+        toastError(error.message);
         return;
       }
+      toast('Daily log entry removed.', { emoji: '🗑️' });
       loadReports();
     });
     card.querySelector('[data-share]').addEventListener('click', async () => {
@@ -3294,6 +3319,7 @@ reportEditForm.addEventListener('submit', async (e) => {
     return;
   }
   notify(`${actorLabel()} updated a daily log entry`, 'daily_report', 'update');
+  toast('Daily log entry updated!', { emoji: '💾' });
   closeReportModal();
   loadReports();
 });
@@ -3307,27 +3333,39 @@ document.getElementById('report-edit-delete').addEventListener('click', async ()
     showFormError('report-edit-error', error.message);
     return;
   }
+  toast('Daily log entry removed.', { emoji: '🗑️' });
   closeReportModal();
   loadReports();
 });
 
-// ---------- Celebration toasts ----------
+// ---------- Toasts (success / error feedback) ----------
 
 let toastWrap = null;
-function celebrate(message, emoji) {
+function toast(message, opts = {}) {
+  const { emoji, type } = opts;
   if (!toastWrap) {
     toastWrap = document.createElement('div');
     toastWrap.className = 'celebrate-toast-wrap';
     document.body.appendChild(toastWrap);
   }
-  const toast = document.createElement('div');
-  toast.className = 'celebrate-toast';
-  toast.innerHTML = `<span class="celebrate-emoji">${emoji || '✨'}</span><span>${escapeHtml(message)}</span>`;
-  toastWrap.appendChild(toast);
+  const el = document.createElement('div');
+  el.className = 'celebrate-toast' + (type === 'error' ? ' toast-error' : '');
+  el.innerHTML = `<span class="celebrate-emoji">${emoji || (type === 'error' ? '⚠️' : '✅')}</span><span>${escapeHtml(message)}</span>`;
+  toastWrap.appendChild(el);
   setTimeout(() => {
-    toast.classList.add('leaving');
-    setTimeout(() => toast.remove(), 300);
-  }, 2200);
+    el.classList.add('leaving');
+    setTimeout(() => el.remove(), 300);
+  }, type === 'error' ? 3400 : 2200);
+}
+
+// Kept as a thin wrapper so every earlier "celebrate(...)" call site
+// (project added, bug logged, etc.) keeps working unchanged.
+function celebrate(message, emoji) {
+  toast(message, { emoji });
+}
+
+function toastError(message) {
+  toast(message, { type: 'error' });
 }
 
 function escapeHtml(str) {
@@ -3375,13 +3413,14 @@ function safeFileName(name) {
 
 function downloadSheet(filename, rows, sheetName) {
   if (!rows || !rows.length) {
-    alert('Nothing to download yet.');
+    toastError('Nothing to download yet.');
     return;
   }
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, (sheetName || 'Sheet1').slice(0, 31));
   XLSX.writeFile(wb, `${filename}.xlsx`);
+  toast(`${filename}.xlsx downloaded.`, { emoji: '⬇️' });
 }
 
 // A "template" download is just headers + one filled-in example row, so a
@@ -3393,6 +3432,7 @@ function downloadTemplateSheet(filename, headers, exampleRow, sheetName) {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, (sheetName || 'Template').slice(0, 31));
   XLSX.writeFile(wb, `${filename}.xlsx`);
+  toast(`${filename}.xlsx template downloaded.`, { emoji: '⬇️' });
 }
 
 // Test execution → blank template matching the Add test case fields exactly,
@@ -3468,7 +3508,7 @@ document.getElementById('download-details-btn').addEventListener('click', () => 
   const id = detailsSelect.value;
   const p = projectsCache.find((x) => x.id === id);
   if (!p) {
-    alert('Select a project first.');
+    toastError('Select a project first.');
     return;
   }
   const row = {};
