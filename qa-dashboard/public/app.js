@@ -1414,6 +1414,14 @@ async function showProjectDetails(id) {
   detailsContent.classList.remove('hidden');
   detailsName.textContent = p.name;
 
+  const bugSummary = await getProjectBugSummary(id);
+  const bugSummaryHtml = `
+    <div class="detail-item span-2" id="details-bug-summary">
+      <span class="detail-label">Bugs <span class="auto-badge">AUTO</span></span>
+      <span class="detail-value">${escapeHtml(formatBugSummaryLine(bugSummary))} <span class="auto-hint">— tracked live from the Bugs log</span></span>
+    </div>
+  `;
+
   const { data: latestRows } = await sb
     .from('apk_shares')
     .select('*')
@@ -1442,8 +1450,15 @@ async function showProjectDetails(id) {
 
   let html = '';
   let insertedApk = false;
+  let insertedBugSummary = false;
   detailFieldGroups.forEach((f) => {
     if (f.isHeader) {
+      if (f.title === 'Overview' && !insertedBugSummary) {
+        html += `<p class="span-2 section-label" style="grid-column:span 2;">${escapeHtml(f.title)}</p>`;
+        html += bugSummaryHtml;
+        insertedBugSummary = true;
+        return;
+      }
       if (f.title === 'Timeline' && !insertedApk) {
         html += latestApkHtml;
         insertedApk = true;
@@ -1932,6 +1947,22 @@ async function loadBugs(projectId) {
   }
   bugCache = data || [];
   renderBugs(bugCache, projectId);
+  refreshDetailsBugSummaryIfShowing(projectId);
+}
+
+// Bug counts on the Project Details tab are auto-tracked, not manually
+// entered — so whenever bugs change (add/edit/delete/status change), patch
+// just that block in place if that project's details happen to be open.
+// Lightweight on purpose: avoids re-fetching APK shares / test cases.
+async function refreshDetailsBugSummaryIfShowing(projectId) {
+  if (detailsSelect.dataset.current !== projectId) return;
+  const block = document.getElementById('details-bug-summary');
+  if (!block) return;
+  const bugSummary = await getProjectBugSummary(projectId);
+  const valueEl = block.querySelector('.detail-value');
+  if (valueEl) {
+    valueEl.innerHTML = `${escapeHtml(formatBugSummaryLine(bugSummary))} <span class="auto-hint">— tracked live from the Bugs log</span>`;
+  }
 }
 
 let bugPageNum = 1;
@@ -2992,6 +3023,27 @@ reportForm.addEventListener('submit', async (e) => {
 // This keeps every Daily Log entry (and every shared update) in sync with
 // the real Bugs list, automatically.
 
+// Live bug totals for a project (Project Details tab) — no manual entry,
+// always reflects the current state of the Bugs log.
+async function getProjectBugSummary(projectId) {
+  const { data, error } = await sb.from('bugs').select('status').eq('project_id', projectId);
+  if (error) {
+    console.error(error);
+    return null;
+  }
+  const rows = data || [];
+  const byStatus = {};
+  rows.forEach((b) => { byStatus[b.status] = (byStatus[b.status] || 0) + 1; });
+  return { total: rows.length, byStatus };
+}
+
+function formatBugSummaryLine(summary) {
+  if (!summary || !summary.total) return 'No bugs logged yet';
+  const order = ['Open', 'In Progress', 'Retest', 'Fixed', 'Reopened', 'Closed'];
+  const parts = order.filter((s) => summary.byStatus[s]).map((s) => `${summary.byStatus[s]} ${s}`);
+  return `${summary.total} total${parts.length ? ` — ${parts.join(', ')}` : ''}`;
+}
+
 function nextDateStr(dateStr) {
   const d = new Date(`${dateStr}T00:00:00`);
   d.setDate(d.getDate() + 1);
@@ -2999,29 +3051,57 @@ function nextDateStr(dateStr) {
 }
 
 async function getBugStatsForDay(projectId, dateStr) {
+  const dayStart = `${dateStr}T00:00:00`;
+  const dayEnd = `${nextDateStr(dateStr)}T00:00:00`;
+  // One query covers both "created today" (newly identified) and "touched
+  // today" (status moved, e.g. to Closed/Reopened) — cheaper than two round
+  // trips, and keeps the identified/closed/reopened counts consistent.
   const { data, error } = await sb
     .from('bugs')
-    .select('id, title, severity')
+    .select('id, title, severity, status, created_at, updated_at')
     .eq('project_id', projectId)
-    .gte('created_at', `${dateStr}T00:00:00`)
-    .lt('created_at', `${nextDateStr(dateStr)}T00:00:00`);
+    .or(`and(created_at.gte.${dayStart},created_at.lt.${dayEnd}),and(updated_at.gte.${dayStart},updated_at.lt.${dayEnd})`);
   if (error) {
     console.error(error);
-    return { total: 0, bySeverity: {}, titles: [] };
+    return { total: 0, bySeverity: {}, titles: [], closed: 0, reopened: 0 };
   }
+  const rows = data || [];
+  const startD = new Date(dayStart);
+  const endD = new Date(dayEnd);
+  const inDay = (ts) => {
+    if (!ts) return false;
+    const d = new Date(ts);
+    return d >= startD && d < endD;
+  };
+  const identified = rows.filter((b) => inDay(b.created_at));
   const bySeverity = {};
-  (data || []).forEach((b) => { bySeverity[b.severity] = (bySeverity[b.severity] || 0) + 1; });
-  return { total: (data || []).length, bySeverity, titles: (data || []).map((b) => b.title) };
+  identified.forEach((b) => { bySeverity[b.severity] = (bySeverity[b.severity] || 0) + 1; });
+  // Best-effort, not a full history: this reflects the bug's *current*
+  // status when it was last touched today, since we don't store every
+  // intermediate transition. Good enough for a live daily-log summary.
+  const closed = rows.filter((b) => b.status === 'Closed' && inDay(b.updated_at)).length;
+  const reopened = rows.filter((b) => b.status === 'Reopened' && inDay(b.updated_at)).length;
+  return { total: identified.length, bySeverity, titles: identified.map((b) => b.title), closed, reopened };
 }
 
 // The one shared format for "bugs identified" — used in the Daily Log list,
 // in single-entry shares, in the batch "Share day's updates" message, and in
 // auto-only cards, so the number always reads the same way everywhere.
 function formatBugStatsLine(stats) {
-  if (!stats || !stats.total) return 'Bugs identified: 0';
+  if (!stats || !stats.total) {
+    const extras = [];
+    if (stats && stats.closed) extras.push(`${stats.closed} closed`);
+    if (stats && stats.reopened) extras.push(`${stats.reopened} reopened`);
+    return `Bugs identified: 0${extras.length ? ` · ${extras.join(', ')}` : ''}`;
+  }
   const order = ['Critical', 'High', 'Medium', 'Low'];
   const parts = order.filter((s) => stats.bySeverity[s]).map((s) => `${stats.bySeverity[s]} ${s}`);
-  return `Bugs identified: ${stats.total}${parts.length ? ` (${parts.join(', ')})` : ''}`;
+  let line = `Bugs identified: ${stats.total}${parts.length ? ` (${parts.join(', ')})` : ''}`;
+  const extras = [];
+  if (stats.closed) extras.push(`${stats.closed} closed`);
+  if (stats.reopened) extras.push(`${stats.reopened} reopened`);
+  if (extras.length) line += ` · ${extras.join(', ')}`;
+  return line;
 }
 
 
@@ -3197,7 +3277,7 @@ async function renderAutoOnlyReportCards(existingReports) {
   for (const p of projectsToCheck) {
     if (loggedPairs.has(`${p.id}|${dateFilter}`)) continue;
     const bugStats = await getBugStatsForDay(p.id, dateFilter);
-    if (!bugStats.total) continue;
+    if (!bugStats.total && !bugStats.closed && !bugStats.reopened) continue;
     autoCards.push({ project: p, date: dateFilter, bugStats });
   }
 
