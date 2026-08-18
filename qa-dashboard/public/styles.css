@@ -1344,6 +1344,34 @@ select option:focus {
   margin-top: 4px;
 }
 .tc-row-desc { font-size: 13px; color: var(--ink-soft); margin-top: 6px; }
+
+.field-block-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.field-block {
+  border-left: 3px solid transparent;
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 13px;
+}
+.field-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+.field-text {
+  color: var(--ink);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 .tc-row-actions {
   display: flex;
   flex-wrap: wrap;

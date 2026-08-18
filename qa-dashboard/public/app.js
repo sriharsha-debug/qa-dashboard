@@ -1949,14 +1949,17 @@ function renderBugs(bugs, projectId) {
   pageBugs.forEach((b) => {
     const row = document.createElement('div');
     row.className = 'tc-row';
-    const stepsBlock = [
-      b.steps_to_reproduce ? `<div><b>Steps:</b> ${escapeHtml(b.steps_to_reproduce)}</div>` : '',
-      b.expected_result ? `<div><b>Expected:</b> ${escapeHtml(b.expected_result)}</div>` : '',
-      b.actual_result ? `<div><b>Actual:</b> ${escapeHtml(b.actual_result)}</div>` : '',
-    ].filter(Boolean).join('');
-    const commentsBlock = [
-      b.developer_comments ? `<div><b>Dev comments:</b> ${escapeHtml(b.developer_comments)}</div>` : '',
-      b.manager_comments ? `<div><b>Manager comments:</b> ${escapeHtml(b.manager_comments)}</div>` : '',
+    const fieldBlock = (label, value, hex) => value
+      ? `<div class="field-block" style="border-left-color:${hex};background:${hex}17;"><span class="field-label" style="color:${hex}">${label}</span><div class="field-text">${escapeHtml(value)}</div></div>`
+      : '';
+    const detailBlocks = [
+      fieldBlock('Description', b.description, '#2DD4BF'),
+      fieldBlock('Steps to Reproduce', b.steps_to_reproduce, '#818CF8'),
+      fieldBlock('Expected Result', b.expected_result, '#34D399'),
+      fieldBlock('Actual Result', b.actual_result, '#F3564B'),
+      fieldBlock('Developer Comments', b.developer_comments, '#8B5CF6'),
+      fieldBlock('Manager Comments', b.manager_comments, '#F89C27'),
+      fieldBlock('Notes', b.notes, '#FEB827'),
     ].filter(Boolean).join('');
     row.innerHTML = `
       <div class="tc-row-top">
@@ -1973,10 +1976,7 @@ function renderBugs(bugs, projectId) {
             ${b.reported_date ? `<span>Reported: ${fmtDate(b.reported_date)}</span>` : ''}
             ${b.closed_date ? `<span>Closed: ${fmtDate(b.closed_date)}</span>` : ''}
           </div>
-          ${stepsBlock ? `<div class="tc-row-desc">${stepsBlock}</div>` : ''}
-          ${b.description ? `<div class="tc-row-desc">${escapeHtml(b.description)}</div>` : ''}
-          ${commentsBlock ? `<div class="tc-row-desc">${commentsBlock}</div>` : ''}
-          ${b.notes ? `<div class="tc-row-desc"><b>Notes:</b> ${escapeHtml(b.notes)}</div>` : ''}
+          ${detailBlocks ? `<div class="field-block-group">${detailBlocks}</div>` : ''}
         </div>
       </div>
       <div class="tc-row-actions">
