@@ -2649,21 +2649,63 @@ function todayStr() {
   return d.toISOString().slice(0, 10);
 }
 
+// Multiple manual entries logged for the same project on the same day (e.g.
+// two people filing separately) are combined into ONE block per project
+// when sharing — so "share all" never sends a project twice.
+function mergeReportsForProject(group) {
+  const latest = group[group.length - 1];
+  const dedupJoin = (values) => {
+    const seen = new Set();
+    const out = [];
+    values.filter(Boolean).forEach((t) => {
+      if (!seen.has(t)) { seen.add(t); out.push(t); }
+    });
+    return out.join('\n') || null;
+  };
+  const lastNonEmpty = (key) => {
+    for (let i = group.length - 1; i >= 0; i -= 1) {
+      if (group[i][key]) return group[i][key];
+    }
+    return null;
+  };
+  return {
+    project_id: latest.project_id,
+    report_date: latest.report_date,
+    project_manager: lastNonEmpty('project_manager'),
+    assigned_tasks: dedupJoin(group.map((r) => r.assigned_tasks)),
+    bugsheet: lastNonEmpty('bugsheet'),
+    test_cases: latest.test_cases,
+    sign_off: group.some((r) => r.sign_off),
+    remarks: dedupJoin(group.map((r) => r.remarks)),
+    notes: dedupJoin(group.map((r) => r.notes)),
+  };
+}
+
 async function buildBatchWhatsAppMessage(reports, dateStr, autoOnly) {
   const niceDate = new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB');
-  const totalCount = reports.length + (autoOnly ? autoOnly.length : 0);
+
+  // Group manual entries by project — this is what guarantees one project
+  // = one shared log block, even if two entries were filed for it that day.
+  const byProject = new Map();
+  for (const r of reports) {
+    if (!byProject.has(r.project_id)) byProject.set(r.project_id, []);
+    byProject.get(r.project_id).push(r);
+  }
+
+  const totalCount = byProject.size + (autoOnly ? autoOnly.length : 0);
   let msg = `*QA Daily Updates — ${niceDate}*\n`;
   msg += `_${totalCount} project${totalCount === 1 ? '' : 's'} updated_\n`;
 
   let i = 0;
-  for (const r of reports) {
+  for (const [projectId, group] of byProject) {
     i += 1;
-    const projectName = r.projects ? r.projects.name : 'Project';
+    const projectName = group[0].projects ? group[0].projects.name : 'Project';
+    const merged = mergeReportsForProject(group);
     const [bugStats, liveCounts] = await Promise.all([
-      getBugStatsForDay(r.project_id, r.report_date),
-      getProjectLiveCounts(r.project_id),
+      getBugStatsForDay(projectId, dateStr),
+      getProjectLiveCounts(projectId),
     ]);
-    msg += `\n${i}. ${formatDailyUpdateBlock(r, projectName, bugStats, liveCounts)}`;
+    msg += `\n${i}. ${formatDailyUpdateBlock(merged, projectName, bugStats, liveCounts)}`;
   }
 
   // Projects with bug activity but no manual daily update filed — included
@@ -3144,7 +3186,7 @@ async function getProjectBugSummary(projectId) {
 // number can.
 async function getProjectLiveCounts(projectId) {
   const [bugsRes, tcRes] = await Promise.all([
-    sb.from('bugs').select('status, issue_type').eq('project_id', projectId),
+    sb.from('bugs').select('status, issue_type, severity').eq('project_id', projectId),
     sb.from('test_cases').select('status').eq('project_id', projectId),
   ]);
   if (bugsRes.error) console.error(bugsRes.error);
@@ -3157,6 +3199,11 @@ async function getProjectLiveCounts(projectId) {
   const functionalityBugs = totalBugs - uiBugs;
   const closedBugs = bugs.filter((b) => b.status === 'Closed').length;
   const openBugs = totalBugs - closedBugs;
+  // "Major" = Critical or High severity — there's no separate "Major" value
+  // in the bugs.severity list (Low/Medium/High/Critical), so this combines
+  // the two most severe levels. Adjust here if your team defines it differently.
+  const majorBugs = bugs.filter((b) => b.severity === 'Critical' || b.severity === 'High').length;
+  const criticalBugs = bugs.filter((b) => b.severity === 'Critical').length;
 
   const testCasesTotal = testCases.length;
   const testCasesPass = testCases.filter((t) => t.status === 'Pass').length;
@@ -3164,7 +3211,7 @@ async function getProjectLiveCounts(projectId) {
   const testCasesBlocked = testCases.filter((t) => t.status === 'Blocked').length;
 
   return {
-    totalBugs, uiBugs, functionalityBugs, openBugs, closedBugs,
+    totalBugs, uiBugs, functionalityBugs, openBugs, closedBugs, majorBugs, criticalBugs,
     testCasesTotal, testCasesPass, testCasesFail, testCasesBlocked,
   };
 }
@@ -3176,7 +3223,7 @@ function formatLiveCountsLine(c) {
   if (c.testCasesFail) tcParts.push(`${c.testCasesFail} fail`);
   if (c.testCasesBlocked) tcParts.push(`${c.testCasesBlocked} blocked`);
   const tcLine = `Test cases: ${c.testCasesTotal}${tcParts.length ? ` (${tcParts.join(', ')})` : ''}`;
-  const bugLine = `Bugs total: ${c.totalBugs} (${c.openBugs} open, ${c.closedBugs} closed) — UI/UX: ${c.uiBugs}, Functionality: ${c.functionalityBugs}`;
+  const bugLine = `Bugs total: ${c.totalBugs} (${c.openBugs} open, ${c.closedBugs} closed, ${c.majorBugs} major) — UI/UX: ${c.uiBugs}, Functionality: ${c.functionalityBugs}`;
   return `${tcLine} · ${bugLine}`;
 }
 
