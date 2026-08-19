@@ -1097,6 +1097,7 @@ select option:focus {
   margin-top: 4px;
 }
 .report-metrics b { color: var(--ink); }
+.metrics-hint { font-style: italic; color: var(--ink-soft); font-size: 11px; }
 .report-remarks { margin-top: 6px; font-style: italic; color: var(--ink-soft); }
 .auto-bug-line {
   display: flex;

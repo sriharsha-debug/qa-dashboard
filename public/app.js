@@ -2659,8 +2659,11 @@ async function buildBatchWhatsAppMessage(reports, dateStr, autoOnly) {
   for (const r of reports) {
     i += 1;
     const projectName = r.projects ? r.projects.name : 'Project';
-    const bugStats = await getBugStatsForDay(r.project_id, r.report_date);
-    msg += `\n${i}. ${formatDailyUpdateBlock(r, projectName, bugStats)}`;
+    const [bugStats, liveCounts] = await Promise.all([
+      getBugStatsForDay(r.project_id, r.report_date),
+      getProjectLiveCounts(r.project_id),
+    ]);
+    msg += `\n${i}. ${formatDailyUpdateBlock(r, projectName, bugStats, liveCounts)}`;
   }
 
   // Projects with bug activity but no manual daily update filed — included
@@ -2669,7 +2672,8 @@ async function buildBatchWhatsAppMessage(reports, dateStr, autoOnly) {
   if (autoOnly) {
     for (const a of autoOnly) {
       i += 1;
-      msg += `\n${i}. *${a.project.name}* _(auto — no manual update filed)_\n• ${formatBugStatsLine(a.bugStats)}\n`;
+      const liveCounts = await getProjectLiveCounts(a.project.id);
+      msg += `\n${i}. *${a.project.name}* _(auto — no manual update filed)_\n• ${formatBugStatsLine(a.bugStats)}\n• Current totals (auto): ${formatLiveCountsLine(liveCounts)}\n`;
     }
   }
 
@@ -3006,6 +3010,32 @@ function resetTaskList() {
 
 renderTaskList();
 
+// ---------- Auto-fill Test cases / UI bugs / Functionality bugs ----------
+// These used to be hand-typed, which is exactly how a stale "0" ends up
+// sitting next to real bug counts (as seen when the Bugs log has moved on
+// but nobody re-typed the numbers). They now pull live from the Bugs and
+// Test Cases tables instead.
+async function autofillReportCounts() {
+  const projectId = rProjectSelect.value;
+  if (!projectId) return;
+  const c = await getProjectLiveCounts(projectId);
+  document.getElementById('r-testcases').value = c.testCasesTotal;
+  document.getElementById('r-uibugs').value = c.uiBugs;
+  document.getElementById('r-funcbugs').value = c.functionalityBugs;
+}
+rProjectSelect.addEventListener('change', autofillReportCounts);
+document.getElementById('r-refresh-counts').addEventListener('click', autofillReportCounts);
+
+async function autofillEditReportCounts() {
+  const projectId = reProjectSelect.value;
+  if (!projectId) return;
+  const c = await getProjectLiveCounts(projectId);
+  document.getElementById('re-testcases').value = c.testCasesTotal;
+  document.getElementById('re-uibugs').value = c.uiBugs;
+  document.getElementById('re-funcbugs').value = c.functionalityBugs;
+}
+document.getElementById('re-refresh-counts').addEventListener('click', autofillEditReportCounts);
+
 reportForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   clearFormError('report-error');
@@ -3107,6 +3137,49 @@ async function getProjectBugSummary(projectId) {
   return { total: rows.length, byStatus };
 }
 
+// Live, always-current counts for a project — total bugs, UI vs
+// Functionality split, open vs closed, and test case totals. Pulled fresh
+// from the Bugs and Test Cases tables every time it's called (never stored),
+// so it can never go stale or show a leftover "0" the way a manually typed
+// number can.
+async function getProjectLiveCounts(projectId) {
+  const [bugsRes, tcRes] = await Promise.all([
+    sb.from('bugs').select('status, issue_type').eq('project_id', projectId),
+    sb.from('test_cases').select('status').eq('project_id', projectId),
+  ]);
+  if (bugsRes.error) console.error(bugsRes.error);
+  if (tcRes.error) console.error(tcRes.error);
+  const bugs = bugsRes.data || [];
+  const testCases = tcRes.data || [];
+
+  const totalBugs = bugs.length;
+  const uiBugs = bugs.filter((b) => b.issue_type === 'UI/UX').length;
+  const functionalityBugs = totalBugs - uiBugs;
+  const closedBugs = bugs.filter((b) => b.status === 'Closed').length;
+  const openBugs = totalBugs - closedBugs;
+
+  const testCasesTotal = testCases.length;
+  const testCasesPass = testCases.filter((t) => t.status === 'Pass').length;
+  const testCasesFail = testCases.filter((t) => t.status === 'Fail').length;
+  const testCasesBlocked = testCases.filter((t) => t.status === 'Blocked').length;
+
+  return {
+    totalBugs, uiBugs, functionalityBugs, openBugs, closedBugs,
+    testCasesTotal, testCasesPass, testCasesFail, testCasesBlocked,
+  };
+}
+
+function formatLiveCountsLine(c) {
+  if (!c) return '';
+  const tcParts = [];
+  if (c.testCasesPass) tcParts.push(`${c.testCasesPass} pass`);
+  if (c.testCasesFail) tcParts.push(`${c.testCasesFail} fail`);
+  if (c.testCasesBlocked) tcParts.push(`${c.testCasesBlocked} blocked`);
+  const tcLine = `Test cases: ${c.testCasesTotal}${tcParts.length ? ` (${tcParts.join(', ')})` : ''}`;
+  const bugLine = `Bugs total: ${c.totalBugs} (${c.openBugs} open, ${c.closedBugs} closed) — UI/UX: ${c.uiBugs}, Functionality: ${c.functionalityBugs}`;
+  return `${tcLine} · ${bugLine}`;
+}
+
 function formatBugSummaryLine(summary) {
   if (!summary || !summary.total) return 'No bugs logged yet';
   const order = ['Open', 'In Progress', 'Retest', 'Fixed', 'Reopened', 'Closed'];
@@ -3203,12 +3276,13 @@ const whatsappOpenLink = document.getElementById('whatsapp-open');
 const whatsappCopyBtn = document.getElementById('whatsapp-copy');
 const whatsappModal = document.getElementById('whatsapp-modal');
 
-function formatDailyUpdateBlock(payload, projectName, bugStats) {
+function formatDailyUpdateBlock(payload, projectName, bugStats, liveCounts) {
   let msg = `*${projectName}*\n`;
   if (payload.project_manager) msg += `• PM: ${payload.project_manager}\n`;
   if (payload.assigned_tasks) msg += `• Assigned Tasks:\n${payload.assigned_tasks}\n`;
   msg += `• Test Cases: ${payload.test_cases ?? 0}\n`;
   msg += `• ${formatBugStatsLine(bugStats)}\n`;
+  if (liveCounts) msg += `• Current totals (auto): ${formatLiveCountsLine(liveCounts)}\n`;
   if (payload.bugsheet) msg += `• Bugsheet: ${payload.bugsheet}\n`;
   msg += `• Sign Off: ${payload.sign_off ? 'Yes' : 'No'}\n`;
   if (payload.remarks) msg += `• Remarks: ${payload.remarks}\n`;
@@ -3218,10 +3292,13 @@ function formatDailyUpdateBlock(payload, projectName, bugStats) {
 
 async function buildWhatsAppMessage(payload, projectName) {
   const dateStr = new Date(payload.report_date + 'T00:00:00').toLocaleDateString('en-GB');
-  const bugStats = await getBugStatsForDay(payload.project_id, payload.report_date);
+  const [bugStats, liveCounts] = await Promise.all([
+    getBugStatsForDay(payload.project_id, payload.report_date),
+    getProjectLiveCounts(payload.project_id),
+  ]);
   let msg = `*QA Daily Update*\n`;
   msg += `Date: ${dateStr}\n\n`;
-  msg += formatDailyUpdateBlock(payload, projectName, bugStats);
+  msg += formatDailyUpdateBlock(payload, projectName, bugStats, liveCounts);
   return msg;
 }
 
@@ -3300,7 +3377,10 @@ async function renderReports(reports) {
   reportsList.innerHTML = '';
 
   for (const r of reports) {
-    const bugStats = await getBugStatsForDay(r.project_id, r.report_date);
+    const [bugStats, liveCounts] = await Promise.all([
+      getBugStatsForDay(r.project_id, r.report_date),
+      getProjectLiveCounts(r.project_id),
+    ]);
     const card = document.createElement('div');
     card.className = 'report-card has-checkbox';
     card.innerHTML = `
@@ -3321,8 +3401,10 @@ async function renderReports(reports) {
           <span>Test cases: <b>${r.test_cases}</b></span>
           <span>UI bugs: <b>${r.ui_bugs}</b></span>
           <span>Functionality bugs: <b>${r.functionality_bugs}</b></span>
+          <span class="metrics-hint">(logged at time of entry)</span>
         </div>
         <div class="auto-bug-line"><span class="auto-badge">AUTO</span> ${formatBugStatsLine(bugStats)} <span class="auto-hint">— tracked live from the Bugs log</span></div>
+        <div class="auto-bug-line"><span class="auto-badge">AUTO</span> ${escapeHtml(formatLiveCountsLine(liveCounts))} <span class="auto-hint">— current project totals, always up to date</span></div>
         ${r.remarks ? `<div class="report-remarks">${escapeHtml(r.remarks)}</div>` : ''}
         ${r.notes ? `<div>${escapeHtml(r.notes)}</div>` : ''}
       </div>
@@ -3374,12 +3456,13 @@ async function renderAutoOnlyReportCards(existingReports) {
       || bugStats.retest || bugStats.fixed || bugStats.inProgress
       || bugStats.retestPass || bugStats.retestFail || bugStats.retestBlocked;
     if (!hasActivity) continue;
-    autoCards.push({ project: p, date: dateFilter, bugStats });
+    const liveCounts = await getProjectLiveCounts(p.id);
+    autoCards.push({ project: p, date: dateFilter, bugStats, liveCounts });
   }
 
   reportsEmpty.style.display = (existingReports.length || autoCards.length) ? 'none' : 'block';
 
-  autoCards.forEach(({ project, date, bugStats }) => {
+  autoCards.forEach(({ project, date, bugStats, liveCounts }) => {
     const card = document.createElement('div');
     card.className = 'report-card auto-card';
     card.innerHTML = `
@@ -3391,6 +3474,7 @@ async function renderAutoOnlyReportCards(existingReports) {
       <button class="icon-btn report-share" data-auto-share>share</button>
       <div class="report-body">
         <div class="auto-bug-line"><span class="auto-badge">AUTO</span> ${formatBugStatsLine(bugStats)} <span class="auto-hint">— tracked live from the Bugs log</span></div>
+        <div class="auto-bug-line"><span class="auto-badge">AUTO</span> ${escapeHtml(formatLiveCountsLine(liveCounts))} <span class="auto-hint">— current project totals, always up to date</span></div>
       </div>
     `;
     card.querySelector('[data-auto-share]').addEventListener('click', async () => {
@@ -3741,21 +3825,40 @@ document.getElementById('download-bugs-btn').addEventListener('click', () => {
 });
 
 // Daily Log tab (History) → downloads only the currently filtered daily logs.
-document.getElementById('download-reports-btn').addEventListener('click', () => {
-  const rows = reportsCache.map((r) => ({
-    'Project': r.projects ? r.projects.name : '',
-    'Date': r.report_date,
-    'Project Manager': r.project_manager || '',
-    'Assigned Tasks': r.assigned_tasks || '',
-    'Test Cases': r.test_cases,
-    'UI Bugs': r.ui_bugs,
-    'Functionality Bugs': r.functionality_bugs,
-    'Bugsheet': r.bugsheet || '',
-    'Sign Off': r.sign_off ? 'Yes' : 'No',
-    'Remarks': r.remarks || '',
-    'Notes': r.notes || '',
-    'Logged By': r.logged_by_email || '',
-  }));
+// Includes both the numbers logged at the time of entry, and a live snapshot
+// of current project totals pulled fresh at export time.
+document.getElementById('download-reports-btn').addEventListener('click', async () => {
+  const rows = [];
+  for (const r of reportsCache) {
+    const [bugStats, liveCounts] = await Promise.all([
+      getBugStatsForDay(r.project_id, r.report_date),
+      getProjectLiveCounts(r.project_id),
+    ]);
+    rows.push({
+      'Project': r.projects ? r.projects.name : '',
+      'Date': r.report_date,
+      'Project Manager': r.project_manager || '',
+      'Assigned Tasks': r.assigned_tasks || '',
+      'Test Cases (logged)': r.test_cases,
+      'UI Bugs (logged)': r.ui_bugs,
+      'Functionality Bugs (logged)': r.functionality_bugs,
+      'Bugsheet': r.bugsheet || '',
+      'Sign Off': r.sign_off ? 'Yes' : 'No',
+      'Bugs Identified That Day (auto)': bugStats.total,
+      'Bugs Closed That Day (auto)': bugStats.closed,
+      'Bugs Reopened That Day (auto)': bugStats.reopened,
+      'Bugs Moved To Retest That Day (auto)': bugStats.retest,
+      'Total Bugs (auto, current)': liveCounts.totalBugs,
+      'Open Bugs (auto, current)': liveCounts.openBugs,
+      'Closed Bugs (auto, current)': liveCounts.closedBugs,
+      'UI/UX Bugs (auto, current)': liveCounts.uiBugs,
+      'Functionality Bugs (auto, current)': liveCounts.functionalityBugs,
+      'Test Cases Total (auto, current)': liveCounts.testCasesTotal,
+      'Remarks': r.remarks || '',
+      'Notes': r.notes || '',
+      'Logged By': r.logged_by_email || '',
+    });
+  }
   downloadSheet('Daily Logs', rows, 'Daily Logs');
 });
 

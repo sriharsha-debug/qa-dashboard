@@ -470,15 +470,19 @@
           <label>Bugsheet
             <input type="text" id="r-bugsheet" placeholder="Link or reference" maxlength="500" />
           </label>
-          <label>Test cases
+          <label>Test cases <span class="auto-badge">AUTO</span>
             <input type="number" id="r-testcases" min="0" max="100000" step="1" value="0" required />
           </label>
-          <label>UI bugs
+          <label>UI bugs <span class="auto-badge">AUTO</span>
             <input type="number" id="r-uibugs" min="0" max="100000" step="1" value="0" required />
           </label>
-          <label>Functionality bugs
+          <label>Functionality bugs <span class="auto-badge">AUTO</span>
             <input type="number" id="r-funcbugs" min="0" max="100000" step="1" value="0" required />
           </label>
+          <div class="span-2">
+            <button type="button" id="r-refresh-counts" class="btn btn-ghost btn-small">↻ Refresh counts from live data</button>
+            <span class="auto-hint">Filled automatically from the Bugs and Test Cases logs when you pick a project — click to re-sync, or adjust by hand before saving.</span>
+          </div>
           <label class="signoff-field">
             <span>Sign off</span>
             <span class="toggle">
@@ -788,15 +792,19 @@
         <label>Bugsheet
           <input type="text" id="re-bugsheet" placeholder="Link or reference" maxlength="500" />
         </label>
-        <label>Test cases
+        <label>Test cases <span class="auto-badge">AUTO</span>
           <input type="number" id="re-testcases" min="0" max="100000" step="1" required />
         </label>
-        <label>UI bugs
+        <label>UI bugs <span class="auto-badge">AUTO</span>
           <input type="number" id="re-uibugs" min="0" max="100000" step="1" required />
         </label>
-        <label>Functionality bugs
+        <label>Functionality bugs <span class="auto-badge">AUTO</span>
           <input type="number" id="re-funcbugs" min="0" max="100000" step="1" required />
         </label>
+        <div class="span-2">
+          <button type="button" id="re-refresh-counts" class="btn btn-ghost btn-small">↻ Refresh counts from live data</button>
+          <span class="auto-hint">Pulls current totals from the Bugs and Test Cases logs for this project.</span>
+        </div>
         <label class="signoff-field">
           <span>Sign off</span>
           <span class="toggle">
