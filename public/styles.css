@@ -1121,6 +1121,33 @@ select option:focus {
   padding: 2px 8px;
 }
 .auto-hint { color: var(--ink-soft); font-size: 11px; }
+.auto-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 6px 10px;
+  margin-top: 6px;
+}
+.auto-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--panel);
+}
+.auto-stat-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  color: var(--ink-soft);
+}
+.auto-stat-value {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
 .report-card.auto-card {
   border-style: dashed;
   background: var(--panel);
