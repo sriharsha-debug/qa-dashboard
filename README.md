@@ -76,7 +76,75 @@ the changes instead of `git init` again.)
 4. Click **Deploy**. No environment variables needed — the anon key lives
    in `config.js`, which is safe to ship.
 
-## 5. Open your dashboard
+## 5. Add Audit Logs
+
+Run `migration-v17.sql` in Supabase SQL Editor after `migration-v16.sql`.
+
+This adds an **Audit Logs** tab for the team leader. It records create, update, and delete activity for projects, daily reports, test cases, APK shares, and profiles, including user email, action, module, record, timestamp, and changed fields. Existing names and existing dashboard sections are unchanged.
+
+## 6. Add Bugs (per project, with Page)
+
+Run `migration-v18.sql` in Supabase SQL Editor after `migration-v17.sql`.
+
+This adds a **Bugs** section inside Project Details, under Test execution. Each
+bug is logged against a project with: title, **page** (the screen/module it
+was found on), severity (Low/Medium/High/Critical), status (Open/In
+Progress/Fixed/Retest/Closed/Reopened), description, reported by, and notes.
+Bug activity is included in the Audit Logs the same as everything else.
+(Brand new Supabase projects don't need this step — `supabase-schema.sql`
+already includes it.)
+
+> **Seeing "Could not find the table 'public.bugs' in the schema cache"?**
+> That means this migration (or the full `supabase-schema.sql`, for a brand
+> new project) hasn't been run yet on your Supabase project. Open
+> **Supabase → SQL Editor → New query**, paste the file, click **Run**, then
+> reload the dashboard.
+
+## 6b. Full bug-sheet fields (Module, Steps, Dev/Retest status, comments)
+
+Run `migration-v19.sql` in Supabase SQL Editor after `migration-v18.sql`.
+(Brand new Supabase projects don't need this step — `supabase-schema.sql`
+already includes it.)
+
+This rounds the Bugs section out into a proper bug-tracking sheet. Each bug
+now also has: **Module** and **Sub Module** (business-area grouping, on top
+of the existing Page field), **Steps to Reproduce**, **Expected Result**,
+**Actual Result**, **Developer Status** (Not Started / In Progress / Fixed /
+Cannot Reproduce / Need Info / Won't Fix), **Developer Comments**, **Retest
+Status** (Not Retested / Pass / Fail / Blocked), and **Manager Comments**.
+Developer Status and Retest Status can be changed inline from the bug list,
+the same way Status already could. All the new columns are optional, so
+existing bugs are unaffected.
+
+### Importing bugs from a multi-tab tester bug sheet
+
+If your testers keep bugs in one Google Sheet with a separate tab per
+module/role (e.g. `Super Admin`, `University Admin`, `Student`, `Faculty`,
+`Professor_UI` — like the screenshot tab bar at the bottom of Sheets), the
+**Import bugs from Google Sheet** panel (Bugs tab → per project) can pull in
+every tab in one go:
+
+1. Share the sheet as **Anyone with the link → Viewer**.
+2. Paste the sheet's link into **Google Sheet link**.
+3. In **Tab names to import**, type the exact tab names, comma-separated —
+   e.g. `Super Admin, University Admin, Student, Faculty, Professor_UI`.
+   (Leave this blank to import just the one tab from the link, the old way.)
+4. Click **Fetch from link**. Each tab is fetched and parsed on its own —
+   they can even use different column layouts — then merged into one review
+   list, tagged with the tab they came from. A summary line shows how many
+   bugs were found per tab.
+5. Uncheck anything you don't want, then **Add selected to Bugs**.
+
+Recognized columns, in any order (a title-like column and a page/module-like
+column are required, the rest are optional):
+- **Title** or **Sub Module**
+- **Page** or **Module** (falls back to the tab name if the column is blank/missing)
+- **Severity**, **Status**, **Reported By**
+- **Steps to Reproduce**, **Expected Result**, **Actual Result**, **Description**
+- **Developer Status**, **Developer Comments**, **Retest Status**, **Manager Comments**
+- **Bug Id**, **Date**, **Notes** (Bug Id/Date are kept in Notes, for traceability back to the sheet row)
+
+## 7. Open your dashboard
 
 Vercel gives you a URL like `https://your-project.vercel.app`. Open it,
 sign in with the email + password you created in Supabase Auth, and

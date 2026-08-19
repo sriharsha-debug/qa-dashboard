@@ -1,8 +1,27 @@
 const gate = document.getElementById('gate');
 const app = document.getElementById('app');
 const whoEmail = document.getElementById('who-email');
+const whoName = document.getElementById('who-name');
 const loginForm = document.getElementById('login-form');
 const loginError = document.getElementById('login-error');
+
+// Subtle, professional press feedback on every button in the app: a soft
+// ripple expands from the click point and fades out. Delegated to one
+// document-level listener so it works for buttons rendered dynamically on
+// any tab, not just the ones present at page load.
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.btn');
+  if (!btn) return;
+  const rect = btn.getBoundingClientRect();
+  const ripple = document.createElement('span');
+  const size = Math.max(rect.width, rect.height) * 1.4;
+  ripple.className = 'btn-ripple';
+  ripple.style.width = ripple.style.height = `${size}px`;
+  ripple.style.left = `${e.clientX - rect.left - size / 2}px`;
+  ripple.style.top = `${e.clientY - rect.top - size / 2}px`;
+  btn.appendChild(ripple);
+  ripple.addEventListener('animationend', () => ripple.remove());
+});
 
 let projectsCache = [];
 let statusesCache = [];
@@ -10,6 +29,12 @@ let teamCache = [];
 let currentUser = null;
 let currentProfile = null;
 let notifPollTimer = null;
+let tcCache = [];
+let bugCache = [];
+let reportsCache = [];
+let auditCache = [];
+let auditPageNum = 1;
+const AUDIT_PAGE_SIZE = 20;
 
 // ---------- Field color feedback (glass-water states) ----------
 
@@ -26,6 +51,107 @@ function flashRowRemoving(rowEl, delay = 220) {
     rowEl.classList.add('row-removing');
     setTimeout(resolve, delay);
   });
+}
+
+// ---------- Bulk select / select all / delete selected ----------
+// Generic helper used by Projects, Test execution, Bugs, APK shares and
+// Daily report History. Each list gets its own instance: a "select all"
+// checkbox, per-row checkboxes (rendered by the list's own render function),
+// and a "Delete selected" button that batch-deletes the checked rows.
+//
+// For paginated lists (Test execution, Bugs) only ~8 rows exist in the DOM
+// at a time, so "select all" / the selection count must be based on the
+// FULL underlying list (getAllIds), not just the checkboxes currently on
+// screen — otherwise "select all" + delete would only ever touch one page.
+function createBulkSelector({ checkboxSelector, selectAllId, deleteBtnId, table, itemLabel, getAllIds, onDeleted }) {
+  const selected = new Set();
+  const selectAllCb = document.getElementById(selectAllId);
+  const deleteBtn = document.getElementById(deleteBtnId);
+
+  function visibleCheckboxes() {
+    return Array.from(document.querySelectorAll(checkboxSelector));
+  }
+
+  // All ids the list currently represents (every page), falling back to
+  // whatever's on screen for non-paginated lists.
+  function allIds() {
+    return getAllIds ? getAllIds() : visibleCheckboxes().map((cb) => cb.dataset.id);
+  }
+
+  function updateUI() {
+    const n = selected.size;
+    if (deleteBtn) {
+      deleteBtn.classList.toggle('hidden', n === 0);
+      deleteBtn.textContent = n ? `Delete selected (${n})` : 'Delete selected';
+    }
+    if (selectAllCb) {
+      const ids = allIds();
+      const checkedCount = ids.filter((id) => selected.has(id)).length;
+      selectAllCb.checked = ids.length > 0 && checkedCount === ids.length;
+      selectAllCb.indeterminate = checkedCount > 0 && checkedCount < ids.length;
+    }
+  }
+
+  // Call after every render (including a page change): syncs the checkboxes
+  // currently in the DOM to the selection state, and drops any selected ids
+  // that no longer exist anywhere in the underlying list (e.g. deleted
+  // elsewhere / filtered out). Selections on OTHER pages are preserved.
+  function onRendered() {
+    const present = new Set(allIds());
+    Array.from(selected).forEach((id) => {
+      if (!present.has(id)) selected.delete(id);
+    });
+    visibleCheckboxes().forEach((cb) => {
+      cb.checked = selected.has(cb.dataset.id);
+      cb.addEventListener('change', () => {
+        if (cb.checked) selected.add(cb.dataset.id);
+        else selected.delete(cb.dataset.id);
+        updateUI();
+      });
+    });
+    updateUI();
+  }
+
+  if (selectAllCb) {
+    selectAllCb.addEventListener('change', () => {
+      const checked = selectAllCb.checked;
+      const ids = allIds();
+      if (checked) ids.forEach((id) => selected.add(id));
+      else ids.forEach((id) => selected.delete(id));
+      // Reflect the change on whichever checkboxes happen to be visible.
+      visibleCheckboxes().forEach((cb) => { cb.checked = selected.has(cb.dataset.id); });
+      updateUI();
+    });
+  }
+
+  if (deleteBtn) {
+    deleteBtn.addEventListener('click', async () => {
+      const ids = Array.from(selected);
+      if (!ids.length) return;
+      const label = itemLabel || 'item';
+      if (!confirm(`Delete ${ids.length} selected ${label}${ids.length > 1 ? 's' : ''}? This cannot be undone.`)) return;
+      deleteBtn.disabled = true;
+      // Batch defensively in case a very large selection is made — Supabase's
+      // .in() filter works fine at normal sizes, but this keeps requests small.
+      const batchSize = 200;
+      let error = null;
+      for (let i = 0; i < ids.length; i += batchSize) {
+        const batch = ids.slice(i, i + batchSize);
+        const res = await sb.from(table).delete().in('id', batch);
+        if (res.error) { error = res.error; break; }
+      }
+      deleteBtn.disabled = false;
+      if (error) {
+        toastError(error.message);
+        return;
+      }
+      selected.clear();
+      toast(`${ids.length} ${label}${ids.length > 1 ? 's' : ''} deleted.`, { emoji: '🗑️' });
+      if (onDeleted) await onDeleted(ids);
+    });
+  }
+
+  return { onRendered, selected };
 }
 
 // ---------- Supabase client + Auth ----------
@@ -123,16 +249,46 @@ document.getElementById('logout').addEventListener('click', () => {
 
 async function onLogin(user) {
   currentUser = user;
-  whoEmail.textContent = user.email;
   gate.classList.add('hidden');
   app.classList.remove('hidden');
   await ensureProfile(user);
+  // Show the signed-in user's profile name beside Project Tracker.
+  // Keep the signed-in email in its original top-right location.
+  const headerName = (currentProfile && currentProfile.display_name)
+    ? currentProfile.display_name
+    : (user.email ? user.email.split('@')[0] : 'User');
+  whoName.textContent = headerName;
+  whoEmail.textContent = user.email || '';
   loadStatuses().then(loadProjects);
   loadReports();
   loadTeam();
   refreshNotifications();
+  loadNotificationsPage();
+  if (isLeader()) {
+    document.getElementById('audit-tab').classList.remove('hidden');
+    document.getElementById('team-tab').classList.remove('hidden');
+    loadAuditLogs();
+  } else {
+    document.getElementById('audit-tab').classList.add('hidden');
+    document.getElementById('team-tab').classList.add('hidden');
+  }
+  initSettingsTab();
+  runFallbackCleanup();
   if (notifPollTimer) clearInterval(notifPollTimer);
   notifPollTimer = setInterval(refreshNotifications, 25000);
+}
+
+// Best-effort fallback in case pg_cron isn't available on the Supabase plan -
+// the leader's login silently prunes notifications older than 30 days.
+// This is a safety net; migration-v16.sql sets up the real daily pg_cron job.
+async function runFallbackCleanup() {
+  if (!isLeader()) return;
+  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  try {
+    await sb.from('notifications').delete().lt('created_at', cutoff);
+  } catch (err) {
+    console.error(err);
+  }
 }
 
 function onLogout() {
@@ -212,12 +368,123 @@ async function refreshNotifications() {
   const since = currentProfile ? currentProfile.last_seen_notifications_at : null;
   const unread = data.filter((n) => n.actor_id !== (currentUser && currentUser.id) && (!since || new Date(n.created_at) > new Date(since)));
   const badge = document.getElementById('notif-badge');
-  if (unread.length) {
-    badge.textContent = unread.length > 9 ? '9+' : String(unread.length);
-    badge.classList.remove('hidden');
-  } else {
-    badge.classList.add('hidden');
+  const sidebarBadge = document.getElementById('sidebar-notif-badge');
+  [badge, sidebarBadge].forEach((b) => {
+    if (!b) return;
+    if (unread.length) {
+      b.textContent = unread.length > 9 ? '9+' : String(unread.length);
+      b.classList.remove('hidden');
+    } else {
+      b.classList.add('hidden');
+    }
+  });
+}
+
+let notifPageAll = [];
+let notifPageNum = 1;
+const NOTIF_PAGE_SIZE = 15;
+
+async function loadNotificationsPage() {
+  const { data, error } = await sb
+    .from('notifications')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(200);
+  if (error) {
+    console.error(error);
+    return;
   }
+  notifPageAll = data;
+  notifPageNum = 1;
+  renderNotifPage();
+}
+
+function renderNotifPage() {
+  const list = document.getElementById('notif-page-list');
+  const empty = document.getElementById('notif-page-empty');
+  const count = document.getElementById('notif-page-count');
+  const totalPages = Math.max(1, Math.ceil(notifPageAll.length / NOTIF_PAGE_SIZE));
+  if (notifPageNum > totalPages) notifPageNum = totalPages;
+
+  count.textContent = notifPageAll.length ? `${notifPageAll.length} total` : '';
+  list.innerHTML = '';
+  empty.style.display = notifPageAll.length ? 'none' : 'block';
+
+  const start = (notifPageNum - 1) * NOTIF_PAGE_SIZE;
+  const pageItems = notifPageAll.slice(start, start + NOTIF_PAGE_SIZE);
+  pageItems.forEach((n) => {
+    const row = document.createElement('div');
+    row.className = 'notif-item';
+    row.innerHTML = `
+      <div>${escapeHtml(n.message)}</div>
+      <span class="notif-item-time">${escapeHtml(n.actor_email || '')} · ${timeAgo(n.created_at)}</span>
+    `;
+    list.appendChild(row);
+  });
+
+  renderPager('notif-page-pager', notifPageNum, totalPages, (dir) => {
+    notifPageNum += dir;
+    renderNotifPage();
+  });
+}
+
+document.getElementById('notif-clear-btn').addEventListener('click', async () => {
+  if (!currentUser) return;
+  if (!confirm('Clear all notifications you triggered? This cannot be undone.')) return;
+  const { error, count } = await sb
+    .from('notifications')
+    .delete({ count: 'exact' })
+    .eq('actor_id', currentUser.id);
+  if (error) {
+    toastError(error.message);
+    return;
+  }
+  if (!count) {
+    toastError("Couldn't clear notifications right now — please try again, or contact your admin.");
+    return;
+  }
+  toast(`Cleared ${count} notification${count === 1 ? '' : 's'}.`, { emoji: '🧹' });
+  loadNotificationsPage();
+  refreshNotifications();
+});
+
+const notifClearAllBtn = document.getElementById('notif-clear-all-btn');
+notifClearAllBtn.addEventListener('click', async () => {
+  if (!confirm('Clear EVERYONE\'s notifications, not just yours? This cannot be undone.')) return;
+  const { error, count } = await sb
+    .from('notifications')
+    .delete({ count: 'exact' })
+    .not('id', 'is', null);
+  if (error) {
+    toastError(error.message);
+    return;
+  }
+  if (!count) {
+    toastError("Couldn't clear notifications right now — please try again, or contact your admin.");
+    return;
+  }
+  toast(`Cleared ${count} notification${count === 1 ? '' : 's'} for everyone.`, { emoji: '🧹' });
+  loadNotificationsPage();
+  refreshNotifications();
+});
+
+// ---------- Simple pager helper ----------
+
+function renderPager(containerId, page, totalPages, onChange) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  if (totalPages <= 1) {
+    el.innerHTML = '';
+    return;
+  }
+  el.innerHTML = `
+    <button type="button" class="btn btn-ghost btn-small" data-dir="-1" ${page <= 1 ? 'disabled' : ''}>‹ Prev</button>
+    <span class="pager-info">Page ${page} of ${totalPages}</span>
+    <button type="button" class="btn btn-ghost btn-small" data-dir="1" ${page >= totalPages ? 'disabled' : ''}>Next ›</button>
+  `;
+  el.querySelectorAll('button[data-dir]').forEach((btn) => {
+    btn.addEventListener('click', () => onChange(Number(btn.dataset.dir)));
+  });
 }
 
 function timeAgo(dateStr) {
@@ -304,8 +571,21 @@ document.getElementById('admin-filter-projects').addEventListener('change', () =
 document.getElementById('admin-filter-reports').addEventListener('change', () => loadReports());
 
 function renderTeam(members) {
-  const list = document.getElementById('team-list');
-  const count = document.getElementById('team-count');
+  const settingsPanel = document.getElementById('settings-permissions-panel');
+  if (isLeader()) {
+    settingsPanel.classList.remove('hidden');
+    renderTeamInto('team-list', 'team-count', members);
+    renderTeamInto('settings-team-list', 'settings-team-count', members);
+  } else {
+    settingsPanel.classList.add('hidden');
+  }
+  renderCleanupTargets(members);
+}
+
+function renderTeamInto(listId, countId, members) {
+  const list = document.getElementById(listId);
+  const count = document.getElementById(countId);
+  if (!list) return;
   count.textContent = members.length ? `${members.length} member${members.length === 1 ? '' : 's'}` : '';
   list.innerHTML = '';
   members.forEach((m) => {
@@ -331,15 +611,344 @@ function renderTeam(members) {
     sel.addEventListener('change', async () => {
       const { error } = await sb.from('profiles').update({ role: sel.value }).eq('id', sel.dataset.id);
       if (error) {
-        alert(error.message);
+        toastError(error.message);
         return;
       }
+      toast('Role updated.', { emoji: '👤' });
       loadTeam();
     });
   });
 }
 
+// ---------- Settings tab ----------
+
+function initSettingsTab() {
+  document.getElementById('settings-display-name').value = currentProfile ? currentProfile.display_name || '' : '';
+  document.getElementById('settings-email').value = currentUser ? currentUser.email : '';
+  updateCleanupNotifCount();
+  notifClearAllBtn.classList.toggle('hidden', !isLeader());
+}
+
+document.getElementById('profile-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearFormError('profile-error');
+  document.getElementById('profile-success').classList.add('hidden');
+  const name = document.getElementById('settings-display-name').value.trim();
+  if (!name) {
+    showFormError('profile-error', 'Display name cannot be empty.');
+    return;
+  }
+  const { error } = await sb.from('profiles').update({ display_name: name }).eq('id', currentUser.id);
+  if (error) {
+    showFormError('profile-error', error.message);
+    return;
+  }
+  if (currentProfile) currentProfile.display_name = name;
+  document.getElementById('profile-success').textContent = 'Profile saved.';
+  document.getElementById('profile-success').classList.remove('hidden');
+  toast('Profile saved.', { emoji: '👤' });
+  loadTeam();
+});
+
+document.getElementById('password-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearFormError('password-error');
+  document.getElementById('password-success').classList.add('hidden');
+  const pw = document.getElementById('settings-new-password').value;
+  const confirm = document.getElementById('settings-confirm-password').value;
+  if (pw.length < 6) {
+    showFormError('password-error', 'Password must be at least 6 characters.');
+    return;
+  }
+  if (pw !== confirm) {
+    showFormError('password-error', 'Passwords do not match.');
+    return;
+  }
+  const { error } = await sb.auth.updateUser({ password: pw });
+  if (error) {
+    showFormError('password-error', error.message);
+    return;
+  }
+  document.getElementById('password-form').reset();
+  document.getElementById('password-success').textContent = 'Password updated.';
+  document.getElementById('password-success').classList.remove('hidden');
+});
+
+function renderCleanupTargets(members) {
+  const row = document.getElementById('cleanup-target-row');
+  const select = document.getElementById('cleanup-target-select');
+  if (!isLeader()) {
+    row.classList.add('hidden');
+    select.innerHTML = '<option value="">Myself</option>';
+    select.value = '';
+    updateCleanupLabels();
+    return;
+  }
+  row.classList.remove('hidden');
+  const prev = select.value;
+  const opts = ['<option value="">Myself</option>']
+    .concat(
+      members
+        .filter((m) => m.id !== (currentUser && currentUser.id))
+        .map((m) => `<option value="${m.id}">${escapeHtml(m.display_name || m.email)}</option>`)
+    );
+  select.innerHTML = opts.join('');
+  if ([...select.options].some((o) => o.value === prev)) select.value = prev;
+  updateCleanupLabels();
+}
+
+function cleanupTargetId() {
+  const select = document.getElementById('cleanup-target-select');
+  return (isLeader() && select.value) ? select.value : (currentUser ? currentUser.id : null);
+}
+
+function cleanupTargetLabel() {
+  const select = document.getElementById('cleanup-target-select');
+  if (isLeader() && select.value) {
+    const opt = select.options[select.selectedIndex];
+    return opt ? opt.textContent : 'this member';
+  }
+  return 'my';
+}
+
+function updateCleanupLabels() {
+  const isMe = cleanupTargetLabel() === 'my';
+  const who = isMe ? 'my' : `${cleanupTargetLabel()}'s`;
+  document.getElementById('cleanup-notif-label').textContent = isMe ? 'My notifications' : `${who} notifications`;
+  document.getElementById('cleanup-daily-label').textContent = isMe ? 'My daily logs older than' : `${who} daily logs older than`;
+}
+
+document.getElementById('cleanup-target-select').addEventListener('change', () => {
+  updateCleanupLabels();
+  updateCleanupNotifCount();
+});
+
+async function updateCleanupNotifCount() {
+  const targetId = cleanupTargetId();
+  if (!targetId) return;
+  const { count } = await sb
+    .from('notifications')
+    .select('*', { count: 'exact', head: true })
+    .eq('actor_id', targetId);
+  document.getElementById('cleanup-notif-count').textContent = `${count || 0} logged`;
+}
+
+document.getElementById('cleanup-notif-btn').addEventListener('click', async () => {
+  clearFormError('cleanup-error');
+  document.getElementById('cleanup-success').classList.add('hidden');
+  const targetId = cleanupTargetId();
+  if (!targetId) return;
+  const isMe = cleanupTargetLabel() === 'my';
+  if (!confirm(`Clear all notifications ${isMe ? 'you' : cleanupTargetLabel()} triggered? This cannot be undone.`)) return;
+  const { error, count } = await sb
+    .from('notifications')
+    .delete({ count: 'exact' })
+    .eq('actor_id', targetId);
+  if (error) {
+    showFormError('cleanup-error', error.message);
+    return;
+  }
+  if (!count) {
+    showFormError('cleanup-error', "Couldn't clear notifications right now — please try again, or contact your admin.");
+    return;
+  }
+  updateCleanupNotifCount();
+  loadNotificationsPage();
+  refreshNotifications();
+  document.getElementById('cleanup-success').textContent = `Cleared ${count} notification${count === 1 ? '' : 's'}.`;
+  document.getElementById('cleanup-success').classList.remove('hidden');
+});
+
+document.getElementById('cleanup-daily-btn').addEventListener('click', async () => {
+  clearFormError('cleanup-error');
+  document.getElementById('cleanup-success').classList.add('hidden');
+  const targetId = cleanupTargetId();
+  if (!targetId) return;
+  const isMe = cleanupTargetLabel() === 'my';
+  const cutoff = document.getElementById('cleanup-daily-date').value;
+  if (!cutoff) {
+    showFormError('cleanup-error', 'Pick a date first — entries older than that will be removed.');
+    return;
+  }
+  if (!confirm(`Remove all ${isMe ? 'your' : `${cleanupTargetLabel()}'s`} daily log entries before ${cutoff}? This cannot be undone.`)) return;
+  const { error, count } = await sb
+    .from('daily_reports')
+    .delete({ count: 'exact' })
+    .eq('owner_id', targetId)
+    .lt('report_date', cutoff);
+  if (error) {
+    showFormError('cleanup-error', error.message);
+    return;
+  }
+  loadReports();
+  document.getElementById('cleanup-success').textContent = `Cleared ${count ?? ''} old daily log entr${count === 1 ? 'y' : 'ies'}.`;
+  document.getElementById('cleanup-success').classList.remove('hidden');
+});
+
+
+// ---------- Audit logs ----------
+
+function auditActionText(action) {
+  return action === 'INSERT' ? 'Created' : action === 'UPDATE' ? 'Updated' : 'Deleted';
+}
+
+function auditChangedFields(row) {
+  if (!row.old_data || !row.new_data) return '';
+  const keys = new Set([...Object.keys(row.old_data || {}), ...Object.keys(row.new_data || {})]);
+  const changed = [];
+  keys.forEach((key) => {
+    if (['updated_at', 'created_at'].includes(key)) return;
+    const before = JSON.stringify(row.old_data?.[key] ?? null);
+    const after = JSON.stringify(row.new_data?.[key] ?? null);
+    if (before !== after) changed.push(`${key}: ${before} → ${after}`);
+  });
+  return changed.slice(0, 8).join('\n');
+}
+
+async function loadAuditLogs() {
+  document.getElementById('audit-clear-btn')?.classList.toggle('hidden', !isLeader());
+  if (!isLeader()) return;
+  let query = sb.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(500);
+  const action = document.getElementById('audit-filter-action')?.value || '';
+  const table = document.getElementById('audit-filter-table')?.value || '';
+  const user = document.getElementById('audit-filter-user')?.value.trim() || '';
+  if (action) query = query.eq('action', action);
+  if (table) query = query.eq('table_name', table);
+  if (user) query = query.ilike('actor_email', `%${user}%`);
+
+  const { data, error } = await query;
+  if (error) {
+    console.error(error);
+    return;
+  }
+  auditCache = data || [];
+  auditPageNum = 1;
+
+  const tableSelect = document.getElementById('audit-filter-table');
+  if (tableSelect) {
+    const selected = tableSelect.value;
+    const tables = [...new Set(auditCache.map((r) => r.table_name))].sort();
+    tableSelect.innerHTML = '<option value="">All modules</option>' +
+      tables.map((t) => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
+    tableSelect.value = selected;
+  }
+  renderAuditLogs();
+}
+
+document.getElementById('audit-clear-btn')?.addEventListener('click', async () => {
+  if (!isLeader()) return;
+  if (!confirm('Clear ALL audit log history? This is permanent and cannot be undone.')) return;
+  const { error, count } = await sb
+    .from('audit_logs')
+    .delete({ count: 'exact' })
+    .not('id', 'is', null);
+  if (error) {
+    toastError(error.message);
+    return;
+  }
+  if (!count) {
+    toastError("Couldn't clear audit logs — make sure migration-v20.sql has been run.");
+    return;
+  }
+  toast(`Cleared ${count} audit log entr${count === 1 ? 'y' : 'ies'}.`, { emoji: '🧹' });
+  loadAuditLogs();
+});
+
+function renderAuditLogs() {
+  const list = document.getElementById('audit-list');
+  const empty = document.getElementById('audit-empty');
+  const count = document.getElementById('audit-count');
+  if (!list || !count) return;
+  const totalPages = Math.max(1, Math.ceil(auditCache.length / AUDIT_PAGE_SIZE));
+  auditPageNum = Math.min(auditPageNum, totalPages);
+  count.textContent = auditCache.length ? `${auditCache.length} total` : '';
+  list.innerHTML = '';
+  empty.style.display = auditCache.length ? 'none' : 'block';
+
+  const start = (auditPageNum - 1) * AUDIT_PAGE_SIZE;
+  auditCache.slice(start, start + AUDIT_PAGE_SIZE).forEach((row) => {
+    const item = document.createElement('div');
+    item.className = 'audit-item';
+    const actionClass = row.action.toLowerCase();
+    const changed = auditChangedFields(row);
+    item.innerHTML = `
+      <div class="audit-head">
+        <span class="audit-action ${actionClass}">${auditActionText(row.action)}</span>
+        <span><b>${escapeHtml(row.table_name)}</b></span>
+        ${row.record_label ? `<span>— ${escapeHtml(row.record_label)}</span>` : ''}
+      </div>
+      <div class="audit-meta">${escapeHtml(row.actor_email || 'System')} · ${new Date(row.created_at).toLocaleString()}</div>
+      ${changed ? `<div class="audit-details"><span class="audit-label">Changed:</span>\n${escapeHtml(changed)}</div>` : ''}
+    `;
+    list.appendChild(item);
+  });
+
+  renderPager('audit-pager', auditPageNum, totalPages, (dir) => {
+    auditPageNum += dir;
+    renderAuditLogs();
+  });
+}
+
+['audit-filter-action', 'audit-filter-table'].forEach((id) => {
+  document.getElementById(id)?.addEventListener('change', loadAuditLogs);
+});
+document.getElementById('audit-filter-user')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') loadAuditLogs();
+});
+document.getElementById('audit-filter-clear')?.addEventListener('click', () => {
+  document.getElementById('audit-filter-action').value = '';
+  document.getElementById('audit-filter-table').value = '';
+  document.getElementById('audit-filter-user').value = '';
+  loadAuditLogs();
+});
+
+document.getElementById('download-audit-btn')?.addEventListener('click', () => {
+  const rows = auditCache.map((r) => ({
+    'Date & Time': new Date(r.created_at).toLocaleString(),
+    'User': r.actor_email || '',
+    'Action': auditActionText(r.action),
+    'Module': r.table_name,
+    'Record': r.record_label || '',
+    'Record ID': r.record_id || '',
+    'Changed Fields': auditChangedFields(r),
+  }));
+  downloadSheet('Audit Logs', rows, 'Audit Logs');
+});
+
 // ---------- Tabs ----------
+
+// Every tab pulls its data fresh from the database the moment it's opened.
+// Nothing here is cached-only: this is what guarantees that a project
+// rename, a status change, or a bug update shows up everywhere the moment
+// you look at it, without needing to reload the page.
+function refreshTab(tabName) {
+  switch (tabName) {
+    case 'projects':
+      loadProjects();
+      break;
+    case 'details':
+      loadProjects(); // also drives renderDetailsSelect() -> showProjectDetails()
+      break;
+    case 'bugs':
+      loadProjects(); // also drives renderBugsSelect() -> showBugsForProject()
+      break;
+    case 'daily':
+      loadProjects();
+      loadReports();
+      break;
+    case 'team':
+      loadTeam();
+      break;
+    case 'notifications':
+      loadNotificationsPage();
+      break;
+    case 'audit':
+      loadAuditLogs();
+      break;
+    default:
+      break;
+  }
+}
 
 document.querySelectorAll('.tab').forEach((tab) => {
   tab.addEventListener('click', () => {
@@ -347,6 +956,7 @@ document.querySelectorAll('.tab').forEach((tab) => {
     document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
     tab.classList.add('active');
     document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+    refreshTab(tab.dataset.tab);
   });
 });
 
@@ -373,7 +983,21 @@ async function loadProjects() {
   renderProjects(data);
   renderProjectSelects(data);
   renderDetailsSelect();
+  renderBugsSelect();
 }
+
+const projectsBulk = createBulkSelector({
+  checkboxSelector: '#projects-tbody .row-checkbox',
+  selectAllId: 'projects-select-all',
+  deleteBtnId: 'projects-bulk-delete',
+  table: 'projects',
+  itemLabel: 'project',
+  onDeleted: async () => {
+    notify(`${actorLabel()} bulk-deleted projects`, 'project', 'delete');
+    await loadProjects();
+    await loadReports();
+  },
+});
 
 function statusColor(name) {
   const s = statusesCache.find((x) => x.name === name);
@@ -407,6 +1031,7 @@ function renderProjects(projects) {
   filtered.forEach((p, i) => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
+      <td class="col-checkbox"><input type="checkbox" class="row-checkbox" data-id="${p.id}" /></td>
       <td class="col-idx">${String(i + 1).padStart(2, '0')}</td>
       <td><button class="project-link" data-edit="${p.id}">${escapeHtml(p.name)}</button></td>
       <td>
@@ -442,11 +1067,13 @@ function renderProjects(projects) {
         })
         .eq('id', sel.dataset.id);
       if (error) {
-        alert(error.message);
+        toastError(error.message);
         return;
       }
       notify(`${actorLabel()} changed "${p ? p.name : 'a project'}" status to ${sel.value}`, 'project', 'status_change');
+      toast(`Status set to ${sel.value}.`, { emoji: '🔄' });
       loadProjects();
+      loadReports();
     });
   });
 
@@ -457,14 +1084,17 @@ function renderProjects(projects) {
       await flashRowRemoving(btn.closest('tr'));
       const { error } = await sb.from('projects').delete().eq('id', btn.dataset.delete);
       if (error) {
-        alert(error.message);
+        toastError(error.message);
         return;
       }
       notify(`${actorLabel()} removed project "${p ? p.name : ''}"`, 'project', 'delete');
+      toast(`"${p ? p.name : 'Project'}" removed.`, { emoji: '🗑️' });
       loadProjects();
       loadReports();
     });
   });
+
+  projectsBulk.onRendered();
 }
 
 function renderProjectSelects(projects) {
@@ -499,6 +1129,7 @@ if (statusForm) statusForm.addEventListener('submit', async (e) => {
     return;
   }
   document.getElementById('new-status-name').value = '';
+  toast(`Status "${name}" added.`, { emoji: '🏷️' });
   await loadStatuses();
   loadProjects();
 });
@@ -546,9 +1177,10 @@ function renderStatusManager(statuses) {
       }
       const { error } = await sb.from('statuses').update({ name: newName }).eq('id', input.dataset.id);
       if (error) {
-        alert(error.message);
+        toastError(error.message);
         return;
       }
+      toast('Status renamed.', { emoji: '🏷️' });
       await loadStatuses();
       loadProjects();
     });
@@ -558,9 +1190,10 @@ function renderStatusManager(statuses) {
     sel.addEventListener('change', async () => {
       const { error } = await sb.from('statuses').update({ color: sel.value }).eq('id', sel.dataset.id);
       if (error) {
-        alert(error.message);
+        toastError(error.message);
         return;
       }
+      toast('Status color updated.', { emoji: '🎨' });
       await loadStatuses();
       loadProjects();
     });
@@ -570,15 +1203,16 @@ function renderStatusManager(statuses) {
     btn.addEventListener('click', async () => {
       const { count } = await sb.from('statuses').select('*', { count: 'exact', head: true });
       if ((count || 0) <= 1) {
-        alert('Keep at least one status.');
+        toastError('Keep at least one status.');
         return;
       }
       if (!confirm('Remove this status? Projects using it will keep the label but lose its color.')) return;
       const { error } = await sb.from('statuses').delete().eq('id', btn.dataset.deleteStatus);
       if (error) {
-        alert(error.message);
+        toastError(error.message);
         return;
       }
+      toast('Status removed.', { emoji: '🗑️' });
       await loadStatuses();
       loadProjects();
     });
@@ -712,6 +1346,11 @@ editForm.addEventListener('submit', async (e) => {
     }
     notify(`${actorLabel()} updated project "${payload.name}"`, 'project', 'update');
     flashFields(editForm, 'field-success');
+    celebrate(`"${payload.name}" updated!`, '💾');
+    // Project fields (name, PM, dates, etc.) are shown by reference
+    // everywhere via project_id joins, so refresh every place a project
+    // name/detail could be displayed — not just the Projects tab.
+    loadReports();
   } else {
     payload.created_by_email = currentUser ? currentUser.email : null;
     payload.owner_id = currentUser ? currentUser.id : null;
@@ -738,10 +1377,11 @@ editDeleteBtn.addEventListener('click', async () => {
   await new Promise((r) => setTimeout(r, 220));
   const { error } = await sb.from('projects').delete().eq('id', id);
   if (error) {
-    alert(error.message);
+    toastError(error.message);
     return;
   }
   notify(`${actorLabel()} removed project "${p ? p.name : ''}"`, 'project', 'delete');
+  toast(`"${p ? p.name : 'Project'}" removed.`, { emoji: '🗑️' });
   closeEditModal();
   loadProjects();
   loadReports();
@@ -813,6 +1453,14 @@ async function showProjectDetails(id) {
   detailsContent.classList.remove('hidden');
   detailsName.textContent = p.name;
 
+  const bugSummary = await getProjectBugSummary(id);
+  const bugSummaryHtml = `
+    <div class="detail-item span-2" id="details-bug-summary">
+      <span class="detail-label">Bugs <span class="auto-badge">AUTO</span></span>
+      <span class="detail-value">${escapeHtml(formatBugSummaryLine(bugSummary))} <span class="auto-hint">— tracked live from the Bugs log</span></span>
+    </div>
+  `;
+
   const { data: latestRows } = await sb
     .from('apk_shares')
     .select('*')
@@ -841,8 +1489,15 @@ async function showProjectDetails(id) {
 
   let html = '';
   let insertedApk = false;
+  let insertedBugSummary = false;
   detailFieldGroups.forEach((f) => {
     if (f.isHeader) {
+      if (f.title === 'Overview' && !insertedBugSummary) {
+        html += `<p class="span-2 section-label" style="grid-column:span 2;">${escapeHtml(f.title)}</p>`;
+        html += bugSummaryHtml;
+        insertedBugSummary = true;
+        return;
+      }
       if (f.title === 'Timeline' && !insertedApk) {
         html += latestApkHtml;
         insertedApk = true;
@@ -873,6 +1528,7 @@ async function showProjectDetails(id) {
   detailsEditBtn.onclick = () => openEditModal(id);
 
   loadApkShares(id);
+  tcPageNum = 1;
   loadTestCases(id);
 }
 
@@ -938,13 +1594,26 @@ async function loadTestCases(projectId) {
     console.error(error);
     return;
   }
+  tcCache = data || [];
   renderTestCases(data, projectId);
 }
 
-function renderTestCases(cases, projectId) {
-  tcList.innerHTML = '';
-  tcEmpty.style.display = cases.length ? 'none' : 'block';
+let tcPageNum = 1;
+const TC_PAGE_SIZE = 8;
 
+const tcBulk = createBulkSelector({
+  checkboxSelector: '#tc-list .row-checkbox',
+  selectAllId: 'tc-select-all',
+  deleteBtnId: 'tc-bulk-delete',
+  table: 'test_cases',
+  itemLabel: 'test case',
+  getAllIds: () => tcCache.map((c) => c.id),
+  onDeleted: async () => {
+    await loadTestCases(detailsSelect.value);
+  },
+});
+
+function renderTestCases(cases, projectId) {
   const counts = { 'Not Run': 0, Pass: 0, Fail: 0, Blocked: 0 };
   const catCounts = {};
   cases.forEach((c) => {
@@ -957,11 +1626,20 @@ function renderTestCases(cases, projectId) {
     ? `${cases.length} total · ${counts.Pass} pass · ${counts.Fail} fail · ${counts.Blocked} blocked · ${counts['Not Run']} not run — ${catBreakdown}`
     : '';
 
-  cases.forEach((c) => {
+  const totalPages = Math.max(1, Math.ceil(cases.length / TC_PAGE_SIZE));
+  if (tcPageNum > totalPages) tcPageNum = totalPages;
+  const start = (tcPageNum - 1) * TC_PAGE_SIZE;
+  const pageCases = cases.slice(start, start + TC_PAGE_SIZE);
+
+  tcList.innerHTML = '';
+  tcEmpty.style.display = cases.length ? 'none' : 'block';
+
+  pageCases.forEach((c) => {
     const row = document.createElement('div');
     row.className = 'tc-row';
     row.innerHTML = `
       <div class="tc-row-top">
+        <div class="tc-row-checkbox-wrap"><input type="checkbox" class="row-checkbox" data-id="${c.id}" /></div>
         <div>
           <div class="tc-row-title">${escapeHtml(c.title)}</div>
           <div class="tc-row-meta">
@@ -971,15 +1649,20 @@ function renderTestCases(cases, projectId) {
           </div>
           ${c.description ? `<div class="tc-row-desc">${escapeHtml(c.description)}</div>` : ''}
         </div>
-        <div class="tc-row-actions">
-          <select class="status-select pill tc-status-select" style="${pillStyle(tcStatusColor(c.status))}" data-id="${c.id}">
-            ${['Not Run', 'Pass', 'Fail', 'Blocked'].map((s) => `<option value="${s}" ${s === c.status ? 'selected' : ''}>${s}</option>`).join('')}
-          </select>
-          <button class="icon-btn" data-tc-delete="${c.id}">remove</button>
-        </div>
+      </div>
+      <div class="tc-row-actions">
+        <select class="status-select pill tc-status-select" style="${pillStyle(tcStatusColor(c.status))}" data-id="${c.id}">
+          ${['Not Run', 'Pass', 'Fail', 'Blocked'].map((s) => `<option value="${s}" ${s === c.status ? 'selected' : ''}>${s}</option>`).join('')}
+        </select>
+        <button class="icon-btn" data-tc-delete="${c.id}">remove</button>
       </div>
     `;
     tcList.appendChild(row);
+  });
+
+  renderPager('tc-pager', tcPageNum, totalPages, (dir) => {
+    tcPageNum += dir;
+    renderTestCases(cases, projectId);
   });
 
   tcList.querySelectorAll('.tc-status-select').forEach((sel) => {
@@ -994,10 +1677,11 @@ function renderTestCases(cases, projectId) {
         })
         .eq('id', sel.dataset.id);
       if (error) {
-        alert(error.message);
+        toastError(error.message);
         return;
       }
       if (newStatus === 'Pass') celebrate('Nice, that passed!', '💪');
+      else toast(`Status set to ${newStatus}.`, { emoji: '🔄' });
       loadTestCases(projectId);
     });
   });
@@ -1008,13 +1692,848 @@ function renderTestCases(cases, projectId) {
       await flashRowRemoving(btn.closest('.tc-row'));
       const { error } = await sb.from('test_cases').delete().eq('id', btn.dataset.tcDelete);
       if (error) {
-        alert(error.message);
+        toastError(error.message);
         return;
       }
+      toast('Test case removed.', { emoji: '🗑️' });
       loadTestCases(projectId);
     });
   });
+
+  tcBulk.onRendered();
 }
+
+// ---------- Bugs (own tab, own project selector) ----------
+
+const bugsSelect = document.getElementById('bugs-project-select');
+const bugsTabEmpty = document.getElementById('bugs-tab-empty');
+const bugsTabContent = document.getElementById('bugs-tab-content');
+const bugForm = document.getElementById('bug-form');
+const bugList = document.getElementById('bug-list');
+const bugEmpty = document.getElementById('bug-empty');
+const bugSummary = document.getElementById('bug-summary');
+
+function renderBugsSelect() {
+  const opts = projectsCache.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+  bugsSelect.innerHTML = opts;
+  if (!projectsCache.length) {
+    bugsTabEmpty.classList.remove('hidden');
+    bugsTabContent.classList.add('hidden');
+    return;
+  }
+  bugsTabEmpty.classList.add('hidden');
+  const keep = projectsCache.find((p) => p.id === bugsSelect.dataset.current);
+  const targetId = keep ? keep.id : projectsCache[0].id;
+  bugsSelect.value = targetId;
+  showBugsForProject(targetId);
+}
+
+bugsSelect.addEventListener('change', () => showBugsForProject(bugsSelect.value));
+
+function showBugsForProject(id) {
+  if (!id) return;
+  bugsSelect.dataset.current = id;
+  bugsTabContent.classList.remove('hidden');
+  bugPageNum = 1;
+  loadBugs(id);
+}
+
+function bugSeverityColor(sev) {
+  return { Low: '#34D399', Medium: '#FBBF24', High: '#FB923C', Critical: '#F87171' }[sev] || '#7FA0A6';
+}
+
+function bugStatusColor(status) {
+  return {
+    Open: '#F87171',
+    'In Progress': '#FBBF24',
+    Fixed: '#34D399',
+    Retest: '#60A5FA',
+    Closed: '#7FA0A6',
+    Reopened: '#EF4444',
+  }[status] || '#7FA0A6';
+}
+
+function devStatusColor(status) {
+  return {
+    'Not Started': '#7FA0A6',
+    'In Progress': '#FBBF24',
+    Fixed: '#34D399',
+    'Cannot Reproduce': '#A78BFA',
+    'Need Info': '#60A5FA',
+    "Won't Fix": '#F87171',
+  }[status] || '#7FA0A6';
+}
+
+function retestStatusColor(status) {
+  return {
+    'Not Retested': '#7FA0A6',
+    Pass: '#34D399',
+    Fail: '#F87171',
+    Blocked: '#FBBF24',
+  }[status] || '#7FA0A6';
+}
+
+function normalizeSeverity(v) {
+  return ['Low', 'Medium', 'High', 'Critical'].includes(v) ? v : 'Medium';
+}
+
+function normalizeBugStatus(v) {
+  return ['Open', 'In Progress', 'Fixed', 'Retest', 'Closed', 'Reopened'].includes(v) ? v : 'Open';
+}
+
+function normalizeDeveloperStatus(v) {
+  return ['Not Started', 'In Progress', 'Fixed', 'Cannot Reproduce', 'Need Info', "Won't Fix"].includes(v) ? v : 'Not Started';
+}
+
+function normalizeRetestStatus(v) {
+  return ['Not Retested', 'Pass', 'Fail', 'Blocked'].includes(v) ? v : 'Not Retested';
+}
+
+function normalizeIssueType(v) {
+  return ['Functional', 'UI/UX', 'Backend', 'Frontend', 'API', 'Performance', 'Security', 'Database', 'Other'].includes(v) ? v : 'Functional';
+}
+
+// Best-effort: accepts "YYYY-MM-DD" as-is, otherwise tries to parse common
+// spreadsheet date formats (e.g. "17/08/2026", "Aug 17 2026"). Returns null
+// if the value can't be understood, rather than guessing.
+function parseSheetDate(v) {
+  if (!v) return null;
+  const s = v.trim();
+  if (!s) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
+
+bugForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearFormError('bug-error');
+  const project_id = bugsSelect.value;
+  if (!project_id) return;
+
+  const title = document.getElementById('bug-title').value.trim();
+  if (!title || title.length < 3) {
+    showFormError('bug-error', 'Bug title must be at least 3 characters.');
+    flashFields(bugForm, 'field-error');
+    return;
+  }
+  const page = document.getElementById('bug-page').value.trim();
+  if (!page) {
+    showFormError('bug-error', 'Page is required — which screen or module is this bug on?');
+    flashFields(bugForm, 'field-error');
+    return;
+  }
+
+  const payload = {
+    project_id,
+    title,
+    bug_id: document.getElementById('bug-bugid').value.trim() || null,
+    page,
+    module: document.getElementById('bug-module').value.trim() || null,
+    sub_module: document.getElementById('bug-sub-module').value.trim() || null,
+    severity: document.getElementById('bug-severity').value,
+    issue_type: document.getElementById('bug-issue-type').value,
+    status: document.getElementById('bug-status').value,
+    reported_by: document.getElementById('bug-reported-by').value.trim() || null,
+    reported_date: document.getElementById('bug-reported-date').value || null,
+    closed_date: document.getElementById('bug-closed-date').value || null,
+    steps_to_reproduce: document.getElementById('bug-steps').value.trim() || null,
+    expected_result: document.getElementById('bug-expected').value.trim() || null,
+    actual_result: document.getElementById('bug-actual').value.trim() || null,
+    description: document.getElementById('bug-description').value.trim() || null,
+    developer_status: document.getElementById('bug-developer-status').value,
+    retest_status: document.getElementById('bug-retest-status').value,
+    developer_comments: document.getElementById('bug-developer-comments').value.trim() || null,
+    manager_comments: document.getElementById('bug-manager-comments').value.trim() || null,
+    notes: document.getElementById('bug-notes').value.trim() || null,
+    owner_id: currentUser ? currentUser.id : null,
+  };
+  const { error } = await sb.from('bugs').insert(payload);
+  if (error) {
+    showFormError('bug-error', error.message);
+    flashFields(bugForm, 'field-error');
+    return;
+  }
+  const proj = projectsCache.find((p) => p.id === project_id);
+  notify(`${actorLabel()} logged a bug for "${proj ? proj.name : 'a project'}"`, 'bug', 'create');
+  celebrate('Bug logged!', '🐞');
+  flashFields(bugForm, 'field-success');
+  bugForm.reset();
+  document.getElementById('bug-severity').value = 'Medium';
+  document.getElementById('bug-issue-type').value = 'Functional';
+  document.getElementById('bug-status').value = 'Open';
+  document.getElementById('bug-developer-status').value = 'Not Started';
+  document.getElementById('bug-retest-status').value = 'Not Retested';
+  loadBugs(project_id);
+});
+
+// ---------- Bug detail / edit modal ----------
+
+const bugModal = document.getElementById('bug-modal');
+const bugEditForm = document.getElementById('bug-edit-form');
+
+function openBugModal(id) {
+  const b = bugCache.find((x) => x.id === id);
+  if (!b) return;
+  clearFormError('bug-edit-error');
+  document.getElementById('be-id').value = b.id;
+  document.getElementById('be-title').value = b.title || '';
+  document.getElementById('be-bugid').value = b.bug_id || '';
+  document.getElementById('be-page').value = b.page || '';
+  document.getElementById('be-module').value = b.module || '';
+  document.getElementById('be-sub-module').value = b.sub_module || '';
+  document.getElementById('be-severity').value = b.severity || 'Medium';
+  document.getElementById('be-issue-type').value = b.issue_type || 'Functional';
+  document.getElementById('be-status').value = b.status || 'Open';
+  document.getElementById('be-reported-by').value = b.reported_by || '';
+  document.getElementById('be-reported-date').value = b.reported_date || '';
+  document.getElementById('be-closed-date').value = b.closed_date || '';
+  document.getElementById('be-developer-status').value = b.developer_status || 'Not Started';
+  document.getElementById('be-retest-status').value = b.retest_status || 'Not Retested';
+  document.getElementById('be-steps').value = b.steps_to_reproduce || '';
+  document.getElementById('be-expected').value = b.expected_result || '';
+  document.getElementById('be-actual').value = b.actual_result || '';
+  document.getElementById('be-description').value = b.description || '';
+  document.getElementById('be-developer-comments').value = b.developer_comments || '';
+  document.getElementById('be-manager-comments').value = b.manager_comments || '';
+  document.getElementById('be-notes').value = b.notes || '';
+  bugModal.classList.remove('hidden');
+}
+
+function closeBugModal() {
+  bugModal.classList.add('hidden');
+}
+
+document.getElementById('bug-modal-close').addEventListener('click', closeBugModal);
+bugModal.addEventListener('click', (e) => {
+  if (e.target === bugModal) closeBugModal();
+});
+
+bugEditForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearFormError('bug-edit-error');
+  const id = document.getElementById('be-id').value;
+  const title = document.getElementById('be-title').value.trim();
+  const page = document.getElementById('be-page').value.trim();
+  if (!title || title.length < 3) {
+    showFormError('bug-edit-error', 'Bug title must be at least 3 characters.');
+    return;
+  }
+  if (!page) {
+    showFormError('bug-edit-error', 'Page is required.');
+    return;
+  }
+  const payload = {
+    title,
+    bug_id: document.getElementById('be-bugid').value.trim() || null,
+    page,
+    module: document.getElementById('be-module').value.trim() || null,
+    sub_module: document.getElementById('be-sub-module').value.trim() || null,
+    severity: document.getElementById('be-severity').value,
+    issue_type: document.getElementById('be-issue-type').value,
+    status: document.getElementById('be-status').value,
+    reported_by: document.getElementById('be-reported-by').value.trim() || null,
+    reported_date: document.getElementById('be-reported-date').value || null,
+    closed_date: document.getElementById('be-closed-date').value || null,
+    developer_status: document.getElementById('be-developer-status').value,
+    retest_status: document.getElementById('be-retest-status').value,
+    steps_to_reproduce: document.getElementById('be-steps').value.trim() || null,
+    expected_result: document.getElementById('be-expected').value.trim() || null,
+    actual_result: document.getElementById('be-actual').value.trim() || null,
+    description: document.getElementById('be-description').value.trim() || null,
+    developer_comments: document.getElementById('be-developer-comments').value.trim() || null,
+    manager_comments: document.getElementById('be-manager-comments').value.trim() || null,
+    notes: document.getElementById('be-notes').value.trim() || null,
+    updated_at: new Date().toISOString(),
+  };
+  const { error } = await sb.from('bugs').update(payload).eq('id', id);
+  if (error) {
+    showFormError('bug-edit-error', error.message);
+    return;
+  }
+  notify(`${actorLabel()} updated bug "${title}"`, 'bug', 'update');
+  toast(`"${title}" updated!`, { emoji: '💾' });
+  closeBugModal();
+  loadBugs(bugsSelect.value);
+});
+
+document.getElementById('bug-edit-delete').addEventListener('click', async () => {
+  const id = document.getElementById('be-id').value;
+  const title = document.getElementById('be-title').value;
+  if (!id) return;
+  if (!confirm('Remove this bug? This cannot be undone.')) return;
+  const { error } = await sb.from('bugs').delete().eq('id', id);
+  if (error) {
+    showFormError('bug-edit-error', error.message);
+    return;
+  }
+  notify(`${actorLabel()} removed bug "${title}"`, 'bug', 'delete');
+  toast(`"${title}" removed.`, { emoji: '🗑️' });
+  closeBugModal();
+  loadBugs(bugsSelect.value);
+});
+
+async function loadBugs(projectId) {
+  const { data, error } = await sb
+    .from('bugs')
+    .select('*')
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: true });
+  if (error) {
+    console.error(error);
+    return;
+  }
+  bugCache = data || [];
+  renderBugs(bugCache, projectId);
+  refreshDetailsBugSummaryIfShowing(projectId);
+}
+
+// Bug counts on the Project Details tab are auto-tracked, not manually
+// entered — so whenever bugs change (add/edit/delete/status change), patch
+// just that block in place if that project's details happen to be open.
+// Lightweight on purpose: avoids re-fetching APK shares / test cases.
+async function refreshDetailsBugSummaryIfShowing(projectId) {
+  if (detailsSelect.dataset.current !== projectId) return;
+  const block = document.getElementById('details-bug-summary');
+  if (!block) return;
+  const bugSummary = await getProjectBugSummary(projectId);
+  const valueEl = block.querySelector('.detail-value');
+  if (valueEl) {
+    valueEl.innerHTML = `${escapeHtml(formatBugSummaryLine(bugSummary))} <span class="auto-hint">— tracked live from the Bugs log</span>`;
+  }
+}
+
+let bugPageNum = 1;
+const BUG_PAGE_SIZE = 8;
+
+const bugBulk = createBulkSelector({
+  checkboxSelector: '#bug-list .row-checkbox',
+  selectAllId: 'bug-select-all',
+  deleteBtnId: 'bug-bulk-delete',
+  table: 'bugs',
+  itemLabel: 'bug',
+  getAllIds: () => bugCache.map((b) => b.id),
+  onDeleted: async () => {
+    await loadBugs(bugsSelect.value);
+  },
+});
+
+function renderBugs(bugs, projectId) {
+  const counts = { Open: 0, 'In Progress': 0, Fixed: 0, Retest: 0, Closed: 0, Reopened: 0 };
+  bugs.forEach((b) => { counts[b.status] = (counts[b.status] || 0) + 1; });
+  bugSummary.textContent = bugs.length
+    ? `${bugs.length} total · ${counts.Open} open · ${counts['In Progress']} in progress · ${counts.Fixed} fixed · ${counts.Closed} closed`
+    : '';
+
+  const totalPages = Math.max(1, Math.ceil(bugs.length / BUG_PAGE_SIZE));
+  if (bugPageNum > totalPages) bugPageNum = totalPages;
+  const start = (bugPageNum - 1) * BUG_PAGE_SIZE;
+  const pageBugs = bugs.slice(start, start + BUG_PAGE_SIZE);
+
+  bugList.innerHTML = '';
+  bugEmpty.style.display = bugs.length ? 'none' : 'block';
+
+  pageBugs.forEach((b) => {
+    const row = document.createElement('div');
+    row.className = 'tc-row';
+    const fieldBlock = (label, value, hex) => value
+      ? `<div class="field-block" style="border-left-color:${hex};background:${hex}17;"><span class="field-label" style="color:${hex}">${label}</span><div class="field-text">${escapeHtml(value)}</div></div>`
+      : '';
+    const detailBlocks = [
+      fieldBlock('Description', b.description, '#2DD4BF'),
+      fieldBlock('Steps to Reproduce', b.steps_to_reproduce, '#818CF8'),
+      fieldBlock('Expected Result', b.expected_result, '#34D399'),
+      fieldBlock('Actual Result', b.actual_result, '#F3564B'),
+      fieldBlock('Developer Comments', b.developer_comments, '#8B5CF6'),
+      fieldBlock('Manager Comments', b.manager_comments, '#F89C27'),
+      fieldBlock('Notes', b.notes, '#FEB827'),
+    ].filter(Boolean).join('');
+    row.innerHTML = `
+      <div class="tc-row-top">
+        <div class="tc-row-checkbox-wrap"><input type="checkbox" class="row-checkbox" data-id="${b.id}" /></div>
+        <div>
+          <div class="tc-row-title"><button type="button" class="project-link" data-bug-edit="${b.id}">${b.bug_id ? `[${escapeHtml(b.bug_id)}] ` : ''}${escapeHtml(b.title)}</button></div>
+          <div class="tc-row-meta">
+            ${b.module ? `<span class="pill" style="${pillStyle('#38BDF8')}">Module: ${escapeHtml(b.module)}</span>` : ''}
+            ${b.sub_module ? `<span class="pill" style="${pillStyle('#38BDF8')}">Sub module: ${escapeHtml(b.sub_module)}</span>` : ''}
+            <span class="pill" style="${pillStyle('#818CF8')}">Page: ${escapeHtml(b.page)}</span>
+            <span class="pill" style="${pillStyle('#34D399')}">${escapeHtml(b.issue_type || 'Functional')}</span>
+            <span class="priority-pill priority-${escapeHtml(b.severity)}">${escapeHtml(b.severity)}</span>
+            ${b.reported_by ? `<span>Reported by ${escapeHtml(b.reported_by)}</span>` : ''}
+            ${b.reported_date ? `<span>Reported: ${fmtDate(b.reported_date)}</span>` : ''}
+            ${b.closed_date ? `<span>Closed: ${fmtDate(b.closed_date)}</span>` : ''}
+          </div>
+          ${detailBlocks ? `<div class="field-block-group">${detailBlocks}</div>` : ''}
+        </div>
+      </div>
+      <div class="tc-row-actions">
+        <select class="status-select pill bug-status-select" style="${pillStyle(bugStatusColor(b.status))}" data-id="${b.id}">
+          ${['Open', 'In Progress', 'Fixed', 'Retest', 'Closed', 'Reopened'].map((s) => `<option value="${s}" ${s === b.status ? 'selected' : ''}>${s}</option>`).join('')}
+        </select>
+        <select class="status-select pill bug-dev-status-select" style="${pillStyle(devStatusColor(b.developer_status))}" data-id="${b.id}">
+          ${['Not Started', 'In Progress', 'Fixed', 'Cannot Reproduce', 'Need Info', "Won't Fix"].map((s) => `<option value="${s}" ${s === b.developer_status ? 'selected' : ''}>Dev: ${s}</option>`).join('')}
+        </select>
+        <select class="status-select pill bug-retest-status-select" style="${pillStyle(retestStatusColor(b.retest_status))}" data-id="${b.id}">
+          ${['Not Retested', 'Pass', 'Fail', 'Blocked'].map((s) => `<option value="${s}" ${s === b.retest_status ? 'selected' : ''}>Retest: ${s}</option>`).join('')}
+        </select>
+        <button class="icon-btn" data-bug-delete="${b.id}">remove</button>
+      </div>
+    `;
+    bugList.appendChild(row);
+  });
+
+  bugList.querySelectorAll('[data-bug-edit]').forEach((btn) => {
+    btn.addEventListener('click', () => openBugModal(btn.dataset.bugEdit));
+  });
+
+  renderPager('bug-pager', bugPageNum, totalPages, (dir) => {
+    bugPageNum += dir;
+    renderBugs(bugs, projectId);
+  });
+
+  bugList.querySelectorAll('.bug-status-select').forEach((sel) => {
+    sel.addEventListener('change', async () => {
+      const newStatus = sel.value;
+      const { error } = await sb
+        .from('bugs')
+        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .eq('id', sel.dataset.id);
+      if (error) {
+        toastError(error.message);
+        return;
+      }
+      if (newStatus === 'Fixed') celebrate('Bug fixed!', '🎉');
+      else toast(`Status set to ${newStatus}.`, { emoji: '🔄' });
+      loadBugs(projectId);
+    });
+  });
+
+  bugList.querySelectorAll('.bug-dev-status-select').forEach((sel) => {
+    sel.addEventListener('change', async () => {
+      const { error } = await sb
+        .from('bugs')
+        .update({ developer_status: sel.value, updated_at: new Date().toISOString() })
+        .eq('id', sel.dataset.id);
+      if (error) {
+        toastError(error.message);
+        return;
+      }
+      toast(`Developer status set to ${sel.value}.`, { emoji: '🔧' });
+      loadBugs(projectId);
+    });
+  });
+
+  bugList.querySelectorAll('.bug-retest-status-select').forEach((sel) => {
+    sel.addEventListener('change', async () => {
+      const { error } = await sb
+        .from('bugs')
+        .update({ retest_status: sel.value, updated_at: new Date().toISOString() })
+        .eq('id', sel.dataset.id);
+      if (error) {
+        toastError(error.message);
+        return;
+      }
+      toast(`Retest status set to ${sel.value}.`, { emoji: '🔁' });
+      loadBugs(projectId);
+    });
+  });
+
+  bugList.querySelectorAll('[data-bug-delete]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Remove this bug?')) return;
+      await flashRowRemoving(btn.closest('.tc-row'));
+      const { error } = await sb.from('bugs').delete().eq('id', btn.dataset.bugDelete);
+      if (error) {
+        toastError(error.message);
+        return;
+      }
+      toast('Bug removed.', { emoji: '🗑️' });
+      loadBugs(projectId);
+    });
+  });
+
+  bugBulk.onRendered();
+}
+
+// ---------- Import bugs from Google Sheet ----------
+
+const bugImportSheetUrl = document.getElementById('bug-import-sheet-url');
+const bugImportSheetTabs = document.getElementById('bug-import-sheet-tabs');
+const bugImportFetchBtn = document.getElementById('bug-import-fetch-btn');
+const bugImportText = document.getElementById('bug-import-text');
+const bugImportParseBtn = document.getElementById('bug-import-parse-btn');
+const bugImportPreview = document.getElementById('bug-import-preview');
+const bugImportPreviewList = document.getElementById('bug-import-preview-list');
+const bugImportTabSummary = document.getElementById('bug-import-tab-summary');
+let bugImportRows = [];
+
+// Parses CSV/TSV text into rows of cells, correctly handling quoted fields
+// that contain embedded newlines (very common for a "Steps to Reproduce"
+// cell with multiple numbered lines) - a newline only ends a row when it's
+// outside quotes, not whenever it appears.
+function parseDelimitedText(text) {
+  const raw = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  if (!raw.trim()) return [];
+  const delim = raw.includes('\t') ? '\t' : ',';
+
+  const rows = [];
+  let row = [];
+  let cur = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (raw[i + 1] === '"') { cur += '"'; i++; } else { inQuotes = false; }
+      } else {
+        cur += ch;
+      }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === delim) {
+      row.push(cur.trim());
+      cur = '';
+    } else if (ch === '\n') {
+      row.push(cur.trim());
+      if (row.some((c) => c !== '')) rows.push(row);
+      row = [];
+      cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  row.push(cur.trim());
+  if (row.some((c) => c !== '')) rows.push(row);
+  return rows;
+}
+
+function normalizeHeaderKey(h) {
+  return h.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+const BUG_HEADER_ALIASES = {
+  title: 'title',
+  bugtitle: 'title',
+  submodule: 'sub_module',
+  sub_module: 'sub_module',
+  page: 'page',
+  screen: 'page',
+  module: 'module',
+  severity: 'severity',
+  status: 'status',
+  reportedby: 'reported_by',
+  reporter: 'reported_by',
+  reporteddate: 'reported_date',
+  datereported: 'reported_date',
+  dateopened: 'reported_date',
+  date: 'reported_date',
+  closeddate: 'closed_date',
+  closingdate: 'closed_date',
+  dateclosed: 'closed_date',
+  resolveddate: 'closed_date',
+  issuetype: 'issue_type',
+  type: 'issue_type',
+  category: 'issue_type',
+  description: 'description',
+  desc: 'description',
+  stepstoreproduce: 'steps',
+  steps: 'steps',
+  expectedresult: 'expected',
+  expected: 'expected',
+  actualresult: 'actual',
+  actual: 'actual',
+  developerstatus: 'developer_status',
+  devstatus: 'developer_status',
+  retest: 'retest_status',
+  retststatus: 'retest_status',
+  retestresult: 'retest_status',
+  developercomments: 'developer_comments',
+  devcomments: 'developer_comments',
+  managercomments: 'manager_comments',
+  bugid: 'bug_id',
+  id: 'bug_id',
+  notes: 'notes',
+  note: 'notes',
+};
+
+// tabName (optional): used as a fallback Page/Module when a row doesn't have
+// its own, and to tag each parsed bug with the sheet tab it came from.
+function rowsToBugObjects(rows, tabName) {
+  if (!rows.length) return [];
+  const firstRowKeys = rows[0].map((c) => BUG_HEADER_ALIASES[normalizeHeaderKey(c)]).filter(Boolean);
+  // A "Sub Module" column can stand in for Title, and a "Module" column can
+  // stand in for Page — either one in each pair is enough to recognize the header.
+  const hasHeader = (firstRowKeys.includes('title') || firstRowKeys.includes('sub_module'))
+    && (firstRowKeys.includes('page') || firstRowKeys.includes('module'));
+
+  let fieldMap; // index -> field name
+  let dataRows;
+  if (hasHeader) {
+    fieldMap = rows[0].map((c) => BUG_HEADER_ALIASES[normalizeHeaderKey(c)] || null);
+    dataRows = rows.slice(1);
+  } else {
+    // Assume the default column order when no recognizable header is present.
+    fieldMap = ['title', 'page', 'severity', 'status', 'reported_by', 'description', 'notes'];
+    dataRows = rows;
+  }
+
+  const objs = [];
+  dataRows.forEach((row) => {
+    const obj = {};
+    fieldMap.forEach((field, idx) => {
+      if (field) obj[field] = (row[idx] || '').trim();
+    });
+    if (!obj.page) obj.page = obj.module || tabName || ''; // fall back to Module column, then the tab/sheet name
+    if (!obj.title) obj.title = obj.sub_module || '';
+    if (!obj.title || !obj.page) return; // Title and Page are required
+
+    // Notes from the sheet are kept as-is; Bug Id / Reported date / Closing
+    // date now have their own columns, so they're stored directly instead.
+    const noteParts = [];
+    if (obj.notes) noteParts.push(obj.notes);
+
+    objs.push({
+      title: obj.title.slice(0, 200),
+      bug_id: obj.bug_id ? obj.bug_id.slice(0, 60) : null,
+      page: obj.page.slice(0, 120),
+      module: obj.module ? obj.module.slice(0, 120) : null,
+      sub_module: obj.sub_module ? obj.sub_module.slice(0, 200) : null,
+      severity: normalizeSeverity(obj.severity),
+      issue_type: obj.issue_type ? normalizeIssueType(obj.issue_type) : 'Functional',
+      status: normalizeBugStatus(obj.status),
+      reported_by: obj.reported_by ? obj.reported_by.slice(0, 80) : null,
+      reported_date: parseSheetDate(obj.reported_date),
+      closed_date: parseSheetDate(obj.closed_date),
+      description: obj.description ? obj.description.slice(0, 1000) : null,
+      steps_to_reproduce: obj.steps ? obj.steps.slice(0, 1000) : null,
+      expected_result: obj.expected ? obj.expected.slice(0, 1000) : null,
+      actual_result: obj.actual ? obj.actual.slice(0, 1000) : null,
+      developer_status: obj.developer_status ? normalizeDeveloperStatus(obj.developer_status) : 'Not Started',
+      retest_status: obj.retest_status ? normalizeRetestStatus(obj.retest_status) : 'Not Retested',
+      developer_comments: obj.developer_comments ? obj.developer_comments.slice(0, 1000) : null,
+      manager_comments: obj.manager_comments ? obj.manager_comments.slice(0, 1000) : null,
+      notes: noteParts.length ? noteParts.join(' | ').slice(0, 500) : null,
+      _tab: tabName || null,
+    });
+  });
+  return objs;
+}
+
+// Best-effort: works only for sheets shared as "Anyone with the link can view".
+// Google's CORS headers on this export endpoint aren't guaranteed, so if the
+// fetch fails we tell the user to paste the rows instead.
+function extractSheetIdAndGid(url) {
+  const idMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if (!idMatch) return null;
+  const gidMatch = url.match(/[#&?]gid=([0-9]+)/);
+  return { id: idMatch[1], gid: gidMatch ? gidMatch[1] : null };
+}
+
+// Fetches one worksheet tab as CSV via Google's gviz endpoint, addressed by
+// its tab name (works for any sheet shared as "Anyone with the link can view",
+// without needing to know that tab's numeric gid).
+async function fetchSheetTabCsv(sheetId, tabName) {
+  const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tabName)}`;
+  const res = await fetch(csvUrl);
+  if (!res.ok) throw new Error('not ok');
+  const text = await res.text();
+  if (!text.trim()) throw new Error('empty');
+  return text.trim();
+}
+
+bugImportFetchBtn.addEventListener('click', async () => {
+  clearFormError('bug-import-error');
+  bugImportTabSummary.classList.add('hidden');
+  const url = bugImportSheetUrl.value.trim();
+  if (!url) {
+    showFormError('bug-import-error', 'Paste a Google Sheet link above first.');
+    return;
+  }
+  const parts = extractSheetIdAndGid(url);
+  if (!parts) {
+    showFormError('bug-import-error', 'That doesn\'t look like a Google Sheets link.');
+    return;
+  }
+
+  const tabNames = bugImportSheetTabs.value
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  const original = bugImportFetchBtn.textContent;
+  bugImportFetchBtn.textContent = 'Fetching...';
+  bugImportFetchBtn.disabled = true;
+
+  try {
+    if (!tabNames.length) {
+      // Single tab/link: fetch the CSV and let the person review/edit it in
+      // the textarea before parsing, same as before.
+      try {
+        const csvUrl = `https://docs.google.com/spreadsheets/d/${parts.id}/gviz/tq?tqx=out:csv${parts.gid ? `&gid=${parts.gid}` : ''}`;
+        const res = await fetch(csvUrl);
+        if (!res.ok) throw new Error('not ok');
+        const text = await res.text();
+        if (!text.trim()) throw new Error('empty');
+        bugImportText.value = text.trim();
+      } catch {
+        showFormError('bug-import-error', 'Couldn\'t fetch that sheet automatically (it may not be shared publicly, or your browser blocked the request). Open the sheet, select all the rows, copy them, and paste into the box below instead.');
+      }
+      return;
+    }
+
+    // Multiple tabs: fetch + parse each on its own, then merge into one
+    // preview. Each tab keeps its own header row, so this handles testers
+    // who use different column layouts per tab.
+    const combined = [];
+    const summaryParts = [];
+    const failedTabs = [];
+    for (const tabName of tabNames) {
+      try {
+        const text = await fetchSheetTabCsv(parts.id, tabName);
+        const rows = parseDelimitedText(text);
+        const objs = rowsToBugObjects(rows, tabName);
+        combined.push(...objs);
+        summaryParts.push(`${tabName}: ${objs.length} bug${objs.length === 1 ? '' : 's'}`);
+      } catch {
+        failedTabs.push(tabName);
+      }
+    }
+
+    if (failedTabs.length) {
+      summaryParts.push(`Couldn't fetch: ${failedTabs.join(', ')} (check the tab name is spelled exactly as in the sheet, and the sheet is shared as "Anyone with the link can view")`);
+    }
+    bugImportTabSummary.textContent = summaryParts.join('  •  ');
+    bugImportTabSummary.classList.remove('hidden');
+
+    if (!combined.length) {
+      showFormError('bug-import-error', 'No valid rows found in any of those tabs — make sure each row has at least a Title/Sub Module and a Page/Module.');
+      return;
+    }
+    bugImportRows = combined;
+    renderBugImportPreview(combined);
+  } finally {
+    bugImportFetchBtn.textContent = original;
+    bugImportFetchBtn.disabled = false;
+  }
+});
+
+bugImportParseBtn.addEventListener('click', () => {
+  clearFormError('bug-import-error');
+  bugImportPreview.classList.add('hidden');
+  bugImportTabSummary.classList.add('hidden');
+  const raw = bugImportText.value.trim();
+  if (!raw) {
+    showFormError('bug-import-error', 'Paste sheet rows above first (or fetch from a link).');
+    return;
+  }
+  const rows = parseDelimitedText(raw);
+  const objs = rowsToBugObjects(rows);
+  if (!objs.length) {
+    showFormError('bug-import-error', 'No valid rows found — make sure each row has at least a Title and a Page.');
+    return;
+  }
+  bugImportRows = objs;
+  renderBugImportPreview(objs);
+});
+
+function renderBugImportPreview(bugs) {
+  bugImportPreviewList.innerHTML = '';
+
+  const summaryEl = document.createElement('p');
+  summaryEl.className = 'ai-coverage-summary';
+  summaryEl.textContent = `${bugs.length} bug${bugs.length === 1 ? '' : 's'} found`;
+  bugImportPreviewList.appendChild(summaryEl);
+
+  bugs.forEach((b, i) => {
+    const row = document.createElement('label');
+    row.className = 'ai-preview-item';
+    row.innerHTML = `
+      <input type="checkbox" class="bug-import-check" data-idx="${i}" checked />
+      <div>
+        <div class="ai-preview-item-title">
+          ${b.bug_id ? `[${escapeHtml(b.bug_id)}] ` : ''}${escapeHtml(b.title)}
+          ${b.module ? `<span class="pill" style="${pillStyle('#38BDF8')}">Module: ${escapeHtml(b.module)}</span>` : ''}
+          <span class="pill" style="${pillStyle('#818CF8')}">Page: ${escapeHtml(b.page)}</span>
+          ${b._tab ? `<span class="pill" style="${pillStyle('#38BDF8')}">Tab: ${escapeHtml(b._tab)}</span>` : ''}
+          <span class="pill" style="${pillStyle('#34D399')}">${escapeHtml(b.issue_type || 'Functional')}</span>
+          <span class="priority-pill priority-${escapeHtml(b.severity)}">${escapeHtml(b.severity)}</span>
+          <span class="pill" style="${pillStyle(bugStatusColor(b.status))}">${escapeHtml(b.status)}</span>
+        </div>
+        ${(b.reported_date || b.closed_date) ? `<div class="ai-preview-item-desc">${b.reported_date ? `<b>Reported:</b> ${fmtDate(b.reported_date)} ` : ''}${b.closed_date ? `<b>Closed:</b> ${fmtDate(b.closed_date)}` : ''}</div>` : ''}
+        ${b.steps_to_reproduce ? `<div class="ai-preview-item-desc"><b>Steps:</b> ${escapeHtml(b.steps_to_reproduce)}</div>` : ''}
+        ${b.expected_result ? `<div class="ai-preview-item-desc"><b>Expected:</b> ${escapeHtml(b.expected_result)}</div>` : ''}
+        ${b.actual_result ? `<div class="ai-preview-item-desc"><b>Actual:</b> ${escapeHtml(b.actual_result)}</div>` : ''}
+        ${b.description ? `<div class="ai-preview-item-desc">${escapeHtml(b.description)}</div>` : ''}
+      </div>
+    `;
+    bugImportPreviewList.appendChild(row);
+  });
+  bugImportPreview.classList.remove('hidden');
+}
+
+document.getElementById('bug-import-discard').addEventListener('click', () => {
+  bugImportRows = [];
+  bugImportPreview.classList.add('hidden');
+  bugImportTabSummary.classList.add('hidden');
+  bugImportSheetUrl.value = '';
+  bugImportSheetTabs.value = '';
+  bugImportText.value = '';
+});
+
+document.getElementById('bug-import-add-selected').addEventListener('click', async () => {
+  const projectId = bugsSelect.value;
+  if (!projectId) return;
+  const checks = bugImportPreviewList.querySelectorAll('.bug-import-check');
+  const selected = [];
+  checks.forEach((cb) => {
+    if (cb.checked) selected.push(bugImportRows[Number(cb.dataset.idx)]);
+  });
+  if (!selected.length) return;
+
+  const rows = selected.map((b) => ({
+    project_id: projectId,
+    title: b.title,
+    bug_id: b.bug_id,
+    page: b.page,
+    module: b.module,
+    sub_module: b.sub_module,
+    severity: b.severity,
+    issue_type: b.issue_type,
+    status: b.status,
+    reported_by: b.reported_by,
+    reported_date: b.reported_date,
+    closed_date: b.closed_date,
+    description: b.description,
+    steps_to_reproduce: b.steps_to_reproduce,
+    expected_result: b.expected_result,
+    actual_result: b.actual_result,
+    developer_status: b.developer_status,
+    retest_status: b.retest_status,
+    developer_comments: b.developer_comments,
+    manager_comments: b.manager_comments,
+    notes: b.notes,
+    owner_id: currentUser ? currentUser.id : null,
+  }));
+
+  const { error } = await sb.from('bugs').insert(rows);
+  if (error) {
+    showFormError('bug-import-error', error.message);
+    return;
+  }
+  const project = projectsCache.find((p) => p.id === projectId);
+  notify(`${actorLabel()} imported ${rows.length} bug${rows.length === 1 ? '' : 's'} from a sheet for "${project ? project.name : 'a project'}"`, 'bug', 'import');
+  celebrate(`${rows.length} bug${rows.length === 1 ? '' : 's'} imported!`, '📥');
+
+  bugImportRows = [];
+  bugImportPreview.classList.add('hidden');
+  bugImportTabSummary.classList.add('hidden');
+  bugImportSheetUrl.value = '';
+  bugImportSheetTabs.value = '';
+  bugImportText.value = '';
+  loadBugs(projectId);
+});
 
 // ---------- APK shares ----------
 
@@ -1076,6 +2595,17 @@ async function loadApkShares(projectId) {
   renderApkShares(data);
 }
 
+const apkBulk = createBulkSelector({
+  checkboxSelector: '#apk-list .row-checkbox',
+  selectAllId: 'apk-select-all',
+  deleteBtnId: 'apk-bulk-delete',
+  table: 'apk_shares',
+  itemLabel: 'APK entry',
+  onDeleted: async () => {
+    showProjectDetails(detailsSelect.value);
+  },
+});
+
 function renderApkShares(shares) {
   apkList.innerHTML = '';
   apkCount.textContent = shares.length ? `${shares.length} logged` : '';
@@ -1085,6 +2615,7 @@ function renderApkShares(shares) {
     const row = document.createElement('div');
     row.className = 'apk-row';
     row.innerHTML = `
+      <div class="apk-row-checkbox-wrap"><input type="checkbox" class="row-checkbox" data-id="${a.id}" /></div>
       <div class="apk-row-main">
         <div class="apk-row-top">
           <span class="apk-version">${escapeHtml(a.version || 'Build')}</span>
@@ -1101,13 +2632,16 @@ function renderApkShares(shares) {
       await flashRowRemoving(row);
       const { error } = await sb.from('apk_shares').delete().eq('id', a.id);
       if (error) {
-        alert(error.message);
+        toastError(error.message);
         return;
       }
+      toast('APK entry removed.', { emoji: '🗑️' });
       showProjectDetails(detailsSelect.value);
     });
     apkList.appendChild(row);
   });
+
+  apkBulk.onRendered();
 }
 
 function todayStr() {
@@ -1115,22 +2649,29 @@ function todayStr() {
   return d.toISOString().slice(0, 10);
 }
 
-function buildBatchWhatsAppMessage(reports, dateStr) {
+async function buildBatchWhatsAppMessage(reports, dateStr, autoOnly) {
   const niceDate = new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB');
+  const totalCount = reports.length + (autoOnly ? autoOnly.length : 0);
   let msg = `*QA Daily Updates — ${niceDate}*\n`;
-  msg += `_${reports.length} project${reports.length === 1 ? '' : 's'} updated_\n`;
+  msg += `_${totalCount} project${totalCount === 1 ? '' : 's'} updated_\n`;
 
-  reports.forEach((r, i) => {
+  let i = 0;
+  for (const r of reports) {
+    i += 1;
     const projectName = r.projects ? r.projects.name : 'Project';
-    msg += `\n*${i + 1}. ${projectName}*\n`;
-    if (r.project_manager) msg += `👤 PM: ${r.project_manager}\n`;
-    if (r.assigned_tasks) msg += `🧩 Assigned Tasks:\n${r.assigned_tasks}\n`;
-    msg += `✅ Test Cases: ${r.test_cases}  🐞 UI Bugs: ${r.ui_bugs}  ⚙️ Func Bugs: ${r.functionality_bugs}\n`;
-    if (r.bugsheet) msg += `🔗 Bugsheet: ${r.bugsheet}\n`;
-    msg += `✔️ Sign Off: ${r.sign_off ? 'Yes' : 'No'}\n`;
-    if (r.remarks) msg += `💬 Remarks: ${r.remarks}\n`;
-    if (r.notes) msg += `🗒️ Notes: ${r.notes}\n`;
-  });
+    const bugStats = await getBugStatsForDay(r.project_id, r.report_date);
+    msg += `\n${i}. ${formatDailyUpdateBlock(r, projectName, bugStats)}`;
+  }
+
+  // Projects with bug activity but no manual daily update filed — included
+  // so "share all" really covers everything that happened that day, not
+  // just entries someone remembered to log by hand.
+  if (autoOnly) {
+    for (const a of autoOnly) {
+      i += 1;
+      msg += `\n${i}. *${a.project.name}* _(auto — no manual update filed)_\n• ${formatBugStatsLine(a.bugStats)}\n`;
+    }
+  }
 
   return msg;
 }
@@ -1148,15 +2689,34 @@ document.getElementById('share-day-btn').addEventListener('click', async () => {
 
   const { data, error } = await query;
   if (error) {
-    alert(error.message);
+    toastError(error.message);
     return;
   }
-  if (!data || !data.length) {
-    alert(`No daily entries found for ${new Date(dateStr + 'T00:00:00').toLocaleDateString()}. Log an entry first, or pick a different date in the filter above.`);
+  const reports = data || [];
+
+  // Fill in any project that only had bug activity that day (no manual
+  // entry filed), so the shared message reflects everything, not just the
+  // manually logged rows.
+  const loggedPairs = new Set(reports.map((r) => `${r.project_id}|${r.report_date}`));
+  const projectsToCheck = projectId
+    ? projectsCache.filter((p) => p.id === projectId)
+    : projectsCache;
+  const autoOnly = [];
+  for (const p of projectsToCheck) {
+    if (loggedPairs.has(`${p.id}|${dateStr}`)) continue;
+    const bugStats = await getBugStatsForDay(p.id, dateStr);
+    const hasActivity = bugStats.total || bugStats.closed || bugStats.reopened
+      || bugStats.retest || bugStats.fixed || bugStats.inProgress
+      || bugStats.retestPass || bugStats.retestFail || bugStats.retestBlocked;
+    if (hasActivity) autoOnly.push({ project: p, bugStats });
+  }
+
+  if (!reports.length && !autoOnly.length) {
+    toastError(`No daily entries or bug activity found for ${new Date(dateStr + 'T00:00:00').toLocaleDateString()}. Log an entry first, or pick a different date in the filter above.`);
     return;
   }
 
-  const message = buildBatchWhatsAppMessage(data, dateStr);
+  const message = await buildBatchWhatsAppMessage(reports, dateStr, autoOnly);
   whatsappMessageEl.value = message;
   whatsappOpenLink.href = `https://wa.me/?text=${encodeURIComponent(message)}`;
   whatsappCopyBtn.textContent = 'Copy message';
@@ -1221,27 +2781,56 @@ aiCopyPromptBtn.addEventListener('click', async () => {
   setTimeout(() => { aiCopyPromptBtn.textContent = original; }, 2500);
 });
 
+function tryParseTestCasesJson(raw) {
+  let text = raw.trim();
+  text = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+  const start = text.indexOf('[');
+  if (start === -1) return null;
+  text = text.slice(start);
+
+  // Try a straightforward parse first (handles a clean, complete paste)
+  try {
+    return JSON.parse(text);
+  } catch { /* fall through to repair attempt below */ }
+
+  // The paste may have been cut off partway through. Find the last fully
+  // closed object in the array and salvage everything up to there.
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  let lastGoodEnd = -1;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) { escape = false; continue; }
+    if (ch === '\\') { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') depth++;
+    if (ch === '}') {
+      depth--;
+      if (depth === 0) lastGoodEnd = i;
+    }
+  }
+  if (lastGoodEnd !== -1) {
+    try {
+      return JSON.parse(text.slice(0, lastGoodEnd + 1) + ']');
+    } catch { /* give up below */ }
+  }
+  return null;
+}
+
 aiParseBtn.addEventListener('click', () => {
   clearFormError('ai-gen-error');
   aiPreview.classList.add('hidden');
-  let raw = aiResponseText.value.trim();
+  const raw = aiResponseText.value.trim();
   if (!raw) {
     showFormError('ai-gen-error', 'Paste the AI\'s reply above first.');
     return;
   }
-  raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
 
-  const start = raw.indexOf('[');
-  const end = raw.lastIndexOf(']');
-  if (start !== -1 && end !== -1 && end > start) {
-    raw = raw.slice(start, end + 1);
-  }
-
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    showFormError('ai-gen-error', 'Could not read that as JSON. Make sure you pasted the AI\'s full reply, including the [ ] brackets.');
+  const parsed = tryParseTestCasesJson(raw);
+  if (!parsed) {
+    showFormError('ai-gen-error', 'Couldn\'t read that reply — the paste may have been cut off. Try copying the AI\'s reply again from the very start ("[") to the very end ("]").');
     return;
   }
   if (!Array.isArray(parsed) || !parsed.length) {
@@ -1494,37 +3083,150 @@ reportForm.addEventListener('submit', async (e) => {
   loadReports();
   loadProjects();
 
-  openWhatsAppModal(payload, project ? project.name : 'Project');
+  await openWhatsAppModal(payload, project ? project.name : 'Project');
 });
 
-// ---------- WhatsApp daily update message ----------
+// ---------- Auto bug tracking for Daily Log ----------
+// Nothing here is written to the database — bug counts are always computed
+// live from the `bugs` table (using its auto `created_at` timestamp), so a
+// tester never has to manually count or type in how many bugs were added.
+// This keeps every Daily Log entry (and every shared update) in sync with
+// the real Bugs list, automatically.
 
-const whatsappModal = document.getElementById('whatsapp-modal');
+// Live bug totals for a project (Project Details tab) — no manual entry,
+// always reflects the current state of the Bugs log.
+async function getProjectBugSummary(projectId) {
+  const { data, error } = await sb.from('bugs').select('status').eq('project_id', projectId);
+  if (error) {
+    console.error(error);
+    return null;
+  }
+  const rows = data || [];
+  const byStatus = {};
+  rows.forEach((b) => { byStatus[b.status] = (byStatus[b.status] || 0) + 1; });
+  return { total: rows.length, byStatus };
+}
+
+function formatBugSummaryLine(summary) {
+  if (!summary || !summary.total) return 'No bugs logged yet';
+  const order = ['Open', 'In Progress', 'Retest', 'Fixed', 'Reopened', 'Closed'];
+  const parts = order.filter((s) => summary.byStatus[s]).map((s) => `${summary.byStatus[s]} ${s}`);
+  return `${summary.total} total${parts.length ? ` — ${parts.join(', ')}` : ''}`;
+}
+
+function nextDateStr(dateStr) {
+  const d = new Date(`${dateStr}T00:00:00`);
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+async function getBugStatsForDay(projectId, dateStr) {
+  const dayStart = `${dateStr}T00:00:00`;
+  const dayEnd = `${nextDateStr(dateStr)}T00:00:00`;
+  const empty = {
+    total: 0, bySeverity: {}, titles: [],
+    closed: 0, reopened: 0, retest: 0, fixed: 0, inProgress: 0,
+    retestPass: 0, retestFail: 0, retestBlocked: 0,
+  };
+  // One query covers both "created today" (newly identified) and "touched
+  // today" (status/retest status/dev status moved — e.g. to Retest, Fixed,
+  // Closed, Reopened) — cheaper than several round trips, and keeps every
+  // count consistent with the exact same snapshot of rows.
+  const { data, error } = await sb
+    .from('bugs')
+    .select('id, title, severity, status, retest_status, created_at, updated_at')
+    .eq('project_id', projectId)
+    .or(`and(created_at.gte.${dayStart},created_at.lt.${dayEnd}),and(updated_at.gte.${dayStart},updated_at.lt.${dayEnd})`);
+  if (error) {
+    console.error(error);
+    return empty;
+  }
+  const rows = data || [];
+  const startD = new Date(dayStart);
+  const endD = new Date(dayEnd);
+  const inDay = (ts) => {
+    if (!ts) return false;
+    const d = new Date(ts);
+    return d >= startD && d < endD;
+  };
+  const identified = rows.filter((b) => inDay(b.created_at));
+  const bySeverity = {};
+  identified.forEach((b) => { bySeverity[b.severity] = (bySeverity[b.severity] || 0) + 1; });
+  // Best-effort, not a full history: this reflects the bug's *current*
+  // status when it was last touched today, since we don't store every
+  // intermediate transition. Good enough for a live daily-log summary.
+  const touchedToday = (statusField, value) => rows.filter((b) => b[statusField] === value && inDay(b.updated_at)).length;
+  const closed = touchedToday('status', 'Closed');
+  const reopened = touchedToday('status', 'Reopened');
+  const retest = touchedToday('status', 'Retest');
+  const fixed = touchedToday('status', 'Fixed');
+  const inProgress = touchedToday('status', 'In Progress');
+  const retestPass = touchedToday('retest_status', 'Pass');
+  const retestFail = touchedToday('retest_status', 'Fail');
+  const retestBlocked = touchedToday('retest_status', 'Blocked');
+  return {
+    total: identified.length, bySeverity, titles: identified.map((b) => b.title),
+    closed, reopened, retest, fixed, inProgress, retestPass, retestFail, retestBlocked,
+  };
+}
+
+// The one shared format for "bugs identified" — used in the Daily Log list,
+// in single-entry shares, in the batch "Share day's updates" message, and in
+// auto-only cards, so the number always reads the same way everywhere.
+function formatBugStatsLine(stats) {
+  const extrasFor = (s) => {
+    const extras = [];
+    if (s.retest) extras.push(`${s.retest} moved to retest`);
+    if (s.fixed) extras.push(`${s.fixed} fixed`);
+    if (s.closed) extras.push(`${s.closed} closed`);
+    if (s.reopened) extras.push(`${s.reopened} reopened`);
+    if (s.retestPass) extras.push(`${s.retestPass} retest passed`);
+    if (s.retestFail) extras.push(`${s.retestFail} retest failed`);
+    if (s.retestBlocked) extras.push(`${s.retestBlocked} retest blocked`);
+    return extras;
+  };
+  if (!stats || !stats.total) {
+    const extras = stats ? extrasFor(stats) : [];
+    return `Bugs identified: 0${extras.length ? ` · ${extras.join(', ')}` : ''}`;
+  }
+  const order = ['Critical', 'High', 'Medium', 'Low'];
+  const parts = order.filter((s) => stats.bySeverity[s]).map((s) => `${stats.bySeverity[s]} ${s}`);
+  let line = `Bugs identified: ${stats.total}${parts.length ? ` (${parts.join(', ')})` : ''}`;
+  const extras = extrasFor(stats);
+  if (extras.length) line += ` · ${extras.join(', ')}`;
+  return line;
+}
+
+
 const whatsappMessageEl = document.getElementById('whatsapp-message');
 const whatsappOpenLink = document.getElementById('whatsapp-open');
 const whatsappCopyBtn = document.getElementById('whatsapp-copy');
+const whatsappModal = document.getElementById('whatsapp-modal');
 
-function buildWhatsAppMessage(payload, projectName) {
-  const dateStr = new Date(payload.report_date + 'T00:00:00').toLocaleDateString('en-GB');
-  let msg = `*QA Daily Update*\n`;
-  msg += `📅 Date: ${dateStr}\n`;
-  msg += `📁 Project: ${projectName}\n`;
-  if (payload.project_manager) msg += `👤 PM: ${payload.project_manager}\n`;
-  if (payload.assigned_tasks) msg += `🧩 Assigned Tasks:\n${payload.assigned_tasks}\n`;
-  msg += `\n`;
-  msg += `✅ Test Cases: ${payload.test_cases}\n`;
-  msg += `🐞 UI Bugs: ${payload.ui_bugs}\n`;
-  msg += `⚙️ Functionality Bugs: ${payload.functionality_bugs}\n`;
-  if (payload.bugsheet) msg += `🔗 Bugsheet: ${payload.bugsheet}\n`;
-  msg += `\n`;
-  msg += `✔️ Sign Off: ${payload.sign_off ? 'Yes' : 'No'}\n`;
-  if (payload.remarks) msg += `💬 Remarks: ${payload.remarks}\n`;
-  if (payload.notes) msg += `🗒️ Notes: ${payload.notes}\n`;
+function formatDailyUpdateBlock(payload, projectName, bugStats) {
+  let msg = `*${projectName}*\n`;
+  if (payload.project_manager) msg += `• PM: ${payload.project_manager}\n`;
+  if (payload.assigned_tasks) msg += `• Assigned Tasks:\n${payload.assigned_tasks}\n`;
+  msg += `• Test Cases: ${payload.test_cases ?? 0}\n`;
+  msg += `• ${formatBugStatsLine(bugStats)}\n`;
+  if (payload.bugsheet) msg += `• Bugsheet: ${payload.bugsheet}\n`;
+  msg += `• Sign Off: ${payload.sign_off ? 'Yes' : 'No'}\n`;
+  if (payload.remarks) msg += `• Remarks: ${payload.remarks}\n`;
+  if (payload.notes) msg += `• Notes: ${payload.notes}\n`;
   return msg;
 }
 
-function openWhatsAppModal(payload, projectName) {
-  const message = buildWhatsAppMessage(payload, projectName);
+async function buildWhatsAppMessage(payload, projectName) {
+  const dateStr = new Date(payload.report_date + 'T00:00:00').toLocaleDateString('en-GB');
+  const bugStats = await getBugStatsForDay(payload.project_id, payload.report_date);
+  let msg = `*QA Daily Update*\n`;
+  msg += `Date: ${dateStr}\n\n`;
+  msg += formatDailyUpdateBlock(payload, projectName, bugStats);
+  return msg;
+}
+
+async function openWhatsAppModal(payload, projectName) {
+  const message = await buildWhatsAppMessage(payload, projectName);
   whatsappMessageEl.value = message;
   whatsappOpenLink.href = `https://wa.me/?text=${encodeURIComponent(message)}`;
   whatsappCopyBtn.textContent = 'Copy message';
@@ -1579,23 +3281,37 @@ async function loadReports() {
     console.error(error);
     return;
   }
-  renderReports(data);
+  await renderReports(data);
+  reportsCache = data || [];
 }
 
-function renderReports(reports) {
-  reportsList.innerHTML = '';
-  reportsEmpty.style.display = reports.length ? 'none' : 'block';
+const reportsBulk = createBulkSelector({
+  checkboxSelector: '#reports-list .card-checkbox',
+  selectAllId: 'reports-select-all',
+  deleteBtnId: 'reports-bulk-delete',
+  table: 'daily_reports',
+  itemLabel: 'entry',
+  onDeleted: async () => {
+    await loadReports();
+  },
+});
 
-  reports.forEach((r) => {
+async function renderReports(reports) {
+  reportsList.innerHTML = '';
+
+  for (const r of reports) {
+    const bugStats = await getBugStatsForDay(r.project_id, r.report_date);
     const card = document.createElement('div');
-    card.className = 'report-card';
+    card.className = 'report-card has-checkbox';
     card.innerHTML = `
+      <input type="checkbox" class="card-checkbox" data-id="${r.id}" />
       <div class="report-head">
         <span class="proj-name">${escapeHtml(r.projects ? r.projects.name : 'Unknown project')}</span>
         <span>${r.report_date}</span>
         ${r.project_manager ? `<span>PM: ${escapeHtml(r.project_manager)}</span>` : ''}
         ${r.logged_by_email ? `<span>Logged by: ${escapeHtml(r.logged_by_email)}</span>` : ''}
       </div>
+      <button class="icon-btn report-edit" data-edit="${r.id}">edit</button>
       <button class="icon-btn report-delete" data-delete="${r.id}">remove</button>
       <button class="icon-btn report-share" data-share="${r.id}">share</button>
       <div class="report-body">
@@ -1606,6 +3322,7 @@ function renderReports(reports) {
           <span>UI bugs: <b>${r.ui_bugs}</b></span>
           <span>Functionality bugs: <b>${r.functionality_bugs}</b></span>
         </div>
+        <div class="auto-bug-line"><span class="auto-badge">AUTO</span> ${formatBugStatsLine(bugStats)} <span class="auto-hint">— tracked live from the Bugs log</span></div>
         ${r.remarks ? `<div class="report-remarks">${escapeHtml(r.remarks)}</div>` : ''}
         ${r.notes ? `<div>${escapeHtml(r.notes)}</div>` : ''}
       </div>
@@ -1616,35 +3333,215 @@ function renderReports(reports) {
       await flashRowRemoving(card);
       const { error } = await sb.from('daily_reports').delete().eq('id', r.id);
       if (error) {
-        alert(error.message);
+        toastError(error.message);
         return;
       }
+      toast('Daily log entry removed.', { emoji: '🗑️' });
       loadReports();
     });
-    card.querySelector('[data-share]').addEventListener('click', () => {
-      openWhatsAppModal(r, r.projects ? r.projects.name : 'Project');
+    card.querySelector('[data-share]').addEventListener('click', async () => {
+      await openWhatsAppModal(r, r.projects ? r.projects.name : 'Project');
+    });
+    card.querySelector('[data-edit]').addEventListener('click', () => {
+      openReportModal(r.id);
+    });
+    reportsList.appendChild(card);
+  }
+
+  reportsBulk.onRendered();
+  await renderAutoOnlyReportCards(reports);
+}
+
+// For a project + day where bugs were added but nobody filed a manual daily
+// update, show a lightweight read-only "auto" card so the activity still
+// shows up in the Daily Log — instead of silently going unrecorded. Nothing
+// is written to the database for this; it's derived live from the Bugs log
+// each time the tab is opened. Scoped to the date filter (or today, if no
+// date is chosen) to keep this cheap.
+async function renderAutoOnlyReportCards(existingReports) {
+  const projectFilter = document.getElementById('filter-project').value;
+  const dateFilter = document.getElementById('filter-date').value || todayStr();
+  const loggedPairs = new Set(existingReports.map((r) => `${r.project_id}|${r.report_date}`));
+  const projectsToCheck = projectFilter
+    ? projectsCache.filter((p) => p.id === projectFilter)
+    : projectsCache;
+
+  const autoCards = [];
+  for (const p of projectsToCheck) {
+    if (loggedPairs.has(`${p.id}|${dateFilter}`)) continue;
+    const bugStats = await getBugStatsForDay(p.id, dateFilter);
+    const hasActivity = bugStats.total || bugStats.closed || bugStats.reopened
+      || bugStats.retest || bugStats.fixed || bugStats.inProgress
+      || bugStats.retestPass || bugStats.retestFail || bugStats.retestBlocked;
+    if (!hasActivity) continue;
+    autoCards.push({ project: p, date: dateFilter, bugStats });
+  }
+
+  reportsEmpty.style.display = (existingReports.length || autoCards.length) ? 'none' : 'block';
+
+  autoCards.forEach(({ project, date, bugStats }) => {
+    const card = document.createElement('div');
+    card.className = 'report-card auto-card';
+    card.innerHTML = `
+      <div class="report-head">
+        <span class="proj-name">${escapeHtml(project.name)}</span>
+        <span>${date}</span>
+        <span class="auto-badge">AUTO — no manual update filed</span>
+      </div>
+      <button class="icon-btn report-share" data-auto-share>share</button>
+      <div class="report-body">
+        <div class="auto-bug-line"><span class="auto-badge">AUTO</span> ${formatBugStatsLine(bugStats)} <span class="auto-hint">— tracked live from the Bugs log</span></div>
+      </div>
+    `;
+    card.querySelector('[data-auto-share]').addEventListener('click', async () => {
+      const syntheticPayload = {
+        report_date: date,
+        project_id: project.id,
+        project_manager: null,
+        assigned_tasks: null,
+        bugsheet: null,
+        test_cases: 0,
+        sign_off: false,
+        remarks: null,
+        notes: 'Auto-generated from the Bugs log — no manual daily update was filed.',
+      };
+      await openWhatsAppModal(syntheticPayload, project.name);
     });
     reportsList.appendChild(card);
   });
 }
 
-// ---------- Celebration toasts ----------
+// ---------- Daily log detail / edit modal ----------
+
+const reportModal = document.getElementById('report-modal');
+const reportEditForm = document.getElementById('report-edit-form');
+const reProjectSelect = document.getElementById('re-project');
+
+function openReportModal(id) {
+  const r = reportsCache.find((x) => x.id === id);
+  if (!r) return;
+  clearFormError('report-edit-error');
+  reProjectSelect.innerHTML = projectsCache.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+  document.getElementById('re-id').value = r.id;
+  document.getElementById('re-date').value = r.report_date || '';
+  reProjectSelect.value = r.project_id;
+  document.getElementById('re-pm').value = r.project_manager || '';
+  document.getElementById('re-tasks').value = r.assigned_tasks || '';
+  document.getElementById('re-bugsheet').value = r.bugsheet || '';
+  document.getElementById('re-testcases').value = r.test_cases ?? 0;
+  document.getElementById('re-uibugs').value = r.ui_bugs ?? 0;
+  document.getElementById('re-funcbugs').value = r.functionality_bugs ?? 0;
+  document.getElementById('re-signoff').checked = !!r.sign_off;
+  document.getElementById('re-remarks').value = r.remarks || '';
+  document.getElementById('re-notes').value = r.notes || '';
+  reportModal.classList.remove('hidden');
+}
+
+function closeReportModal() {
+  reportModal.classList.add('hidden');
+}
+
+document.getElementById('report-modal-close').addEventListener('click', closeReportModal);
+reportModal.addEventListener('click', (e) => {
+  if (e.target === reportModal) closeReportModal();
+});
+
+reportEditForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearFormError('report-edit-error');
+  const id = document.getElementById('re-id').value;
+  const project_id = reProjectSelect.value;
+  if (!project_id) {
+    showFormError('report-edit-error', 'Select a project.');
+    return;
+  }
+  const reportDate = document.getElementById('re-date').value;
+  if (!reportDate) {
+    showFormError('report-edit-error', 'Date is required.');
+    return;
+  }
+  const testCases = document.getElementById('re-testcases').value;
+  const uiBugs = document.getElementById('re-uibugs').value;
+  const funcBugs = document.getElementById('re-funcbugs').value;
+  const numericFields = [
+    ['Test cases', testCases],
+    ['UI bugs', uiBugs],
+    ['Functionality bugs', funcBugs],
+  ];
+  for (const [label, val] of numericFields) {
+    if (val === '' || Number(val) < 0 || !Number.isInteger(Number(val))) {
+      showFormError('report-edit-error', `${label} must be a whole number, 0 or higher.`);
+      return;
+    }
+  }
+
+  const payload = {
+    report_date: reportDate,
+    project_id,
+    project_manager: document.getElementById('re-pm').value.trim() || null,
+    assigned_tasks: document.getElementById('re-tasks').value.trim() || null,
+    bugsheet: document.getElementById('re-bugsheet').value.trim() || null,
+    test_cases: Number(testCases),
+    ui_bugs: Number(uiBugs),
+    functionality_bugs: Number(funcBugs),
+    remarks: document.getElementById('re-remarks').value.trim() || null,
+    sign_off: document.getElementById('re-signoff').checked,
+    notes: document.getElementById('re-notes').value.trim() || null,
+  };
+
+  const { error } = await sb.from('daily_reports').update(payload).eq('id', id);
+  if (error) {
+    showFormError('report-edit-error', error.message);
+    return;
+  }
+  notify(`${actorLabel()} updated a daily log entry`, 'daily_report', 'update');
+  toast('Daily log entry updated!', { emoji: '💾' });
+  closeReportModal();
+  loadReports();
+});
+
+document.getElementById('report-edit-delete').addEventListener('click', async () => {
+  const id = document.getElementById('re-id').value;
+  if (!id) return;
+  if (!confirm('Remove this entry? This cannot be undone.')) return;
+  const { error } = await sb.from('daily_reports').delete().eq('id', id);
+  if (error) {
+    showFormError('report-edit-error', error.message);
+    return;
+  }
+  toast('Daily log entry removed.', { emoji: '🗑️' });
+  closeReportModal();
+  loadReports();
+});
+
+// ---------- Toasts (success / error feedback) ----------
 
 let toastWrap = null;
-function celebrate(message, emoji) {
+function toast(message, opts = {}) {
+  const { emoji, type } = opts;
   if (!toastWrap) {
     toastWrap = document.createElement('div');
     toastWrap.className = 'celebrate-toast-wrap';
     document.body.appendChild(toastWrap);
   }
-  const toast = document.createElement('div');
-  toast.className = 'celebrate-toast';
-  toast.innerHTML = `<span class="celebrate-emoji">${emoji || '✨'}</span><span>${escapeHtml(message)}</span>`;
-  toastWrap.appendChild(toast);
+  const el = document.createElement('div');
+  el.className = 'celebrate-toast' + (type === 'error' ? ' toast-error' : '');
+  el.innerHTML = `<span class="celebrate-emoji">${emoji || (type === 'error' ? '⚠️' : '✅')}</span><span>${escapeHtml(message)}</span>`;
+  toastWrap.appendChild(el);
   setTimeout(() => {
-    toast.classList.add('leaving');
-    setTimeout(() => toast.remove(), 300);
-  }, 2200);
+    el.classList.add('leaving');
+    setTimeout(() => el.remove(), 300);
+  }, type === 'error' ? 3400 : 2200);
+}
+
+// Kept as a thin wrapper so every earlier "celebrate(...)" call site
+// (project added, bug logged, etc.) keeps working unchanged.
+function celebrate(message, emoji) {
+  toast(message, { emoji });
+}
+
+function toastError(message) {
+  toast(message, { type: 'error' });
 }
 
 function escapeHtml(str) {
@@ -1683,6 +3580,184 @@ function clearFormError(elId) {
   el.textContent = '';
   el.classList.add('hidden');
 }
+
+// ---------- Download to Excel (.xlsx) ----------
+
+function safeFileName(name) {
+  return String(name || 'download').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
+}
+
+function downloadSheet(filename, rows, sheetName) {
+  if (!rows || !rows.length) {
+    toastError('Nothing to download yet.');
+    return;
+  }
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, (sheetName || 'Sheet1').slice(0, 31));
+  XLSX.writeFile(wb, `${filename}.xlsx`);
+  toast(`${filename}.xlsx downloaded.`, { emoji: '⬇️' });
+}
+
+// A "template" download is just headers + one filled-in example row, so a
+// blank file always has something to download (unlike downloadSheet, which
+// needs existing data).
+function downloadTemplateSheet(filename, headers, exampleRow, sheetName) {
+  const ws = XLSX.utils.aoa_to_sheet([headers, exampleRow]);
+  ws['!cols'] = headers.map(() => ({ wch: 22 }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, (sheetName || 'Template').slice(0, 31));
+  XLSX.writeFile(wb, `${filename}.xlsx`);
+  toast(`${filename}.xlsx template downloaded.`, { emoji: '⬇️' });
+}
+
+// Test execution → blank template matching the Add test case fields exactly,
+// so filled-in rows can be copied straight into the form / a future import.
+document.getElementById('download-tc-template-btn').addEventListener('click', () => {
+  downloadTemplateSheet(
+    'Test Cases Template',
+    ['Title', 'Priority', 'Category', 'Status', 'Description', 'Notes'],
+    [
+      'Verify login with valid credentials',
+      'High',
+      'Functional',
+      'Not Run',
+      'Enter a valid username and password, click Login, verify the user lands on the dashboard',
+      'Priority: Low/Medium/High. Category: Functional/Positive/Negative/Edge Case/Security/Validation/UI-UX/Performance/Accessibility/Compatibility/Regression/UAT. Status: Not Run/Pass/Fail/Blocked.',
+    ],
+    'Test Cases'
+  );
+});
+
+// Bugs → blank template using the exact column headers the "Import bugs from
+// Google Sheet" panel already recognizes (see BUG_HEADER_ALIASES), so a filled
+// template can be copied straight into a Google Sheet and imported as-is.
+document.getElementById('download-bugs-template-btn').addEventListener('click', () => {
+  downloadTemplateSheet(
+    'Bugs Template',
+    ['Bug Id', 'Page', 'Module', 'Sub Module', 'Title', 'Description', 'Steps to Reproduce', 'Expected Result', 'Actual Result', 'Issue Type', 'Severity', 'Reported By', 'Reported Date', 'Status', 'Developer Status', 'Developer Comments', 'Manager Comments', 'Retest Status', 'Notes', 'Closing Date'],
+    [
+      'BUG-001',
+      'Checkout page',
+      'University Admin',
+      'Departments – Create Department',
+      'Login button unresponsive on checkout',
+      'Clicking the login button does not navigate anywhere',
+      '1. Go to checkout page\n2. Fill in valid details\n3. Click Login',
+      'User is redirected to the dashboard after logging in',
+      'Nothing happens, button stays disabled',
+      'Functional',
+      'High',
+      'Jane Doe',
+      '2026-08-17',
+      'Open',
+      'Not Started',
+      '',
+      '',
+      'Not Retested',
+      'Only reproduced on Chrome so far',
+      '',
+    ],
+    'Bugs'
+  );
+});
+
+// Projects tab → downloads only the projects ledger.
+document.getElementById('download-projects-btn').addEventListener('click', () => {
+  const rows = projectsCache.map((p) => ({
+    'Project': p.name,
+    'Status': p.status,
+    'Project Manager': p.project_manager || '',
+    'Start Date': p.start_date || '',
+    'End Date': p.end_date || '',
+    'Bugsheet': p.bugsheet || '',
+    'Project Document': p.project_document || '',
+    'KT Date': p.kt_date || '',
+    'Sign Off Date': p.sign_off_date || '',
+    'Remarks': p.remarks || '',
+  }));
+  downloadSheet('Projects', rows, 'Projects');
+});
+
+// Project Details tab → downloads only the currently selected project's full detail sheet.
+document.getElementById('download-details-btn').addEventListener('click', () => {
+  const id = detailsSelect.value;
+  const p = projectsCache.find((x) => x.id === id);
+  if (!p) {
+    toastError('Select a project first.');
+    return;
+  }
+  const row = {};
+  detailFieldGroups.forEach((f) => {
+    if (f.isHeader) return;
+    row[f.label] = p[f.key] || '';
+  });
+  downloadSheet(`${safeFileName(p.name)} - Project Details`, [row], 'Project Details');
+});
+
+// Test execution panel → downloads only the currently selected project's test cases.
+document.getElementById('download-tc-btn').addEventListener('click', () => {
+  const id = detailsSelect.value;
+  const p = projectsCache.find((x) => x.id === id);
+  const rows = tcCache.map((c) => ({
+    'Title': c.title,
+    'Priority': c.priority || '',
+    'Category': c.category || '',
+    'Status': c.status,
+    'Last Run Date': c.last_run_date || '',
+    'Description': c.description || '',
+    'Notes': c.notes || '',
+  }));
+  downloadSheet(`${safeFileName(p ? p.name : 'Project')} - Test Cases`, rows, 'Test Cases');
+});
+
+// Bugs panel → downloads only the currently selected project's bugs.
+document.getElementById('download-bugs-btn').addEventListener('click', () => {
+  const id = bugsSelect.value;
+  const p = projectsCache.find((x) => x.id === id);
+  const rows = bugCache.map((b) => ({
+    'Bug Id': b.bug_id || '',
+    'Page': b.page,
+    'Module': b.module || '',
+    'Sub Module': b.sub_module || '',
+    'Title': b.title,
+    'Description': b.description || '',
+    'Steps to Reproduce': b.steps_to_reproduce || '',
+    'Expected Result': b.expected_result || '',
+    'Actual Result': b.actual_result || '',
+    'Issue Type': b.issue_type || '',
+    'Severity': b.severity,
+    'Reported By': b.reported_by || '',
+    'Reported Date': b.reported_date || '',
+    'Status': b.status,
+    'Developer Status': b.developer_status || '',
+    'Developer Comments': b.developer_comments || '',
+    'Manager Comments': b.manager_comments || '',
+    'Retest Status': b.retest_status || '',
+    'Notes': b.notes || '',
+    'Closing Date': b.closed_date || '',
+  }));
+  downloadSheet(`${safeFileName(p ? p.name : 'Project')} - Bugs`, rows, 'Bugs');
+});
+
+// Daily Log tab (History) → downloads only the currently filtered daily logs.
+document.getElementById('download-reports-btn').addEventListener('click', () => {
+  const rows = reportsCache.map((r) => ({
+    'Project': r.projects ? r.projects.name : '',
+    'Date': r.report_date,
+    'Project Manager': r.project_manager || '',
+    'Assigned Tasks': r.assigned_tasks || '',
+    'Test Cases': r.test_cases,
+    'UI Bugs': r.ui_bugs,
+    'Functionality Bugs': r.functionality_bugs,
+    'Bugsheet': r.bugsheet || '',
+    'Sign Off': r.sign_off ? 'Yes' : 'No',
+    'Remarks': r.remarks || '',
+    'Notes': r.notes || '',
+    'Logged By': r.logged_by_email || '',
+  }));
+  downloadSheet('Daily Logs', rows, 'Daily Logs');
+});
 
 // ---------- Theme toggle (light/dark) ----------
 
