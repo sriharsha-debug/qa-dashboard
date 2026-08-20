@@ -463,6 +463,9 @@
           <label>Project manager <span class="auto-badge">AUTO</span>
             <input type="text" id="r-pm" placeholder="Name" maxlength="80" />
           </label>
+          <label>Status <span class="auto-badge">AUTO</span>
+            <select id="r-status"></select>
+          </label>
           <label class="span-2">Assigned tasks
             <div id="task-list" class="task-list"></div>
             <button type="button" id="add-task-btn" class="btn btn-ghost btn-small">+ Add task</button>
@@ -470,6 +473,13 @@
           <label>Bugsheet <span class="auto-badge">AUTO</span>
             <input type="text" id="r-bugsheet" placeholder="Link or reference" maxlength="500" />
           </label>
+          <label>Project document <span class="auto-badge">AUTO</span>
+            <input type="text" id="r-project-document" placeholder="Link or reference" maxlength="500" />
+          </label>
+          <div class="span-2 detail-item" id="r-bug-summary-line">
+            <span class="detail-label">Bugs <span class="auto-badge">AUTO</span></span>
+            <span class="detail-value" id="r-bug-summary-value">Pick a project to see live totals</span>
+          </div>
           <label>Test cases <span class="auto-badge">AUTO</span>
             <input type="number" id="r-testcases" min="0" max="100000" step="1" value="0" required />
           </label>
@@ -481,7 +491,7 @@
           </label>
           <div class="span-2">
             <button type="button" id="r-refresh-counts" class="btn btn-ghost btn-small">↻ Refresh from live data</button>
-            <span class="auto-hint">Project manager, Bugsheet, Test cases and Bug counts are filled automatically from Project Details / the Bugs log when you pick a project — click to re-sync, or adjust by hand before saving. Editing Project Details later updates every daily log automatically; you don't need to re-save old entries.</span>
+            <span class="auto-hint">Status, Project manager, Bugsheet, Project document, Test cases and Bug counts are filled automatically from Project Details / the Bugs log when you pick a project — click to re-sync, or adjust by hand before saving. Editing Project Details later updates every daily log automatically; you don't need to re-save old entries. Saving here also updates Project Details.</span>
           </div>
           <label class="signoff-field">
             <span>Sign off</span>
@@ -786,12 +796,22 @@
         <label>Project manager <span class="auto-badge">AUTO</span>
           <input type="text" id="re-pm" placeholder="Name" maxlength="80" />
         </label>
+        <label>Status <span class="auto-badge">AUTO</span>
+          <select id="re-status"></select>
+        </label>
         <label class="span-2">Assigned tasks
           <textarea id="re-tasks" rows="3" placeholder="Task 1: ..." maxlength="2000"></textarea>
         </label>
         <label>Bugsheet <span class="auto-badge">AUTO</span>
           <input type="text" id="re-bugsheet" placeholder="Link or reference" maxlength="500" />
         </label>
+        <label>Project document <span class="auto-badge">AUTO</span>
+          <input type="text" id="re-project-document" placeholder="Link or reference" maxlength="500" />
+        </label>
+        <div class="span-2 detail-item" id="re-bug-summary-line">
+          <span class="detail-label">Bugs <span class="auto-badge">AUTO</span></span>
+          <span class="detail-value" id="re-bug-summary-value">—</span>
+        </div>
         <label>Test cases <span class="auto-badge">AUTO</span>
           <input type="number" id="re-testcases" min="0" max="100000" step="1" required />
         </label>
@@ -803,7 +823,7 @@
         </label>
         <div class="span-2">
           <button type="button" id="re-refresh-counts" class="btn btn-ghost btn-small">↻ Refresh from live data</button>
-          <span class="auto-hint">Pulls current Project manager, Bugsheet, Test cases and Bug counts from Project Details / the Bugs log for this project.</span>
+          <span class="auto-hint">Pulls current Status, Project manager, Bugsheet, Project document, Test cases and Bug counts from Project Details / the Bugs log for this project.</span>
         </div>
         <label class="signoff-field">
           <span>Sign off</span>

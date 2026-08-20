@@ -179,6 +179,42 @@ updating them later on the Projects tab didn't touch old entries. Now:
 Other project fields shown on the Daily Log (like Project Deadline, i.e.
 `projects.end_date`) already worked this way before this change.
 
+## 6d. Status, live Bugs summary, and Project Document on the Daily Log — and a duplicate-card fix
+
+No schema change for this either — same existing `projects` columns
+(`status`, `project_document`) and `bugs` table, used from a new place.
+
+**New on the Daily Log form (add + edit):**
+- **Status** — a dropdown of your team's statuses (Projects tab → Manage
+  statuses), auto-filled from the selected project, editable, and written
+  back to the project on save.
+- **Project document** — same pattern as Bugsheet: auto-filled, editable,
+  written back.
+- **Bugs (AUTO)** — a live line showing the same total/open/closed/reopened
+  summary you see on Project Details (e.g. *"24 total — 5 Open, 2 Reopened,
+  17 Closed"*), read-only, always current.
+
+These mirror what's shown on the Project Details overview panel, and the
+same live-sync rule from 6c applies: editing them from the Daily Log form
+updates the project, and editing them on Project Details updates every
+Daily Log card immediately — either screen works.
+
+Report cards now also show a Status pill and a Project Document link,
+sourced live the same way Project Manager/Bugsheet already were.
+
+**Duplicate-looking Daily Log cards:** if you're in a timezone ahead of UTC
+(e.g. India), the app previously computed "today" using UTC
+(`toISOString()`), which rolls over several hours before your actual local
+midnight. In roughly the first ~5 hours after your local midnight, that
+made the default date on the entry form disagree with the date the
+auto-generated "bug activity, no manual entry" card used — so a project
+could show both a manually dated entry and a separate auto card for what
+felt like the same day. "Today" is now computed from your browser's local
+calendar date everywhere, so this shouldn't happen anymore. Sharing (single
+entry, or **Share day's updates**) already merged multiple entries for the
+same project + date into one block before sending — that part didn't need
+a fix, just the duplicate *display* did.
+
 ## 7. Open your dashboard
 
 Vercel gives you a URL like `https://your-project.vercel.app`. Open it,
