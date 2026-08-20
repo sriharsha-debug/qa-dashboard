@@ -3120,6 +3120,19 @@ document.getElementById('re-refresh-counts').addEventListener('click', autofillE
 
 reportForm.addEventListener('submit', async (e) => {
   e.preventDefault();
+  // Guard against double-submit (double-click, double-tap, or a slow
+  // connection tempting a second click) inserting two identical rows.
+  const submitBtn = reportForm.querySelector('button[type="submit"]');
+  if (submitBtn.disabled) return;
+  submitBtn.disabled = true;
+  try {
+    await submitReportForm();
+  } finally {
+    submitBtn.disabled = false;
+  }
+});
+
+async function submitReportForm() {
   clearFormError('report-error');
   const project_id = document.getElementById('r-project').value;
   if (!project_id) {
@@ -3204,7 +3217,7 @@ reportForm.addEventListener('submit', async (e) => {
   loadProjects();
 
   await openWhatsAppModal(payload, project || null);
-});
+}
 
 // ---------- Auto bug tracking for Daily Log ----------
 // Nothing here is written to the database — bug counts are always computed
