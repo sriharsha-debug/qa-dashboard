@@ -70,6 +70,7 @@ create table if not exists daily_reports (
   functionality_bugs integer default 0,
   remarks text,
   sign_off boolean not null default false,
+  sign_off_date date,
   notes text,
   created_at timestamptz not null default now()
 );
