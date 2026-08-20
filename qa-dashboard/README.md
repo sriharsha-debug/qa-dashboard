@@ -144,6 +144,77 @@ column are required, the rest are optional):
 - **Developer Status**, **Developer Comments**, **Retest Status**, **Manager Comments**
 - **Bug Id**, **Date**, **Notes** (Bug Id/Date are kept in Notes, for traceability back to the sheet row)
 
+## 6c. Daily Log stays in sync automatically (no new migration needed)
+
+No schema change is required for this — it's a display/behavior change only,
+using columns that already exist.
+
+**Bugs and test cases** — the Daily Log has always pulled Test Cases, UI
+bugs, Functionality bugs, "bugs identified today", closed/reopened/retest
+counts, etc. live from the `bugs` and `test_cases` tables (see the `AUTO`
+badges). Add a bug, close one, move one to Retest, mark one Reopened — the
+Daily Log card, the single-entry share, and **Share day's updates** (the
+"share everything at once" button, top of the Daily Log tab) all reflect it
+immediately, with nothing to re-type.
+
+**Project details (Project Manager, Bugsheet)** — these now work the same
+way. Project Manager and Bugsheet used to be typed by hand into each daily
+entry and saved as a one-time snapshot on that `daily_reports` row, so
+updating them later on the Projects tab didn't touch old entries. Now:
+- The Daily Log form still auto-fills Project Manager/Bugsheet from the
+  selected project (labelled `AUTO`, click **↻ Refresh from live data** to
+  re-sync), and still saves whatever you typed to that row for audit/history.
+- But everywhere the Daily Log is *displayed or shared* — the report card,
+  the single-entry share, **Share day's updates**, the auto-generated card
+  for a project with bug activity but no manual entry, and the Daily Logs
+  CSV export — now reads Project Manager and Bugsheet **live from the
+  project record**, not the old saved snapshot.
+- So: edit a project's Project Manager or Bugsheet on the Projects tab once,
+  and every past and future daily log for that project shows the new value
+  immediately — you never have to re-save old entries.
+- It also still works the other way: typing a new Project Manager/Bugsheet
+  into a daily entry (add or edit) writes it back to the project record too,
+  so either screen can be the one you update from.
+
+Other project fields shown on the Daily Log (like Project Deadline, i.e.
+`projects.end_date`) already worked this way before this change.
+
+## 6d. Status, live Bugs summary, and Project Document on the Daily Log — and a duplicate-card fix
+
+No schema change for this either — same existing `projects` columns
+(`status`, `project_document`) and `bugs` table, used from a new place.
+
+**New on the Daily Log form (add + edit):**
+- **Status** — a dropdown of your team's statuses (Projects tab → Manage
+  statuses), auto-filled from the selected project, editable, and written
+  back to the project on save.
+- **Project document** — same pattern as Bugsheet: auto-filled, editable,
+  written back.
+- **Bugs (AUTO)** — a live line showing the same total/open/closed/reopened
+  summary you see on Project Details (e.g. *"24 total — 5 Open, 2 Reopened,
+  17 Closed"*), read-only, always current.
+
+These mirror what's shown on the Project Details overview panel, and the
+same live-sync rule from 6c applies: editing them from the Daily Log form
+updates the project, and editing them on Project Details updates every
+Daily Log card immediately — either screen works.
+
+Report cards now also show a Status pill and a Project Document link,
+sourced live the same way Project Manager/Bugsheet already were.
+
+**Duplicate-looking Daily Log cards:** if you're in a timezone ahead of UTC
+(e.g. India), the app previously computed "today" using UTC
+(`toISOString()`), which rolls over several hours before your actual local
+midnight. In roughly the first ~5 hours after your local midnight, that
+made the default date on the entry form disagree with the date the
+auto-generated "bug activity, no manual entry" card used — so a project
+could show both a manually dated entry and a separate auto card for what
+felt like the same day. "Today" is now computed from your browser's local
+calendar date everywhere, so this shouldn't happen anymore. Sharing (single
+entry, or **Share day's updates**) already merged multiple entries for the
+same project + date into one block before sending — that part didn't need
+a fix, just the duplicate *display* did.
+
 ## 7. Open your dashboard
 
 Vercel gives you a URL like `https://your-project.vercel.app`. Open it,

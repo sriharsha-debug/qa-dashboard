@@ -917,12 +917,46 @@ document.getElementById('download-audit-btn')?.addEventListener('click', () => {
 
 // ---------- Tabs ----------
 
+// Every tab pulls its data fresh from the database the moment it's opened.
+// Nothing here is cached-only: this is what guarantees that a project
+// rename, a status change, or a bug update shows up everywhere the moment
+// you look at it, without needing to reload the page.
+function refreshTab(tabName) {
+  switch (tabName) {
+    case 'projects':
+      loadProjects();
+      break;
+    case 'details':
+      loadProjects(); // also drives renderDetailsSelect() -> showProjectDetails()
+      break;
+    case 'bugs':
+      loadProjects(); // also drives renderBugsSelect() -> showBugsForProject()
+      break;
+    case 'daily':
+      loadProjects();
+      loadReports();
+      break;
+    case 'team':
+      loadTeam();
+      break;
+    case 'notifications':
+      loadNotificationsPage();
+      break;
+    case 'audit':
+      loadAuditLogs();
+      break;
+    default:
+      break;
+  }
+}
+
 document.querySelectorAll('.tab').forEach((tab) => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
     document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
     tab.classList.add('active');
     document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+    refreshTab(tab.dataset.tab);
   });
 });
 
@@ -1039,6 +1073,7 @@ function renderProjects(projects) {
       notify(`${actorLabel()} changed "${p ? p.name : 'a project'}" status to ${sel.value}`, 'project', 'status_change');
       toast(`Status set to ${sel.value}.`, { emoji: '🔄' });
       loadProjects();
+      loadReports();
     });
   });
 
@@ -1312,6 +1347,10 @@ editForm.addEventListener('submit', async (e) => {
     notify(`${actorLabel()} updated project "${payload.name}"`, 'project', 'update');
     flashFields(editForm, 'field-success');
     celebrate(`"${payload.name}" updated!`, '💾');
+    // Project fields (name, PM, dates, etc.) are shown by reference
+    // everywhere via project_id joins, so refresh every place a project
+    // name/detail could be displayed — not just the Projects tab.
+    loadReports();
   } else {
     payload.created_by_email = currentUser ? currentUser.email : null;
     payload.owner_id = currentUser ? currentUser.id : null;
@@ -1361,7 +1400,7 @@ const apkList = document.getElementById('apk-list');
 const apkEmpty = document.getElementById('apk-empty');
 const apkCount = document.getElementById('apk-count');
 
-document.getElementById('apk-date').valueAsDate = new Date();
+document.getElementById('apk-date').value = todayStr();
 
 const detailFieldGroups = [
   { label: 'Group', span2: true, isHeader: true, title: 'Overview' },
@@ -2538,7 +2577,7 @@ apkForm.addEventListener('submit', async (e) => {
   celebrate('APK logged!', '📦');
   flashFields(apkForm, 'field-success');
   apkForm.reset();
-  document.getElementById('apk-date').valueAsDate = new Date();
+  document.getElementById('apk-date').value = todayStr();
   showProjectDetails(project_id);
 });
 
@@ -2606,20 +2645,93 @@ function renderApkShares(shares) {
 }
 
 function todayStr() {
+  // Local calendar date, NOT toISOString() (which is UTC and rolls over
+  // several hours before local midnight for timezones east of UTC — this
+  // was the cause of "two logs for one day" reports: the auto-generated
+  // card and a manually dated entry disagreeing on what "today" was).
   const d = new Date();
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
-async function buildBatchWhatsAppMessage(reports, dateStr) {
-  const niceDate = new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB');
-  let msg = `*QA Daily Updates — ${niceDate}*\n`;
-  msg += `_${reports.length} project${reports.length === 1 ? '' : 's'} updated_\n`;
+// Multiple manual entries logged for the same project on the same day (e.g.
+// two people filing separately) are combined into ONE block per project
+// when sharing — so "share all" never sends a project twice.
+function mergeReportsForProject(group) {
+  const latest = group[group.length - 1];
+  const dedupJoin = (values) => {
+    const seen = new Set();
+    const out = [];
+    values.filter(Boolean).forEach((t) => {
+      if (!seen.has(t)) { seen.add(t); out.push(t); }
+    });
+    return out.join('\n') || null;
+  };
+  const lastNonEmpty = (key) => {
+    for (let i = group.length - 1; i >= 0; i -= 1) {
+      if (group[i][key]) return group[i][key];
+    }
+    return null;
+  };
+  return {
+    project_id: latest.project_id,
+    report_date: latest.report_date,
+    project_manager: lastNonEmpty('project_manager'),
+    assigned_tasks: dedupJoin(group.map((r) => r.assigned_tasks)),
+    bugsheet: lastNonEmpty('bugsheet'),
+    sign_off: group.some((r) => r.sign_off),
+    sign_off_date: lastNonEmpty('sign_off_date'),
+    notes: dedupJoin(group.map((r) => r.notes)),
+  };
+}
 
-  for (let i = 0; i < reports.length; i++) {
-    const r = reports[i];
-    const projectName = r.projects ? r.projects.name : 'Project';
-    const bugStats = await getBugStatsForDay(r.project_id, r.report_date);
-    msg += `\n${i + 1}. ${formatDailyUpdateBlock(r, projectName, bugStats)}`;
+async function buildBatchWhatsAppMessage(reports, dateStr, autoOnly) {
+  const niceDate = new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB');
+
+  // Group manual entries by project — this is what guarantees one project
+  // = one shared log block, even if two entries were filed for it that day.
+  const byProject = new Map();
+  for (const r of reports) {
+    if (!byProject.has(r.project_id)) byProject.set(r.project_id, []);
+    byProject.get(r.project_id).push(r);
+  }
+
+  const totalCount = byProject.size + (autoOnly ? autoOnly.length : 0);
+  let msg = `*QA Daily Updates — ${niceDate}*\n`;
+  msg += `_${totalCount} project${totalCount === 1 ? '' : 's'} updated_\n`;
+
+  let i = 0;
+  for (const [projectId, group] of byProject) {
+    i += 1;
+    const liveProject = projectsCache.find((p) => p.id === projectId)
+      || (group[0].projects ? { name: group[0].projects.name } : null);
+    const merged = mergeReportsForProject(group);
+    const [bugStats, liveCounts] = await Promise.all([
+      getBugStatsForDay(projectId, dateStr),
+      getProjectLiveCounts(projectId),
+    ]);
+    const deadline = getProjectDeadline(projectId);
+    msg += `\n${i}. ${formatDailyUpdateBlock(merged, liveProject, bugStats, liveCounts, deadline)}`;
+  }
+
+  // Projects with bug activity but no manual daily update filed — included
+  // so "share all" really covers everything that happened that day, not
+  // just entries someone remembered to log by hand.
+  if (autoOnly) {
+    for (const a of autoOnly) {
+      i += 1;
+      const liveCounts = await getProjectLiveCounts(a.project.id);
+      const deadlineStr = formatDeadlineDMY(getProjectDeadline(a.project.id));
+      msg += `\n${i}. *${a.project.name}* _(auto — no manual update filed)_\n`;
+      if (a.project.project_manager) msg += `• Project Manager: ${a.project.project_manager}\n`;
+      if (deadlineStr) msg += `• Project Deadline: ${deadlineStr}\n`;
+      msg += `• Total Bugs (auto): ${liveCounts.totalBugs}\n`;
+      msg += `• Bugs Opened (auto): ${liveCounts.openBugs}\n`;
+      msg += `• Bugs Closed (auto): ${liveCounts.closedBugs}\n`;
+      if (a.project.bugsheet) msg += `• Bug Sheet Link: ${a.project.bugsheet}\n`;
+    }
   }
 
   return msg;
@@ -2641,12 +2753,31 @@ document.getElementById('share-day-btn').addEventListener('click', async () => {
     toastError(error.message);
     return;
   }
-  if (!data || !data.length) {
-    toastError(`No daily entries found for ${new Date(dateStr + 'T00:00:00').toLocaleDateString()}. Log an entry first, or pick a different date in the filter above.`);
+  const reports = data || [];
+
+  // Fill in any project that only had bug activity that day (no manual
+  // entry filed), so the shared message reflects everything, not just the
+  // manually logged rows.
+  const loggedPairs = new Set(reports.map((r) => `${r.project_id}|${r.report_date}`));
+  const projectsToCheck = projectId
+    ? projectsCache.filter((p) => p.id === projectId)
+    : projectsCache;
+  const autoOnly = [];
+  for (const p of projectsToCheck) {
+    if (loggedPairs.has(`${p.id}|${dateStr}`)) continue;
+    const bugStats = await getBugStatsForDay(p.id, dateStr);
+    const hasActivity = bugStats.total || bugStats.closed || bugStats.reopened
+      || bugStats.retest || bugStats.fixed || bugStats.inProgress
+      || bugStats.retestPass || bugStats.retestFail || bugStats.retestBlocked;
+    if (hasActivity) autoOnly.push({ project: p, bugStats });
+  }
+
+  if (!reports.length && !autoOnly.length) {
+    toastError(`No daily entries or bug activity found for ${new Date(dateStr + 'T00:00:00').toLocaleDateString()}. Log an entry first, or pick a different date in the filter above.`);
     return;
   }
 
-  const message = await buildBatchWhatsAppMessage(data, dateStr);
+  const message = await buildBatchWhatsAppMessage(reports, dateStr, autoOnly);
   whatsappMessageEl.value = message;
   whatsappOpenLink.href = `https://wa.me/?text=${encodeURIComponent(message)}`;
   whatsappCopyBtn.textContent = 'Copy message';
@@ -2881,7 +3012,7 @@ const reportForm = document.getElementById('report-form');
 const reportsList = document.getElementById('reports-list');
 const reportsEmpty = document.getElementById('reports-empty');
 
-document.getElementById('r-date').valueAsDate = new Date();
+document.getElementById('r-date').value = todayStr();
 
 // ---------- Task list widget ----------
 
@@ -2936,8 +3067,66 @@ function resetTaskList() {
 
 renderTaskList();
 
+// ---------- Auto-fill Project manager / Project deadline / Bugsheet ----------
+// These used to be hand-typed on the Daily Log form, which is exactly how a
+// stale value ends up sitting next to the real Project Details record. They
+// now pull live from the `projects` table instead.
+async function autofillPmBugsheet(projectId, prefix) {
+  const p = projectsCache.find((x) => x.id === projectId);
+  if (!p) return;
+  document.getElementById(`${prefix}-pm`).value = p.project_manager || '';
+  document.getElementById(`${prefix}-bugsheet`).value = p.bugsheet || '';
+  const deadlineEl = document.getElementById(`${prefix}-deadline`);
+  if (deadlineEl) deadlineEl.value = p.end_date || '';
+}
+
+// Total Bugs / Bugs Opened / Bugs Closed are never stored on the daily
+// log entry — always pulled live from the Bugs log (via getProjectLiveCounts)
+// so they can never go stale or show a leftover number from save time.
+async function autofillLiveBugStats(projectId, prefix) {
+  if (!projectId) return;
+  const c = await getProjectLiveCounts(projectId);
+  document.getElementById(`${prefix}-total-bugs`).textContent = c.totalBugs;
+  document.getElementById(`${prefix}-bugs-opened`).textContent = c.openBugs;
+  document.getElementById(`${prefix}-bugs-closed`).textContent = c.closedBugs;
+}
+
+async function autofillReportCounts() {
+  const projectId = rProjectSelect.value;
+  if (!projectId) return;
+  await Promise.all([
+    autofillLiveBugStats(projectId, 'r'),
+    autofillPmBugsheet(projectId, 'r'),
+  ]);
+}
+rProjectSelect.addEventListener('change', autofillReportCounts);
+document.getElementById('r-refresh-counts').addEventListener('click', autofillReportCounts);
+
+async function autofillEditReportCounts() {
+  const projectId = reProjectSelect.value;
+  if (!projectId) return;
+  await Promise.all([
+    autofillLiveBugStats(projectId, 're'),
+    autofillPmBugsheet(projectId, 're'),
+  ]);
+}
+document.getElementById('re-refresh-counts').addEventListener('click', autofillEditReportCounts);
+
 reportForm.addEventListener('submit', async (e) => {
   e.preventDefault();
+  // Guard against double-submit (double-click, double-tap, or a slow
+  // connection tempting a second click) inserting two identical rows.
+  const submitBtn = reportForm.querySelector('button[type="submit"]');
+  if (submitBtn.disabled) return;
+  submitBtn.disabled = true;
+  try {
+    await submitReportForm();
+  } finally {
+    submitBtn.disabled = false;
+  }
+});
+
+async function submitReportForm() {
   clearFormError('report-error');
   const project_id = document.getElementById('r-project').value;
   if (!project_id) {
@@ -2952,21 +3141,9 @@ reportForm.addEventListener('submit', async (e) => {
     return;
   }
   const bugsheetVal = document.getElementById('r-bugsheet').value.trim();
-  const testCases = document.getElementById('r-testcases').value;
-  const uiBugs = document.getElementById('r-uibugs').value;
-  const funcBugs = document.getElementById('r-funcbugs').value;
-  const numericFields = [
-    ['Test cases', testCases],
-    ['UI bugs', uiBugs],
-    ['Functionality bugs', funcBugs],
-  ];
-  for (const [label, val] of numericFields) {
-    if (val === '' || Number(val) < 0 || !Number.isInteger(Number(val))) {
-      showFormError('report-error', `${label} must be a whole number, 0 or higher.`);
-      flashFields(reportForm, 'field-error');
-      return;
-    }
-  }
+  const deadlineVal = document.getElementById('r-deadline').value || null;
+  const signOffChecked = document.getElementById('r-signoff').checked;
+  const signOffDateVal = document.getElementById('r-signoff-date').value || null;
 
   const payload = {
     report_date: reportDate,
@@ -2974,11 +3151,8 @@ reportForm.addEventListener('submit', async (e) => {
     project_manager: document.getElementById('r-pm').value.trim() || null,
     assigned_tasks: tasksToText() || null,
     bugsheet: bugsheetVal || null,
-    test_cases: Number(testCases),
-    ui_bugs: Number(uiBugs),
-    functionality_bugs: Number(funcBugs),
-    remarks: document.getElementById('r-remarks').value.trim() || null,
-    sign_off: document.getElementById('r-signoff').checked,
+    sign_off: signOffChecked,
+    sign_off_date: signOffChecked ? (signOffDateVal || reportDate) : signOffDateVal,
     notes: document.getElementById('r-notes').value.trim() || null,
     logged_by_email: currentUser ? currentUser.email : null,
     owner_id: currentUser ? currentUser.id : null,
@@ -2996,11 +3170,13 @@ reportForm.addEventListener('submit', async (e) => {
   flashFields(reportForm, 'field-success');
 
   // Keep the project record in sync with the latest daily update
+  // (Project deadline lives on `projects.end_date` — same pattern as
+  // Project Manager/Bugsheet.)
   const projectUpdates = {};
   if (payload.project_manager) projectUpdates.project_manager = payload.project_manager;
   if (payload.bugsheet) projectUpdates.bugsheet = payload.bugsheet;
-  if (payload.remarks) projectUpdates.remarks = payload.remarks;
-  if (payload.sign_off) projectUpdates.sign_off_date = payload.report_date;
+  if (deadlineVal) projectUpdates.end_date = deadlineVal;
+  if (payload.sign_off) projectUpdates.sign_off_date = payload.sign_off_date;
   if (Object.keys(projectUpdates).length) {
     projectUpdates.updated_at = new Date().toISOString();
     projectUpdates.updated_by_email = currentUser ? currentUser.email : null;
@@ -3008,13 +3184,14 @@ reportForm.addEventListener('submit', async (e) => {
   }
 
   reportForm.reset();
-  document.getElementById('r-date').valueAsDate = new Date();
+  document.getElementById('r-date').value = todayStr();
   resetTaskList();
+  await autofillReportCounts();
   loadReports();
   loadProjects();
 
-  await openWhatsAppModal(payload, project ? project.name : 'Project');
-});
+  await openWhatsAppModal(payload, project || null);
+}
 
 // ---------- Auto bug tracking for Daily Log ----------
 // Nothing here is written to the database — bug counts are always computed
@@ -3037,6 +3214,68 @@ async function getProjectBugSummary(projectId) {
   return { total: rows.length, byStatus };
 }
 
+// Live, always-current counts for a project — total bugs, UI vs
+// Functionality split, open vs closed, and test case totals. Pulled fresh
+// from the Bugs and Test Cases tables every time it's called (never stored),
+// so it can never go stale or show a leftover "0" the way a manually typed
+// number can.
+async function getProjectLiveCounts(projectId) {
+  const [bugsRes, tcRes] = await Promise.all([
+    sb.from('bugs').select('status, issue_type, severity').eq('project_id', projectId),
+    sb.from('test_cases').select('status').eq('project_id', projectId),
+  ]);
+  if (bugsRes.error) console.error(bugsRes.error);
+  if (tcRes.error) console.error(tcRes.error);
+  const bugs = bugsRes.data || [];
+  const testCases = tcRes.data || [];
+
+  const totalBugs = bugs.length;
+  const uiBugs = bugs.filter((b) => b.issue_type === 'UI/UX').length;
+  const functionalityBugs = totalBugs - uiBugs;
+  const closedBugs = bugs.filter((b) => b.status === 'Closed').length;
+  const openBugs = totalBugs - closedBugs;
+  // "Major" = Critical or High severity — there's no separate "Major" value
+  // in the bugs.severity list (Low/Medium/High/Critical), so this combines
+  // the two most severe levels. Adjust here if your team defines it differently.
+  const majorBugs = bugs.filter((b) => b.severity === 'Critical' || b.severity === 'High').length;
+  const criticalBugs = bugs.filter((b) => b.severity === 'Critical').length;
+
+  const testCasesTotal = testCases.length;
+  const testCasesPass = testCases.filter((t) => t.status === 'Pass').length;
+  const testCasesFail = testCases.filter((t) => t.status === 'Fail').length;
+  const testCasesBlocked = testCases.filter((t) => t.status === 'Blocked').length;
+
+  return {
+    totalBugs, uiBugs, functionalityBugs, openBugs, closedBugs, majorBugs, criticalBugs,
+    testCasesTotal, testCasesPass, testCasesFail, testCasesBlocked,
+  };
+}
+
+function formatLiveCountsLine(c) {
+  if (!c) return '';
+  const tcParts = [];
+  if (c.testCasesPass) tcParts.push(`${c.testCasesPass} pass`);
+  if (c.testCasesFail) tcParts.push(`${c.testCasesFail} fail`);
+  if (c.testCasesBlocked) tcParts.push(`${c.testCasesBlocked} blocked`);
+  const tcLine = `Test cases: ${c.testCasesTotal}${tcParts.length ? ` (${tcParts.join(', ')})` : ''}`;
+  const bugLine = `Bugs total: ${c.totalBugs} (${c.openBugs} open, ${c.closedBugs} closed, ${c.majorBugs} major) — UI/UX: ${c.uiBugs}, Functionality: ${c.functionalityBugs}`;
+  return `${tcLine} · ${bugLine}`;
+}
+
+// Project Deadline is the project's End date (projects.end_date) — surfaced
+// on the Daily Log so it travels with every entry/share without having to
+// be retyped. Read straight from the already-loaded projectsCache; nothing
+// new to fetch or store.
+function getProjectDeadline(projectId) {
+  const p = projectsCache.find((pr) => pr.id === projectId);
+  return p ? p.end_date : null;
+}
+
+function formatDeadlineDMY(dateStr) {
+  if (!dateStr) return null;
+  return new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-GB');
+}
+
 function formatBugSummaryLine(summary) {
   if (!summary || !summary.total) return 'No bugs logged yet';
   const order = ['Open', 'In Progress', 'Retest', 'Fixed', 'Reopened', 'Closed'];
@@ -3053,17 +3292,23 @@ function nextDateStr(dateStr) {
 async function getBugStatsForDay(projectId, dateStr) {
   const dayStart = `${dateStr}T00:00:00`;
   const dayEnd = `${nextDateStr(dateStr)}T00:00:00`;
+  const empty = {
+    total: 0, bySeverity: {}, titles: [],
+    closed: 0, reopened: 0, retest: 0, fixed: 0, inProgress: 0,
+    retestPass: 0, retestFail: 0, retestBlocked: 0,
+  };
   // One query covers both "created today" (newly identified) and "touched
-  // today" (status moved, e.g. to Closed/Reopened) — cheaper than two round
-  // trips, and keeps the identified/closed/reopened counts consistent.
+  // today" (status/retest status/dev status moved — e.g. to Retest, Fixed,
+  // Closed, Reopened) — cheaper than several round trips, and keeps every
+  // count consistent with the exact same snapshot of rows.
   const { data, error } = await sb
     .from('bugs')
-    .select('id, title, severity, status, created_at, updated_at')
+    .select('id, title, severity, status, retest_status, created_at, updated_at')
     .eq('project_id', projectId)
     .or(`and(created_at.gte.${dayStart},created_at.lt.${dayEnd}),and(updated_at.gte.${dayStart},updated_at.lt.${dayEnd})`);
   if (error) {
     console.error(error);
-    return { total: 0, bySeverity: {}, titles: [], closed: 0, reopened: 0 };
+    return empty;
   }
   const rows = data || [];
   const startD = new Date(dayStart);
@@ -3079,27 +3324,44 @@ async function getBugStatsForDay(projectId, dateStr) {
   // Best-effort, not a full history: this reflects the bug's *current*
   // status when it was last touched today, since we don't store every
   // intermediate transition. Good enough for a live daily-log summary.
-  const closed = rows.filter((b) => b.status === 'Closed' && inDay(b.updated_at)).length;
-  const reopened = rows.filter((b) => b.status === 'Reopened' && inDay(b.updated_at)).length;
-  return { total: identified.length, bySeverity, titles: identified.map((b) => b.title), closed, reopened };
+  const touchedToday = (statusField, value) => rows.filter((b) => b[statusField] === value && inDay(b.updated_at)).length;
+  const closed = touchedToday('status', 'Closed');
+  const reopened = touchedToday('status', 'Reopened');
+  const retest = touchedToday('status', 'Retest');
+  const fixed = touchedToday('status', 'Fixed');
+  const inProgress = touchedToday('status', 'In Progress');
+  const retestPass = touchedToday('retest_status', 'Pass');
+  const retestFail = touchedToday('retest_status', 'Fail');
+  const retestBlocked = touchedToday('retest_status', 'Blocked');
+  return {
+    total: identified.length, bySeverity, titles: identified.map((b) => b.title),
+    closed, reopened, retest, fixed, inProgress, retestPass, retestFail, retestBlocked,
+  };
 }
 
 // The one shared format for "bugs identified" — used in the Daily Log list,
 // in single-entry shares, in the batch "Share day's updates" message, and in
 // auto-only cards, so the number always reads the same way everywhere.
 function formatBugStatsLine(stats) {
-  if (!stats || !stats.total) {
+  const extrasFor = (s) => {
     const extras = [];
-    if (stats && stats.closed) extras.push(`${stats.closed} closed`);
-    if (stats && stats.reopened) extras.push(`${stats.reopened} reopened`);
+    if (s.retest) extras.push(`${s.retest} moved to retest`);
+    if (s.fixed) extras.push(`${s.fixed} fixed`);
+    if (s.closed) extras.push(`${s.closed} closed`);
+    if (s.reopened) extras.push(`${s.reopened} reopened`);
+    if (s.retestPass) extras.push(`${s.retestPass} retest passed`);
+    if (s.retestFail) extras.push(`${s.retestFail} retest failed`);
+    if (s.retestBlocked) extras.push(`${s.retestBlocked} retest blocked`);
+    return extras;
+  };
+  if (!stats || !stats.total) {
+    const extras = stats ? extrasFor(stats) : [];
     return `Bugs identified: 0${extras.length ? ` · ${extras.join(', ')}` : ''}`;
   }
   const order = ['Critical', 'High', 'Medium', 'Low'];
   const parts = order.filter((s) => stats.bySeverity[s]).map((s) => `${stats.bySeverity[s]} ${s}`);
   let line = `Bugs identified: ${stats.total}${parts.length ? ` (${parts.join(', ')})` : ''}`;
-  const extras = [];
-  if (stats.closed) extras.push(`${stats.closed} closed`);
-  if (stats.reopened) extras.push(`${stats.reopened} reopened`);
+  const extras = extrasFor(stats);
   if (extras.length) line += ` · ${extras.join(', ')}`;
   return line;
 }
@@ -3110,30 +3372,56 @@ const whatsappOpenLink = document.getElementById('whatsapp-open');
 const whatsappCopyBtn = document.getElementById('whatsapp-copy');
 const whatsappModal = document.getElementById('whatsapp-modal');
 
-function formatDailyUpdateBlock(payload, projectName, bugStats) {
+// `project` is the *live* row from projectsCache (or null) — Project Manager
+// and Bugsheet are read from it, not from payload, so a share always shows
+// whatever Project Details currently says, even for an old daily log entry
+// that was filed before the project was updated. `payload` is only used for
+// the things that are genuinely specific to that one day's entry (tasks,
+// test case count, remarks, sign-off, notes).
+function formatDailyUpdateBlock(payload, project, bugStats, liveCounts, deadline) {
+  const projectName = project ? project.name : (payload.projectName || 'Project');
   let msg = `*${projectName}*\n`;
-  if (payload.project_manager) msg += `• PM: ${payload.project_manager}\n`;
-  if (payload.assigned_tasks) msg += `• Assigned Tasks:\n${payload.assigned_tasks}\n`;
-  msg += `• Test Cases: ${payload.test_cases ?? 0}\n`;
-  msg += `• ${formatBugStatsLine(bugStats)}\n`;
-  if (payload.bugsheet) msg += `• Bugsheet: ${payload.bugsheet}\n`;
+  const pm = (project && project.project_manager) || payload.project_manager;
+  if (pm) msg += `• Project Manager: ${pm}\n`;
+  const deadlineStr = formatDeadlineDMY(deadline);
+  if (deadlineStr) msg += `• Project Deadline: ${deadlineStr}\n`;
+  if (payload.assigned_tasks) msg += `• Tasks Assigned:\n${payload.assigned_tasks}\n`;
+  if (liveCounts) {
+    msg += `• Total Bugs (auto): ${liveCounts.totalBugs}\n`;
+    msg += `• Bugs Opened (auto): ${liveCounts.openBugs}\n`;
+    msg += `• Bugs Closed (auto): ${liveCounts.closedBugs}\n`;
+  }
+  const bugsheetLink = (project && project.bugsheet) || payload.bugsheet;
+  if (bugsheetLink) msg += `• Bug Sheet Link: ${bugsheetLink}\n`;
   msg += `• Sign Off: ${payload.sign_off ? 'Yes' : 'No'}\n`;
-  if (payload.remarks) msg += `• Remarks: ${payload.remarks}\n`;
+  const signOffDateStr = formatDeadlineDMY(payload.sign_off_date);
+  if (signOffDateStr) msg += `• Sign Off Date: ${signOffDateStr}\n`;
   if (payload.notes) msg += `• Notes: ${payload.notes}\n`;
   return msg;
 }
 
-async function buildWhatsAppMessage(payload, projectName) {
+async function buildWhatsAppMessage(payload, project) {
   const dateStr = new Date(payload.report_date + 'T00:00:00').toLocaleDateString('en-GB');
-  const bugStats = await getBugStatsForDay(payload.project_id, payload.report_date);
+  const [bugStats, liveCounts] = await Promise.all([
+    getBugStatsForDay(payload.project_id, payload.report_date),
+    getProjectLiveCounts(payload.project_id),
+  ]);
+  const deadline = getProjectDeadline(payload.project_id);
   let msg = `*QA Daily Update*\n`;
   msg += `Date: ${dateStr}\n\n`;
-  msg += formatDailyUpdateBlock(payload, projectName, bugStats);
+  msg += formatDailyUpdateBlock(payload, project, bugStats, liveCounts, deadline);
   return msg;
 }
 
-async function openWhatsAppModal(payload, projectName) {
-  const message = await buildWhatsAppMessage(payload, projectName);
+async function openWhatsAppModal(payload, project) {
+  // Accept either the live project object, or (for older call sites) a
+  // plain name string — always resolve to the live projectsCache record
+  // when possible so PM/Bugsheet in the share are current.
+  const liveProject = (project && typeof project === 'object')
+    ? project
+    : projectsCache.find((p) => p.id === payload.project_id) || null;
+  if (!liveProject && typeof project === 'string') payload = { ...payload, projectName: project };
+  const message = await buildWhatsAppMessage(payload, liveProject);
   whatsappMessageEl.value = message;
   whatsappOpenLink.href = `https://wa.me/?text=${encodeURIComponent(message)}`;
   whatsappCopyBtn.textContent = 'Copy message';
@@ -3207,7 +3495,17 @@ async function renderReports(reports) {
   reportsList.innerHTML = '';
 
   for (const r of reports) {
-    const bugStats = await getBugStatsForDay(r.project_id, r.report_date);
+    const liveCounts = await getProjectLiveCounts(r.project_id);
+    const liveProject = projectsCache.find((p) => p.id === r.project_id) || null;
+    // Project Manager, Bugsheet and Deadline always read from the live
+    // project record (falling back to whatever was typed on this entry
+    // only if the project itself has nothing set) — so editing Project
+    // Details updates every past daily log card immediately, without
+    // having to re-save each one.
+    const pmLive = (liveProject && liveProject.project_manager) || r.project_manager;
+    const bugsheetLive = (liveProject && liveProject.bugsheet) || r.bugsheet;
+    const deadlineStr = formatDeadlineDMY((liveProject && liveProject.end_date) || null);
+    const signOffDateStr = formatDeadlineDMY(r.sign_off_date);
     const card = document.createElement('div');
     card.className = 'report-card has-checkbox';
     card.innerHTML = `
@@ -3215,22 +3513,23 @@ async function renderReports(reports) {
       <div class="report-head">
         <span class="proj-name">${escapeHtml(r.projects ? r.projects.name : 'Unknown project')}</span>
         <span>${r.report_date}</span>
-        ${r.project_manager ? `<span>PM: ${escapeHtml(r.project_manager)}</span>` : ''}
+        ${pmLive ? `<span>PM: ${escapeHtml(pmLive)} <span class="auto-badge" title="From Project Details — updates automatically">AUTO</span></span>` : ''}
+        ${deadlineStr ? `<span>Deadline: ${deadlineStr} <span class="auto-badge" title="From Project Details — updates automatically">AUTO</span></span>` : ''}
         ${r.logged_by_email ? `<span>Logged by: ${escapeHtml(r.logged_by_email)}</span>` : ''}
       </div>
       <button class="icon-btn report-edit" data-edit="${r.id}">edit</button>
       <button class="icon-btn report-delete" data-delete="${r.id}">remove</button>
       <button class="icon-btn report-share" data-share="${r.id}">share</button>
       <div class="report-body">
-        ${r.assigned_tasks ? `<div class="assigned-tasks"><span class="detail-label">Assigned tasks</span><div>${escapeHtml(r.assigned_tasks).replace(/\n/g, '<br>')}</div></div>` : ''}
-        ${r.bugsheet ? `<div>Bugsheet: ${escapeHtml(r.bugsheet)}</div>` : ''}
-        <div class="report-metrics">
-          <span>Test cases: <b>${r.test_cases}</b></span>
-          <span>UI bugs: <b>${r.ui_bugs}</b></span>
-          <span>Functionality bugs: <b>${r.functionality_bugs}</b></span>
+        ${r.assigned_tasks ? `<div class="assigned-tasks"><span class="detail-label">Tasks assigned</span><div>${escapeHtml(r.assigned_tasks).replace(/\n/g, '<br>')}</div></div>` : ''}
+        <div class="auto-stats-grid">
+          <div class="auto-stat"><span class="auto-stat-label">Total Bugs <span class="auto-badge">AUTO</span></span><span class="auto-stat-value">${liveCounts.totalBugs}</span></div>
+          <div class="auto-stat"><span class="auto-stat-label">Bugs Opened <span class="auto-badge">AUTO</span></span><span class="auto-stat-value">${liveCounts.openBugs}</span></div>
+          <div class="auto-stat"><span class="auto-stat-label">Bugs Closed <span class="auto-badge">AUTO</span></span><span class="auto-stat-value">${liveCounts.closedBugs}</span></div>
         </div>
-        <div class="auto-bug-line"><span class="auto-badge">AUTO</span> ${formatBugStatsLine(bugStats)} <span class="auto-hint">— tracked live from the Bugs log</span></div>
-        ${r.remarks ? `<div class="report-remarks">${escapeHtml(r.remarks)}</div>` : ''}
+        <div class="auto-hint">Bug counts are live — they auto-update whenever a bug is added, or its status changes.</div>
+        ${bugsheetLive ? `<div>Bug sheet link: <a class="bugsheet-link" href="${escapeHtml(bugsheetLive)}" target="_blank" rel="noopener">${escapeHtml(bugsheetLive)}</a> <span class="auto-badge" title="From Project Details — updates automatically">AUTO</span></div>` : ''}
+        <div>Sign off: <b>${r.sign_off ? 'Yes' : 'No'}</b>${signOffDateStr ? ` — ${signOffDateStr}` : ''}</div>
         ${r.notes ? `<div>${escapeHtml(r.notes)}</div>` : ''}
       </div>
       ${r.sign_off ? '<div class="stamp">SIGNED<br/>OFF</div>' : ''}
@@ -3247,7 +3546,17 @@ async function renderReports(reports) {
       loadReports();
     });
     card.querySelector('[data-share]').addEventListener('click', async () => {
-      await openWhatsAppModal(r, r.projects ? r.projects.name : 'Project');
+      // If more than one entry was logged for this project on this date
+      // (e.g. two people filing separately), merge them into a single
+      // project log before sharing — same rule "Share day's updates" uses,
+      // just scoped to this one project/date instead of the whole day.
+      const sameGroup = reportsCache.filter(
+        (x) => x.project_id === r.project_id && x.report_date === r.report_date
+      );
+      const toShare = sameGroup.length > 1 ? mergeReportsForProject(sameGroup) : r;
+      const liveProject = projectsCache.find((p) => p.id === r.project_id)
+        || (r.projects ? { name: r.projects.name } : null);
+      await openWhatsAppModal(toShare, liveProject);
     });
     card.querySelector('[data-edit]').addEventListener('click', () => {
       openReportModal(r.id);
@@ -3277,24 +3586,37 @@ async function renderAutoOnlyReportCards(existingReports) {
   for (const p of projectsToCheck) {
     if (loggedPairs.has(`${p.id}|${dateFilter}`)) continue;
     const bugStats = await getBugStatsForDay(p.id, dateFilter);
-    if (!bugStats.total && !bugStats.closed && !bugStats.reopened) continue;
-    autoCards.push({ project: p, date: dateFilter, bugStats });
+    const hasActivity = bugStats.total || bugStats.closed || bugStats.reopened
+      || bugStats.retest || bugStats.fixed || bugStats.inProgress
+      || bugStats.retestPass || bugStats.retestFail || bugStats.retestBlocked;
+    if (!hasActivity) continue;
+    const liveCounts = await getProjectLiveCounts(p.id);
+    autoCards.push({ project: p, date: dateFilter, bugStats, liveCounts });
   }
 
   reportsEmpty.style.display = (existingReports.length || autoCards.length) ? 'none' : 'block';
 
-  autoCards.forEach(({ project, date, bugStats }) => {
+  autoCards.forEach(({ project, date, liveCounts }) => {
+    const deadlineStr = formatDeadlineDMY(project.end_date);
     const card = document.createElement('div');
     card.className = 'report-card auto-card';
     card.innerHTML = `
       <div class="report-head">
         <span class="proj-name">${escapeHtml(project.name)}</span>
         <span>${date}</span>
+        ${project.project_manager ? `<span>PM: ${escapeHtml(project.project_manager)}</span>` : ''}
+        ${deadlineStr ? `<span>Deadline: ${deadlineStr}</span>` : ''}
         <span class="auto-badge">AUTO — no manual update filed</span>
       </div>
       <button class="icon-btn report-share" data-auto-share>share</button>
       <div class="report-body">
-        <div class="auto-bug-line"><span class="auto-badge">AUTO</span> ${formatBugStatsLine(bugStats)} <span class="auto-hint">— tracked live from the Bugs log</span></div>
+        <div class="auto-stats-grid">
+          <div class="auto-stat"><span class="auto-stat-label">Total Bugs <span class="auto-badge">AUTO</span></span><span class="auto-stat-value">${liveCounts.totalBugs}</span></div>
+          <div class="auto-stat"><span class="auto-stat-label">Bugs Opened <span class="auto-badge">AUTO</span></span><span class="auto-stat-value">${liveCounts.openBugs}</span></div>
+          <div class="auto-stat"><span class="auto-stat-label">Bugs Closed <span class="auto-badge">AUTO</span></span><span class="auto-stat-value">${liveCounts.closedBugs}</span></div>
+        </div>
+        ${project.bugsheet ? `<div>Bug sheet link: <a class="bugsheet-link" href="${escapeHtml(project.bugsheet)}" target="_blank" rel="noopener">${escapeHtml(project.bugsheet)}</a></div>` : ''}
+        <div class="auto-hint">Bug counts are live — they auto-update whenever a bug is added, or its status changes.</div>
       </div>
     `;
     card.querySelector('[data-auto-share]').addEventListener('click', async () => {
@@ -3304,12 +3626,11 @@ async function renderAutoOnlyReportCards(existingReports) {
         project_manager: null,
         assigned_tasks: null,
         bugsheet: null,
-        test_cases: 0,
         sign_off: false,
-        remarks: null,
+        sign_off_date: null,
         notes: 'Auto-generated from the Bugs log — no manual daily update was filed.',
       };
-      await openWhatsAppModal(syntheticPayload, project.name);
+      await openWhatsAppModal(syntheticPayload, project);
     });
     reportsList.appendChild(card);
   });
@@ -3320,6 +3641,7 @@ async function renderAutoOnlyReportCards(existingReports) {
 const reportModal = document.getElementById('report-modal');
 const reportEditForm = document.getElementById('report-edit-form');
 const reProjectSelect = document.getElementById('re-project');
+reProjectSelect.addEventListener('change', autofillEditReportCounts);
 
 function openReportModal(id) {
   const r = reportsCache.find((x) => x.id === id);
@@ -3329,14 +3651,14 @@ function openReportModal(id) {
   document.getElementById('re-id').value = r.id;
   document.getElementById('re-date').value = r.report_date || '';
   reProjectSelect.value = r.project_id;
-  document.getElementById('re-pm').value = r.project_manager || '';
+  const liveProjectForEdit = projectsCache.find((p) => p.id === r.project_id);
+  document.getElementById('re-pm').value = (liveProjectForEdit && liveProjectForEdit.project_manager) || r.project_manager || '';
+  document.getElementById('re-deadline').value = liveProjectForEdit ? (liveProjectForEdit.end_date || '') : '';
   document.getElementById('re-tasks').value = r.assigned_tasks || '';
-  document.getElementById('re-bugsheet').value = r.bugsheet || '';
-  document.getElementById('re-testcases').value = r.test_cases ?? 0;
-  document.getElementById('re-uibugs').value = r.ui_bugs ?? 0;
-  document.getElementById('re-funcbugs').value = r.functionality_bugs ?? 0;
+  document.getElementById('re-bugsheet').value = (liveProjectForEdit && liveProjectForEdit.bugsheet) || r.bugsheet || '';
+  autofillLiveBugStats(r.project_id, 're');
   document.getElementById('re-signoff').checked = !!r.sign_off;
-  document.getElementById('re-remarks').value = r.remarks || '';
+  document.getElementById('re-signoff-date').value = r.sign_off_date || '';
   document.getElementById('re-notes').value = r.notes || '';
   reportModal.classList.remove('hidden');
 }
@@ -3364,20 +3686,9 @@ reportEditForm.addEventListener('submit', async (e) => {
     showFormError('report-edit-error', 'Date is required.');
     return;
   }
-  const testCases = document.getElementById('re-testcases').value;
-  const uiBugs = document.getElementById('re-uibugs').value;
-  const funcBugs = document.getElementById('re-funcbugs').value;
-  const numericFields = [
-    ['Test cases', testCases],
-    ['UI bugs', uiBugs],
-    ['Functionality bugs', funcBugs],
-  ];
-  for (const [label, val] of numericFields) {
-    if (val === '' || Number(val) < 0 || !Number.isInteger(Number(val))) {
-      showFormError('report-edit-error', `${label} must be a whole number, 0 or higher.`);
-      return;
-    }
-  }
+  const deadlineValEdit = document.getElementById('re-deadline').value || null;
+  const signOffCheckedEdit = document.getElementById('re-signoff').checked;
+  const signOffDateValEdit = document.getElementById('re-signoff-date').value || null;
 
   const payload = {
     report_date: reportDate,
@@ -3385,11 +3696,8 @@ reportEditForm.addEventListener('submit', async (e) => {
     project_manager: document.getElementById('re-pm').value.trim() || null,
     assigned_tasks: document.getElementById('re-tasks').value.trim() || null,
     bugsheet: document.getElementById('re-bugsheet').value.trim() || null,
-    test_cases: Number(testCases),
-    ui_bugs: Number(uiBugs),
-    functionality_bugs: Number(funcBugs),
-    remarks: document.getElementById('re-remarks').value.trim() || null,
-    sign_off: document.getElementById('re-signoff').checked,
+    sign_off: signOffCheckedEdit,
+    sign_off_date: signOffCheckedEdit ? (signOffDateValEdit || reportDate) : signOffDateValEdit,
     notes: document.getElementById('re-notes').value.trim() || null,
   };
 
@@ -3400,6 +3708,22 @@ reportEditForm.addEventListener('submit', async (e) => {
   }
   notify(`${actorLabel()} updated a daily log entry`, 'daily_report', 'update');
   toast('Daily log entry updated!', { emoji: '💾' });
+
+  // Keep the project record in sync, same as saving a new entry does —
+  // so a Project Manager/Bugsheet/Deadline/Sign-off change made here also
+  // shows up in Project Details and every other daily log for this project.
+  const projectUpdates = {};
+  if (payload.project_manager) projectUpdates.project_manager = payload.project_manager;
+  if (payload.bugsheet) projectUpdates.bugsheet = payload.bugsheet;
+  if (deadlineValEdit) projectUpdates.end_date = deadlineValEdit;
+  if (payload.sign_off) projectUpdates.sign_off_date = payload.sign_off_date;
+  if (Object.keys(projectUpdates).length) {
+    projectUpdates.updated_at = new Date().toISOString();
+    projectUpdates.updated_by_email = currentUser ? currentUser.email : null;
+    await sb.from('projects').update(projectUpdates).eq('id', project_id);
+    await loadProjects();
+  }
+
   closeReportModal();
   loadReports();
 });
@@ -3645,21 +3969,29 @@ document.getElementById('download-bugs-btn').addEventListener('click', () => {
 });
 
 // Daily Log tab (History) → downloads only the currently filtered daily logs.
-document.getElementById('download-reports-btn').addEventListener('click', () => {
-  const rows = reportsCache.map((r) => ({
-    'Project': r.projects ? r.projects.name : '',
-    'Date': r.report_date,
-    'Project Manager': r.project_manager || '',
-    'Assigned Tasks': r.assigned_tasks || '',
-    'Test Cases': r.test_cases,
-    'UI Bugs': r.ui_bugs,
-    'Functionality Bugs': r.functionality_bugs,
-    'Bugsheet': r.bugsheet || '',
-    'Sign Off': r.sign_off ? 'Yes' : 'No',
-    'Remarks': r.remarks || '',
-    'Notes': r.notes || '',
-    'Logged By': r.logged_by_email || '',
-  }));
+// Total/Opened/Closed bugs are a live snapshot pulled fresh at export time —
+// never a number saved back when the entry was originally logged.
+document.getElementById('download-reports-btn').addEventListener('click', async () => {
+  const rows = [];
+  for (const r of reportsCache) {
+    const liveCounts = await getProjectLiveCounts(r.project_id);
+    const liveProject = projectsCache.find((p) => p.id === r.project_id) || null;
+    rows.push({
+      'Date': r.report_date,
+      'Project': r.projects ? r.projects.name : '',
+      'Project Manager': (liveProject && liveProject.project_manager) || r.project_manager || '',
+      'Tasks Assigned': r.assigned_tasks || '',
+      'Total Bugs (auto)': liveCounts.totalBugs,
+      'Bugs Opened (auto)': liveCounts.openBugs,
+      'Bugs Closed (auto)': liveCounts.closedBugs,
+      'Bug Sheet Link': (liveProject && liveProject.bugsheet) || r.bugsheet || '',
+      'Sign Off': r.sign_off ? 'Yes' : 'No',
+      'Sign Off Date': r.sign_off_date || '',
+      'Project Deadline': (liveProject && liveProject.end_date) || '',
+      'Notes': r.notes || '',
+      'Logged By': r.logged_by_email || '',
+    });
+  }
   downloadSheet('Daily Logs', rows, 'Daily Logs');
 });
 

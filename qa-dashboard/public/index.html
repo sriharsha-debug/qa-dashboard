@@ -460,25 +460,28 @@
           <label>Project
             <select id="r-project" required></select>
           </label>
-          <label>Project manager
+          <label>Project manager <span class="auto-badge">AUTO</span>
             <input type="text" id="r-pm" placeholder="Name" maxlength="80" />
           </label>
-          <label class="span-2">Assigned tasks
+          <label>Project deadline <span class="auto-badge">AUTO</span>
+            <input type="date" id="r-deadline" />
+          </label>
+          <label class="span-2">Tasks assigned
             <div id="task-list" class="task-list"></div>
             <button type="button" id="add-task-btn" class="btn btn-ghost btn-small">+ Add task</button>
           </label>
-          <label>Bugsheet
+          <label>Bug sheet link <span class="auto-badge">AUTO</span>
             <input type="text" id="r-bugsheet" placeholder="Link or reference" maxlength="500" />
           </label>
-          <label>Test cases
-            <input type="number" id="r-testcases" min="0" max="100000" step="1" value="0" required />
-          </label>
-          <label>UI bugs
-            <input type="number" id="r-uibugs" min="0" max="100000" step="1" value="0" required />
-          </label>
-          <label>Functionality bugs
-            <input type="number" id="r-funcbugs" min="0" max="100000" step="1" value="0" required />
-          </label>
+          <div class="span-2 auto-stats-grid" id="r-bug-live-grid">
+            <div class="auto-stat"><span class="auto-stat-label">Total Bugs <span class="auto-badge">AUTO</span></span><span class="auto-stat-value" id="r-total-bugs">—</span></div>
+            <div class="auto-stat"><span class="auto-stat-label">Bugs Opened <span class="auto-badge">AUTO</span></span><span class="auto-stat-value" id="r-bugs-opened">—</span></div>
+            <div class="auto-stat"><span class="auto-stat-label">Bugs Closed <span class="auto-badge">AUTO</span></span><span class="auto-stat-value" id="r-bugs-closed">—</span></div>
+          </div>
+          <div class="span-2">
+            <button type="button" id="r-refresh-counts" class="btn btn-ghost btn-small">↻ Refresh from live data</button>
+            <span class="auto-hint">Project manager, Project deadline and Bug sheet link are filled automatically from Project Details when you pick a project — click to re-sync, or adjust by hand before saving. Total Bugs / Bugs Opened / Bugs Closed always stay live from the Bugs log and are never saved as a fixed number, so they can never go stale.</span>
+          </div>
           <label class="signoff-field">
             <span>Sign off</span>
             <span class="toggle">
@@ -486,8 +489,8 @@
               <span class="toggle-track"><span class="toggle-thumb"></span></span>
             </span>
           </label>
-          <label class="span-2">Remarks
-            <input type="text" id="r-remarks" placeholder="Short remark" maxlength="300" />
+          <label>Sign off date
+            <input type="date" id="r-signoff-date" />
           </label>
           <label class="span-2">Notes
             <textarea id="r-notes" rows="2" placeholder="Additional notes" maxlength="1000"></textarea>
@@ -779,24 +782,27 @@
         <label>Project
           <select id="re-project" required></select>
         </label>
-        <label>Project manager
+        <label>Project manager <span class="auto-badge">AUTO</span>
           <input type="text" id="re-pm" placeholder="Name" maxlength="80" />
         </label>
-        <label class="span-2">Assigned tasks
+        <label>Project deadline <span class="auto-badge">AUTO</span>
+          <input type="date" id="re-deadline" />
+        </label>
+        <label class="span-2">Tasks assigned
           <textarea id="re-tasks" rows="3" placeholder="Task 1: ..." maxlength="2000"></textarea>
         </label>
-        <label>Bugsheet
+        <label>Bug sheet link <span class="auto-badge">AUTO</span>
           <input type="text" id="re-bugsheet" placeholder="Link or reference" maxlength="500" />
         </label>
-        <label>Test cases
-          <input type="number" id="re-testcases" min="0" max="100000" step="1" required />
-        </label>
-        <label>UI bugs
-          <input type="number" id="re-uibugs" min="0" max="100000" step="1" required />
-        </label>
-        <label>Functionality bugs
-          <input type="number" id="re-funcbugs" min="0" max="100000" step="1" required />
-        </label>
+        <div class="span-2 auto-stats-grid" id="re-bug-live-grid">
+          <div class="auto-stat"><span class="auto-stat-label">Total Bugs <span class="auto-badge">AUTO</span></span><span class="auto-stat-value" id="re-total-bugs">—</span></div>
+          <div class="auto-stat"><span class="auto-stat-label">Bugs Opened <span class="auto-badge">AUTO</span></span><span class="auto-stat-value" id="re-bugs-opened">—</span></div>
+          <div class="auto-stat"><span class="auto-stat-label">Bugs Closed <span class="auto-badge">AUTO</span></span><span class="auto-stat-value" id="re-bugs-closed">—</span></div>
+        </div>
+        <div class="span-2">
+          <button type="button" id="re-refresh-counts" class="btn btn-ghost btn-small">↻ Refresh from live data</button>
+          <span class="auto-hint">Pulls current Project manager, Project deadline and Bug sheet link from Project Details, and live bug counts from the Bugs log for this project.</span>
+        </div>
         <label class="signoff-field">
           <span>Sign off</span>
           <span class="toggle">
@@ -804,8 +810,8 @@
             <span class="toggle-track"><span class="toggle-thumb"></span></span>
           </span>
         </label>
-        <label class="span-2">Remarks
-          <input type="text" id="re-remarks" placeholder="Short remark" maxlength="300" />
+        <label>Sign off date
+          <input type="date" id="re-signoff-date" />
         </label>
         <label class="span-2">Notes
           <textarea id="re-notes" rows="2" placeholder="Additional notes" maxlength="1000"></textarea>
