@@ -4047,5 +4047,9 @@ document.getElementById('download-reports-btn').addEventListener('click', async 
 })();
 
 
-// Auto-added universal table search
-document.addEventListener("DOMContentLoaded",()=>{setTimeout(()=>{document.querySelectorAll("table").forEach((t,i)=>{if(t.dataset.searchAttached)return;t.dataset.searchAttached="1";const inp=document.createElement("input");inp.placeholder="Search...";inp.className="input";inp.style.margin="8px 0";inp.addEventListener("input",()=>{const q=inp.value.toLowerCase();t.querySelectorAll("tbody tr").forEach(r=>{r.style.display=r.innerText.toLowerCase().includes(q)?"":"none";});});t.parentNode.insertBefore(inp,t);});},1500);});
+// Universal search/filter injection
+function setupUniversalFilters(){
+ const targets=['projects-table','tc-list','apk-list','bug-list','reports-list','team-list','audit-list','notif-page-list'];
+ targets.forEach(id=>{const el=document.getElementById(id); if(!el||document.getElementById(id+'-search')) return; const i=document.createElement('input'); i.id=id+'-search'; i.placeholder='Search...'; i.style.margin='8px'; el.parentNode.insertBefore(i,el); i.addEventListener('input',()=>{const q=i.value.toLowerCase(); el.querySelectorAll('tr, .card, li').forEach(r=>{r.style.display=(r.innerText||'').toLowerCase().includes(q)?'':'none';});});});
+}
+setTimeout(setupUniversalFilters,1500);
