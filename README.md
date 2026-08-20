@@ -144,6 +144,41 @@ column are required, the rest are optional):
 - **Developer Status**, **Developer Comments**, **Retest Status**, **Manager Comments**
 - **Bug Id**, **Date**, **Notes** (Bug Id/Date are kept in Notes, for traceability back to the sheet row)
 
+## 6c. Daily Log stays in sync automatically (no new migration needed)
+
+No schema change is required for this — it's a display/behavior change only,
+using columns that already exist.
+
+**Bugs and test cases** — the Daily Log has always pulled Test Cases, UI
+bugs, Functionality bugs, "bugs identified today", closed/reopened/retest
+counts, etc. live from the `bugs` and `test_cases` tables (see the `AUTO`
+badges). Add a bug, close one, move one to Retest, mark one Reopened — the
+Daily Log card, the single-entry share, and **Share day's updates** (the
+"share everything at once" button, top of the Daily Log tab) all reflect it
+immediately, with nothing to re-type.
+
+**Project details (Project Manager, Bugsheet)** — these now work the same
+way. Project Manager and Bugsheet used to be typed by hand into each daily
+entry and saved as a one-time snapshot on that `daily_reports` row, so
+updating them later on the Projects tab didn't touch old entries. Now:
+- The Daily Log form still auto-fills Project Manager/Bugsheet from the
+  selected project (labelled `AUTO`, click **↻ Refresh from live data** to
+  re-sync), and still saves whatever you typed to that row for audit/history.
+- But everywhere the Daily Log is *displayed or shared* — the report card,
+  the single-entry share, **Share day's updates**, the auto-generated card
+  for a project with bug activity but no manual entry, and the Daily Logs
+  CSV export — now reads Project Manager and Bugsheet **live from the
+  project record**, not the old saved snapshot.
+- So: edit a project's Project Manager or Bugsheet on the Projects tab once,
+  and every past and future daily log for that project shows the new value
+  immediately — you never have to re-save old entries.
+- It also still works the other way: typing a new Project Manager/Bugsheet
+  into a daily entry (add or edit) writes it back to the project record too,
+  so either screen can be the one you update from.
+
+Other project fields shown on the Daily Log (like Project Deadline, i.e.
+`projects.end_date`) already worked this way before this change.
+
 ## 7. Open your dashboard
 
 Vercel gives you a URL like `https://your-project.vercel.app`. Open it,

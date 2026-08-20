@@ -460,14 +460,14 @@
           <label>Project
             <select id="r-project" required></select>
           </label>
-          <label>Project manager
+          <label>Project manager <span class="auto-badge">AUTO</span>
             <input type="text" id="r-pm" placeholder="Name" maxlength="80" />
           </label>
           <label class="span-2">Assigned tasks
             <div id="task-list" class="task-list"></div>
             <button type="button" id="add-task-btn" class="btn btn-ghost btn-small">+ Add task</button>
           </label>
-          <label>Bugsheet
+          <label>Bugsheet <span class="auto-badge">AUTO</span>
             <input type="text" id="r-bugsheet" placeholder="Link or reference" maxlength="500" />
           </label>
           <label>Test cases <span class="auto-badge">AUTO</span>
@@ -480,8 +480,8 @@
             <input type="number" id="r-funcbugs" min="0" max="100000" step="1" value="0" required />
           </label>
           <div class="span-2">
-            <button type="button" id="r-refresh-counts" class="btn btn-ghost btn-small">↻ Refresh counts from live data</button>
-            <span class="auto-hint">Filled automatically from the Bugs and Test Cases logs when you pick a project — click to re-sync, or adjust by hand before saving.</span>
+            <button type="button" id="r-refresh-counts" class="btn btn-ghost btn-small">↻ Refresh from live data</button>
+            <span class="auto-hint">Project manager, Bugsheet, Test cases and Bug counts are filled automatically from Project Details / the Bugs log when you pick a project — click to re-sync, or adjust by hand before saving. Editing Project Details later updates every daily log automatically; you don't need to re-save old entries.</span>
           </div>
           <label class="signoff-field">
             <span>Sign off</span>
@@ -783,13 +783,13 @@
         <label>Project
           <select id="re-project" required></select>
         </label>
-        <label>Project manager
+        <label>Project manager <span class="auto-badge">AUTO</span>
           <input type="text" id="re-pm" placeholder="Name" maxlength="80" />
         </label>
         <label class="span-2">Assigned tasks
           <textarea id="re-tasks" rows="3" placeholder="Task 1: ..." maxlength="2000"></textarea>
         </label>
-        <label>Bugsheet
+        <label>Bugsheet <span class="auto-badge">AUTO</span>
           <input type="text" id="re-bugsheet" placeholder="Link or reference" maxlength="500" />
         </label>
         <label>Test cases <span class="auto-badge">AUTO</span>
@@ -802,8 +802,8 @@
           <input type="number" id="re-funcbugs" min="0" max="100000" step="1" required />
         </label>
         <div class="span-2">
-          <button type="button" id="re-refresh-counts" class="btn btn-ghost btn-small">↻ Refresh counts from live data</button>
-          <span class="auto-hint">Pulls current totals from the Bugs and Test Cases logs for this project.</span>
+          <button type="button" id="re-refresh-counts" class="btn btn-ghost btn-small">↻ Refresh from live data</button>
+          <span class="auto-hint">Pulls current Project manager, Bugsheet, Test cases and Bug counts from Project Details / the Bugs log for this project.</span>
         </div>
         <label class="signoff-field">
           <span>Sign off</span>
