@@ -1712,6 +1712,37 @@ const bugForm = document.getElementById('bug-form');
 const bugList = document.getElementById('bug-list');
 const bugEmpty = document.getElementById('bug-empty');
 const bugSummary = document.getElementById('bug-summary');
+const bugFilterStatus = document.getElementById('bug-filter-status');
+const bugFilterSeverity = document.getElementById('bug-filter-severity');
+const bugFilterIssueType = document.getElementById('bug-filter-issue-type');
+const bugFilterClear = document.getElementById('bug-filter-clear');
+
+function getFilteredBugs() {
+  const status = bugFilterStatus.value;
+  const severity = bugFilterSeverity.value;
+  const issueType = bugFilterIssueType.value;
+  return bugCache.filter((b) => {
+    if (status && b.status !== status) return false;
+    if (severity && b.severity !== severity) return false;
+    if (issueType && b.issue_type !== issueType) return false;
+    return true;
+  });
+}
+
+[bugFilterStatus, bugFilterSeverity, bugFilterIssueType].forEach((sel) => {
+  sel.addEventListener('change', () => {
+    bugPageNum = 1;
+    renderBugs(getFilteredBugs(), bugsSelect.value);
+  });
+});
+
+bugFilterClear.addEventListener('click', () => {
+  bugFilterStatus.value = '';
+  bugFilterSeverity.value = '';
+  bugFilterIssueType.value = '';
+  bugPageNum = 1;
+  renderBugs(getFilteredBugs(), bugsSelect.value);
+});
 
 function renderBugsSelect() {
   const opts = projectsCache.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
@@ -1985,6 +2016,9 @@ async function loadBugs(projectId) {
     return;
   }
   bugCache = data || [];
+  bugFilterStatus.value = '';
+  bugFilterSeverity.value = '';
+  bugFilterIssueType.value = '';
   renderBugs(bugCache, projectId);
   refreshDetailsBugSummaryIfShowing(projectId);
 }

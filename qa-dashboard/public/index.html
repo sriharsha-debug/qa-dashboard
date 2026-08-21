@@ -440,6 +440,39 @@
             </div>
           </form>
           <p id="bug-error" class="login-error hidden"></p>
+
+          <div class="filters" id="bug-filters">
+            <select id="bug-filter-status">
+              <option value="">All statuses</option>
+              <option value="Open">Open</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Fixed">Fixed</option>
+              <option value="Retest">Retest</option>
+              <option value="Closed">Closed</option>
+              <option value="Reopened">Reopened</option>
+            </select>
+            <select id="bug-filter-severity">
+              <option value="">All severities</option>
+              <option value="Low">Low</option>
+              <option value="Medium">Medium</option>
+              <option value="High">High</option>
+              <option value="Critical">Critical</option>
+            </select>
+            <select id="bug-filter-issue-type">
+              <option value="">All issue types</option>
+              <option value="Functional">Functional</option>
+              <option value="UI/UX">UI/UX</option>
+              <option value="Backend">Backend</option>
+              <option value="Frontend">Frontend</option>
+              <option value="API">API</option>
+              <option value="Performance">Performance</option>
+              <option value="Security">Security</option>
+              <option value="Database">Database</option>
+              <option value="Other">Other</option>
+            </select>
+            <button type="button" id="bug-filter-clear" class="btn btn-ghost btn-small">Clear</button>
+          </div>
+
           <div id="bug-list" class="tc-list"></div>
           <p class="empty-state" id="bug-empty">No bugs logged yet for this project.</p>
           <div id="bug-pager" class="pager"></div>
