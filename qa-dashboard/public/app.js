@@ -2820,7 +2820,8 @@ document.getElementById('share-day-btn').addEventListener('click', async () => {
     const bugStats = await getBugStatsForDay(p.id, dateStr);
     const hasActivity = bugStats.total || bugStats.closed || bugStats.reopened
       || bugStats.retest || bugStats.fixed || bugStats.inProgress
-      || bugStats.retestPass || bugStats.retestFail || bugStats.retestBlocked;
+      || bugStats.retestPass || bugStats.retestFail || bugStats.retestBlocked
+      || bugStats.otherUpdates;
     if (hasActivity) autoOnly.push({ project: p, bugStats });
   }
 
@@ -3347,7 +3348,7 @@ async function getBugStatsForDay(projectId, dateStr) {
   const empty = {
     total: 0, bySeverity: {}, titles: [],
     closed: 0, reopened: 0, retest: 0, fixed: 0, inProgress: 0,
-    retestPass: 0, retestFail: 0, retestBlocked: 0,
+    retestPass: 0, retestFail: 0, retestBlocked: 0, otherUpdates: 0,
   };
   // One query covers both "created today" (newly identified) and "touched
   // today" (status/retest status/dev status moved — e.g. to Retest, Fixed,
@@ -3385,9 +3386,15 @@ async function getBugStatsForDay(projectId, dateStr) {
   const retestPass = touchedToday('retest_status', 'Pass');
   const retestFail = touchedToday('retest_status', 'Fail');
   const retestBlocked = touchedToday('retest_status', 'Blocked');
+  // Catches everything else: an existing bug edited today (severity,
+  // description, steps, comments, notes, etc.) whose status stayed 'Open' —
+  // the one status value none of the buckets above track. Without this,
+  // "I updated bugs today" produced no activity at all when the bug's
+  // status wasn't also moved to one of the tracked values.
+  const otherUpdates = rows.filter((b) => b.status === 'Open' && inDay(b.updated_at) && !inDay(b.created_at)).length;
   return {
     total: identified.length, bySeverity, titles: identified.map((b) => b.title),
-    closed, reopened, retest, fixed, inProgress, retestPass, retestFail, retestBlocked,
+    closed, reopened, retest, fixed, inProgress, retestPass, retestFail, retestBlocked, otherUpdates,
   };
 }
 
@@ -3404,6 +3411,7 @@ function formatBugStatsLine(stats) {
     if (s.retestPass) extras.push(`${s.retestPass} retest passed`);
     if (s.retestFail) extras.push(`${s.retestFail} retest failed`);
     if (s.retestBlocked) extras.push(`${s.retestBlocked} retest blocked`);
+    if (s.otherUpdates) extras.push(`${s.otherUpdates} updated`);
     return extras;
   };
   if (!stats || !stats.total) {
@@ -3640,7 +3648,8 @@ async function renderAutoOnlyReportCards(existingReports) {
     const bugStats = await getBugStatsForDay(p.id, dateFilter);
     const hasActivity = bugStats.total || bugStats.closed || bugStats.reopened
       || bugStats.retest || bugStats.fixed || bugStats.inProgress
-      || bugStats.retestPass || bugStats.retestFail || bugStats.retestBlocked;
+      || bugStats.retestPass || bugStats.retestFail || bugStats.retestBlocked
+      || bugStats.otherUpdates;
     if (!hasActivity) continue;
     const liveCounts = await getProjectLiveCounts(p.id);
     autoCards.push({ project: p, date: dateFilter, bugStats, liveCounts });
