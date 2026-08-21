@@ -933,6 +933,9 @@ function refreshTab(tabName) {
     case 'bugs':
       loadProjects(); // also drives renderBugsSelect() -> showBugsForProject()
       break;
+    case 'testexec':
+      loadProjects(); // also drives renderTcSelect() -> showTestExecutionForProject()
+      break;
     case 'daily':
       loadProjects();
       loadReports();
@@ -985,6 +988,7 @@ async function loadProjects() {
   renderProjectSelects(data);
   renderDetailsSelect();
   renderBugsSelect();
+  renderTcSelect();
 }
 
 const projectsBulk = createBulkSelector({
@@ -1456,12 +1460,6 @@ detailsSelect.addEventListener('change', () => showProjectDetails(detailsSelect.
 async function showProjectDetails(id) {
   const p = projectsCache.find((x) => x.id === id);
   if (!p) return;
-  // Only treat this as "opening a different project" when the id actually
-  // changes. loadProjects() re-runs this on every save anywhere in the app
-  // (adding a project, changing a status, logging a daily update, etc.), so
-  // without this guard the test-case pagination below was silently getting
-  // reset to page 1 any time you saved *anything*, even on another tab.
-  const isProjectChange = detailsSelect.dataset.current !== id;
   detailsSelect.dataset.current = id;
   detailsContent.classList.remove('hidden');
   detailsName.textContent = p.name;
@@ -1541,16 +1539,98 @@ async function showProjectDetails(id) {
   detailsEditBtn.onclick = () => openEditModal(id);
 
   loadApkShares(id);
-  if (isProjectChange) tcPageNum = 1;
-  loadTestCases(id);
 }
 
-// ---------- Test execution ----------
+// ---------- Test execution (own tab, own project selector) ----------
 
+const tcSelect = document.getElementById('tc-project-select');
+const tcTabEmpty = document.getElementById('tc-tab-empty');
+const tcTabContent = document.getElementById('tc-tab-content');
 const tcForm = document.getElementById('tc-form');
 const tcList = document.getElementById('tc-list');
 const tcEmpty = document.getElementById('tc-empty');
 const tcSummary = document.getElementById('tc-summary');
+const tcFilterStatus = document.getElementById('tc-filter-status');
+const tcFilterPriority = document.getElementById('tc-filter-priority');
+const tcFilterCategory = document.getElementById('tc-filter-category');
+const tcFilterClear = document.getElementById('tc-filter-clear');
+const tcFilterCount = document.getElementById('tc-filter-count');
+
+function getFilteredTestCases() {
+  const status = tcFilterStatus.value;
+  const priority = tcFilterPriority.value;
+  const category = tcFilterCategory.value;
+  return tcCache.filter((c) => {
+    if (status && c.status !== status) return false;
+    if (priority && (c.priority || 'Medium') !== priority) return false;
+    if (category && (c.category || 'Functional') !== category) return false;
+    return true;
+  });
+}
+
+function updateTcFilterCount(filtered) {
+  const anyFilterActive = tcFilterStatus.value || tcFilterPriority.value || tcFilterCategory.value;
+  if (!anyFilterActive) {
+    tcFilterCount.textContent = '';
+    return;
+  }
+  const labelParts = [tcFilterStatus.value, tcFilterPriority.value, tcFilterCategory.value].filter(Boolean);
+  tcFilterCount.textContent = `${filtered.length} of ${tcCache.length} test case${tcCache.length === 1 ? '' : 's'} — ${labelParts.join(', ')}`;
+}
+
+[tcFilterStatus, tcFilterPriority, tcFilterCategory].forEach((sel) => {
+  sel.addEventListener('change', () => {
+    tcPageNum = 1;
+    const filtered = getFilteredTestCases();
+    renderTestCases(filtered, tcSelect.value);
+    updateTcFilterCount(filtered);
+  });
+});
+
+tcFilterClear.addEventListener('click', () => {
+  tcFilterStatus.value = '';
+  tcFilterPriority.value = '';
+  tcFilterCategory.value = '';
+  tcPageNum = 1;
+  const filtered = getFilteredTestCases();
+  renderTestCases(filtered, tcSelect.value);
+  updateTcFilterCount(filtered);
+});
+
+function renderTcSelect() {
+  const opts = projectsCache.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+  tcSelect.innerHTML = opts;
+  if (!projectsCache.length) {
+    tcTabEmpty.classList.remove('hidden');
+    tcTabContent.classList.add('hidden');
+    return;
+  }
+  tcTabEmpty.classList.add('hidden');
+  const keep = projectsCache.find((p) => p.id === tcSelect.dataset.current);
+  const targetId = keep ? keep.id : projectsCache[0].id;
+  tcSelect.value = targetId;
+  showTestExecutionForProject(targetId);
+}
+
+tcSelect.addEventListener('change', () => showTestExecutionForProject(tcSelect.value));
+
+function showTestExecutionForProject(id) {
+  if (!id) return;
+  // Same guard as showProjectDetails()/showBugsForProject(): loadProjects()
+  // re-runs this every time anything is saved anywhere in the app, not just
+  // when you actually switch the project dropdown.
+  const isProjectChange = tcSelect.dataset.current !== id;
+  tcSelect.dataset.current = id;
+  tcTabContent.classList.remove('hidden');
+  if (isProjectChange) {
+    tcPageNum = 1;
+    tcFilterStatus.value = '';
+    tcFilterPriority.value = '';
+    tcFilterCategory.value = '';
+    tcFilterCount.textContent = '';
+  }
+  loadTestCases(id);
+}
 
 function tcStatusColor(status) {
   return { 'Not Run': '#7FA0A6', Pass: '#34D399', Fail: '#F87171', Blocked: '#FBBF24' }[status] || '#7FA0A6';
@@ -1559,7 +1639,7 @@ function tcStatusColor(status) {
 tcForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   clearFormError('tc-error');
-  const project_id = detailsSelect.value;
+  const project_id = tcSelect.value;
   if (!project_id) return;
 
   const title = document.getElementById('tc-title').value.trim();
@@ -1608,7 +1688,9 @@ async function loadTestCases(projectId) {
     return;
   }
   tcCache = data || [];
-  renderTestCases(data, projectId);
+  const filtered = getFilteredTestCases();
+  renderTestCases(filtered, projectId);
+  updateTcFilterCount(filtered);
 }
 
 let tcPageNum = 1;
@@ -1622,7 +1704,7 @@ const tcBulk = createBulkSelector({
   itemLabel: 'test case',
   getAllIds: () => tcCache.map((c) => c.id),
   onDeleted: async () => {
-    await loadTestCases(detailsSelect.value);
+    await loadTestCases(tcSelect.value);
   },
 });
 
@@ -3171,7 +3253,7 @@ ${documentText}
 
 aiCopyPromptBtn.addEventListener('click', async () => {
   clearFormError('ai-gen-error');
-  const project = projectsCache.find((p) => p.id === detailsSelect.value);
+  const project = projectsCache.find((p) => p.id === tcSelect.value);
   const documentText = aiDocText.value.trim();
   if (!documentText) {
     showFormError('ai-gen-error', 'Paste some requirements or document text above first.');
@@ -3321,7 +3403,7 @@ document.getElementById('ai-discard').addEventListener('click', () => {
 });
 
 document.getElementById('ai-add-selected').addEventListener('click', async () => {
-  const projectId = detailsSelect.value;
+  const projectId = tcSelect.value;
   const checks = aiPreviewList.querySelectorAll('.ai-preview-check');
   const selected = [];
   checks.forEach((cb) => {
@@ -4307,9 +4389,9 @@ document.getElementById('download-details-btn').addEventListener('click', () => 
   downloadSheet(`${safeFileName(p.name)} - Project Details`, [row], 'Project Details');
 });
 
-// Test execution panel → downloads only the currently selected project's test cases.
+// Test execution tab → downloads only the currently selected project's test cases.
 document.getElementById('download-tc-btn').addEventListener('click', () => {
-  const id = detailsSelect.value;
+  const id = tcSelect.value;
   const p = projectsCache.find((x) => x.id === id);
   const rows = tcCache.map((c) => ({
     'Title': c.title,

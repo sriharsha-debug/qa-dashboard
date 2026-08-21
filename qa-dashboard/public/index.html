@@ -65,6 +65,7 @@
         <button class="tab active" data-tab="projects">Projects</button>
         <button class="tab" data-tab="details">Project Details</button>
         <button class="tab" data-tab="bugs">Bugs</button>
+        <button class="tab" data-tab="testexec">Test Execution</button>
         <button class="tab" data-tab="daily">Daily Log</button>
         <button class="tab hidden" id="team-tab" data-tab="team">Team</button>
         <button class="tab" data-tab="notifications">Notifications<span id="sidebar-notif-badge" class="notif-badge hidden">0</span></button>
@@ -141,94 +142,6 @@
             </div>
           </div>
           <div class="details-grid" id="details-fields"></div>
-        </div>
-
-        <div class="panel">
-          <div class="panel-head">
-            <h2>Test execution</h2>
-            <div class="panel-head-right">
-              <div class="bulk-bar" id="tc-bulk-bar">
-                <label class="bulk-select-all"><input type="checkbox" id="tc-select-all" /> Select all</label>
-                <button type="button" id="tc-bulk-delete" class="btn btn-danger btn-sm hidden">Delete selected</button>
-              </div>
-              <span class="count" id="tc-summary"></span>
-              <button id="download-tc-template-btn" class="btn btn-ghost">Download template</button>
-              <button id="download-tc-btn" class="btn btn-ghost">Download</button>
-            </div>
-          </div>
-
-          <div class="ai-gen-box">
-            <p class="detail-label">Generate test cases with AI (free — uses your own Claude.ai account)</p>
-            <textarea id="ai-doc-text" rows="3" placeholder="Paste requirements or document text here"></textarea>
-            <p class="ai-gen-hint">1. Paste your document text above. 2. Copy the prompt. 3. Click Open Claude.ai and paste the prompt there, then send it. 4. Paste the reply back below and parse it.</p>
-            <div class="form-actions ai-gen-btn-row">
-              <button type="button" id="ai-copy-prompt" class="btn btn-primary">Copy prompt</button>
-              <a id="ai-open-claude" class="btn btn-ghost" href="https://claude.ai/new" target="_blank" rel="noopener">Open Claude.ai</a>
-            </div>
-            <p id="ai-gen-error" class="login-error hidden"></p>
-
-            <p class="detail-label ai-response-label">Paste the AI's reply here</p>
-            <textarea id="ai-response-text" rows="4" placeholder="Paste the JSON reply from Claude here"></textarea>
-            <div class="form-actions" style="justify-content:flex-start;">
-              <button type="button" id="ai-parse-btn" class="btn btn-primary">Parse response</button>
-            </div>
-
-            <div id="ai-preview" class="ai-preview hidden">
-              <p class="detail-label">Review and add</p>
-              <div id="ai-preview-list" class="ai-preview-list"></div>
-              <div class="form-actions" style="justify-content:flex-start; gap:10px;">
-                <button type="button" id="ai-add-selected" class="btn btn-primary">Add selected to Test Execution</button>
-                <button type="button" id="ai-discard" class="btn btn-ghost">Discard</button>
-              </div>
-            </div>
-          </div>
-
-          <form id="tc-form" class="grid-form">
-            <label class="span-2">Test case title
-              <input type="text" id="tc-title" placeholder="e.g. Verify login with valid credentials" required maxlength="200" />
-            </label>
-            <label>Priority
-              <select id="tc-priority">
-                <option value="Low">Low</option>
-                <option value="Medium" selected>Medium</option>
-                <option value="High">High</option>
-              </select>
-            </label>
-            <label>Category
-              <select id="tc-category">
-                <option value="Functional" selected>Functional</option>
-                <option value="Positive">Positive</option>
-                <option value="Negative">Negative</option>
-                <option value="Edge Case">Edge Case</option>
-                <option value="Security">Security</option>
-                <option value="Validation">Validation</option>
-                <option value="UI/UX">UI/UX</option>
-                <option value="Performance">Performance</option>
-                <option value="Accessibility">Accessibility</option>
-                <option value="Compatibility">Compatibility</option>
-                <option value="Regression">Regression</option>
-                <option value="UAT">UAT</option>
-              </select>
-            </label>
-            <label>Status
-              <select id="tc-status">
-                <option value="Not Run" selected>Not Run</option>
-                <option value="Pass">Pass</option>
-                <option value="Fail">Fail</option>
-                <option value="Blocked">Blocked</option>
-              </select>
-            </label>
-            <label class="span-2">Description
-              <textarea id="tc-description" rows="2" placeholder="Steps or scenario" maxlength="1000"></textarea>
-            </label>
-            <div class="span-2 form-actions">
-              <button type="submit" class="btn btn-primary">Add test case</button>
-            </div>
-          </form>
-          <p id="tc-error" class="login-error hidden"></p>
-          <div id="tc-list" class="tc-list"></div>
-          <p class="empty-state" id="tc-empty">No test cases logged yet for this project.</p>
-          <div id="tc-pager" class="pager"></div>
         </div>
 
         <div class="panel">
@@ -482,6 +395,144 @@
           <div id="bug-list" class="tc-list"></div>
           <p class="empty-state" id="bug-empty">No bugs logged yet for this project.</p>
           <div id="bug-pager" class="pager"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TEST EXECUTION TAB -->
+    <section id="tab-testexec" class="tab-panel">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Select a project</h2>
+        </div>
+        <select id="tc-project-select" class="details-select"></select>
+      </div>
+
+      <div id="tc-tab-empty" class="panel">
+        <p class="empty-state" style="display:block;">Add a project to log test cases here.</p>
+      </div>
+
+      <div id="tc-tab-content" class="hidden">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Test execution</h2>
+            <div class="panel-head-right">
+              <div class="bulk-bar" id="tc-bulk-bar">
+                <label class="bulk-select-all"><input type="checkbox" id="tc-select-all" /> Select all</label>
+                <button type="button" id="tc-bulk-delete" class="btn btn-danger btn-sm hidden">Delete selected</button>
+              </div>
+              <span class="count" id="tc-summary"></span>
+              <button id="download-tc-template-btn" class="btn btn-ghost">Download template</button>
+              <button id="download-tc-btn" class="btn btn-ghost">Download</button>
+            </div>
+          </div>
+
+          <div class="ai-gen-box">
+            <p class="detail-label">Generate test cases with AI (free — uses your own Claude.ai account)</p>
+            <textarea id="ai-doc-text" rows="3" placeholder="Paste requirements or document text here"></textarea>
+            <p class="ai-gen-hint">1. Paste your document text above. 2. Copy the prompt. 3. Click Open Claude.ai and paste the prompt there, then send it. 4. Paste the reply back below and parse it.</p>
+            <div class="form-actions ai-gen-btn-row">
+              <button type="button" id="ai-copy-prompt" class="btn btn-primary">Copy prompt</button>
+              <a id="ai-open-claude" class="btn btn-ghost" href="https://claude.ai/new" target="_blank" rel="noopener">Open Claude.ai</a>
+            </div>
+            <p id="ai-gen-error" class="login-error hidden"></p>
+
+            <p class="detail-label ai-response-label">Paste the AI's reply here</p>
+            <textarea id="ai-response-text" rows="4" placeholder="Paste the JSON reply from Claude here"></textarea>
+            <div class="form-actions" style="justify-content:flex-start;">
+              <button type="button" id="ai-parse-btn" class="btn btn-primary">Parse response</button>
+            </div>
+
+            <div id="ai-preview" class="ai-preview hidden">
+              <p class="detail-label">Review and add</p>
+              <div id="ai-preview-list" class="ai-preview-list"></div>
+              <div class="form-actions" style="justify-content:flex-start; gap:10px;">
+                <button type="button" id="ai-add-selected" class="btn btn-primary">Add selected to Test Execution</button>
+                <button type="button" id="ai-discard" class="btn btn-ghost">Discard</button>
+              </div>
+            </div>
+          </div>
+
+          <form id="tc-form" class="grid-form">
+            <label class="span-2">Test case title
+              <input type="text" id="tc-title" placeholder="e.g. Verify login with valid credentials" required maxlength="200" />
+            </label>
+            <label>Priority
+              <select id="tc-priority">
+                <option value="Low">Low</option>
+                <option value="Medium" selected>Medium</option>
+                <option value="High">High</option>
+              </select>
+            </label>
+            <label>Category
+              <select id="tc-category">
+                <option value="Functional" selected>Functional</option>
+                <option value="Positive">Positive</option>
+                <option value="Negative">Negative</option>
+                <option value="Edge Case">Edge Case</option>
+                <option value="Security">Security</option>
+                <option value="Validation">Validation</option>
+                <option value="UI/UX">UI/UX</option>
+                <option value="Performance">Performance</option>
+                <option value="Accessibility">Accessibility</option>
+                <option value="Compatibility">Compatibility</option>
+                <option value="Regression">Regression</option>
+                <option value="UAT">UAT</option>
+              </select>
+            </label>
+            <label>Status
+              <select id="tc-status">
+                <option value="Not Run" selected>Not Run</option>
+                <option value="Pass">Pass</option>
+                <option value="Fail">Fail</option>
+                <option value="Blocked">Blocked</option>
+              </select>
+            </label>
+            <label class="span-2">Description
+              <textarea id="tc-description" rows="2" placeholder="Steps or scenario" maxlength="1000"></textarea>
+            </label>
+            <div class="span-2 form-actions">
+              <button type="submit" class="btn btn-primary">Add test case</button>
+            </div>
+          </form>
+          <p id="tc-error" class="login-error hidden"></p>
+
+          <div class="filters" id="tc-filters">
+            <select id="tc-filter-status">
+              <option value="">All statuses</option>
+              <option value="Not Run">Not Run</option>
+              <option value="Pass">Pass</option>
+              <option value="Fail">Fail</option>
+              <option value="Blocked">Blocked</option>
+            </select>
+            <select id="tc-filter-priority">
+              <option value="">All priorities</option>
+              <option value="Low">Low</option>
+              <option value="Medium">Medium</option>
+              <option value="High">High</option>
+            </select>
+            <select id="tc-filter-category">
+              <option value="">All categories</option>
+              <option value="Functional">Functional</option>
+              <option value="Positive">Positive</option>
+              <option value="Negative">Negative</option>
+              <option value="Edge Case">Edge Case</option>
+              <option value="Security">Security</option>
+              <option value="Validation">Validation</option>
+              <option value="UI/UX">UI/UX</option>
+              <option value="Performance">Performance</option>
+              <option value="Accessibility">Accessibility</option>
+              <option value="Compatibility">Compatibility</option>
+              <option value="Regression">Regression</option>
+              <option value="UAT">UAT</option>
+            </select>
+            <button type="button" id="tc-filter-clear" class="btn btn-ghost btn-small">Clear</button>
+            <span class="count" id="tc-filter-count"></span>
+          </div>
+
+          <div id="tc-list" class="tc-list"></div>
+          <p class="empty-state" id="tc-empty">No test cases logged yet for this project.</p>
+          <div id="tc-pager" class="pager"></div>
         </div>
       </div>
     </section>

@@ -254,7 +254,7 @@ The Test Execution tracker can turn a requirements document into test
 cases using Claude — with **no billing and no backend function**. It works
 like this:
 
-1. In Project Details → Test execution, paste your requirements text.
+1. In the Test Execution tab, paste your requirements text.
 2. Click **Generate test cases (opens Claude.ai)** — this copies a
    ready-made prompt (your document included) to your clipboard and opens
    a free Claude.ai chat in a new tab.
