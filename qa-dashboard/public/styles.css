@@ -1426,6 +1426,7 @@ select option:focus {
 }
 .apk-row-top .apk-version { font-family: var(--font-body); font-weight: 600; font-size: 14px; color: var(--ink); }
 .apk-row-notes { font-size: 13px; color: var(--ink-soft); }
+.apk-row-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
 
 .tc-list { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
 .tc-row {

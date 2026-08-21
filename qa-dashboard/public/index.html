@@ -975,6 +975,47 @@
     </div>
   </div>
 
+  <!-- APK share edit modal -->
+  <div id="apk-modal" class="modal-overlay hidden">
+    <div class="modal modal-large">
+      <div class="modal-head">
+        <h2>Edit APK entry</h2>
+        <button id="apk-modal-close" class="icon-btn">close</button>
+      </div>
+      <form id="apk-edit-form" class="grid-form">
+        <input type="hidden" id="ae-id" />
+        <input type="hidden" id="ae-file-path" />
+        <label>Version / label
+          <input type="text" id="ae-version" placeholder="e.g. v1.4.2" maxlength="60" />
+        </label>
+        <label>Shared date
+          <input type="date" id="ae-date" required />
+        </label>
+        <div class="span-2" id="ae-current-file-wrap">
+          <span class="field-hint" id="ae-current-file"></span>
+        </div>
+        <label class="span-2">Replace with a new file
+          <input type="file" id="ae-file" accept=".apk,.aab" />
+          <span class="field-hint">Leave blank to keep the current file/link. Uploading a new file replaces it.</span>
+        </label>
+        <label class="span-2">Or paste a link instead <span class="field-hint-inline">(use one or the other, not both)</span>
+          <input type="url" id="ae-link" placeholder="https://..." maxlength="500" />
+        </label>
+        <label>Shared by
+          <input type="text" id="ae-shared-by" placeholder="Developer name" maxlength="80" />
+        </label>
+        <label class="span-2">Notes
+          <input type="text" id="ae-notes" placeholder="What changed in this build" maxlength="500" />
+        </label>
+        <p id="apk-edit-error" class="login-error hidden span-2"></p>
+        <div class="span-2 form-actions">
+          <button type="button" id="apk-edit-delete" class="btn btn-ghost">Remove entry</button>
+          <button type="submit" class="btn btn-primary" id="apk-edit-submit-btn">Save entry</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script defer src="app.js"></script>
 </body>
 </html>

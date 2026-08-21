@@ -31,6 +31,7 @@ let currentProfile = null;
 let notifPollTimer = null;
 let tcCache = [];
 let bugCache = [];
+let apkCache = [];
 let reportsCache = [];
 let auditCache = [];
 let auditPageNum = 1;
@@ -2769,6 +2770,7 @@ async function loadApkShares(projectId) {
     console.error(error);
     return;
   }
+  apkCache = data || [];
   renderApkShares(data);
 }
 
@@ -2806,8 +2808,12 @@ function renderApkShares(shares) {
         ${a.apk_link ? `<a class="bugsheet-link" href="${escapeHtml(a.apk_link)}" target="_blank" rel="noopener">${linkLabel}</a>` : ''}
         ${a.notes ? `<div class="apk-row-notes">${escapeHtml(a.notes)}</div>` : ''}
       </div>
-      <button class="icon-btn" data-apk-delete="${a.id}">remove</button>
+      <div class="apk-row-actions">
+        <button class="icon-btn" data-apk-edit="${a.id}">edit</button>
+        <button class="icon-btn" data-apk-delete="${a.id}">remove</button>
+      </div>
     `;
+    row.querySelector('[data-apk-edit]').addEventListener('click', () => openApkModal(a.id));
     row.querySelector('[data-apk-delete]').addEventListener('click', async () => {
       if (!confirm('Remove this APK log entry?')) return;
       await flashRowRemoving(row);
@@ -2827,6 +2833,154 @@ function renderApkShares(shares) {
 
   apkBulk.onRendered();
 }
+
+// ---------- APK share edit modal ----------
+
+const apkModal = document.getElementById('apk-modal');
+const apkEditForm = document.getElementById('apk-edit-form');
+
+function openApkModal(id) {
+  const a = apkCache.find((x) => x.id === id);
+  if (!a) return;
+  clearFormError('apk-edit-error');
+  apkEditForm.reset();
+  document.getElementById('ae-id').value = a.id;
+  document.getElementById('ae-file-path').value = a.file_path || '';
+  document.getElementById('ae-version').value = a.version || '';
+  document.getElementById('ae-date').value = a.shared_date || '';
+  document.getElementById('ae-shared-by').value = a.shared_by || '';
+  document.getElementById('ae-notes').value = a.notes || '';
+  // Only pre-fill the link field for link-based entries — file-based
+  // entries keep the link field free for pasting a replacement link
+  // (uploading a new file below is how you replace the file itself).
+  document.getElementById('ae-link').value = a.file_path ? '' : (a.apk_link || '');
+  const currentFileEl = document.getElementById('ae-current-file');
+  if (a.file_path) {
+    currentFileEl.textContent = `Current file: ${a.file_name || 'uploaded file'}${a.file_size ? ` (${formatFileSize(a.file_size)})` : ''}`;
+  } else if (a.apk_link) {
+    currentFileEl.textContent = `Current link: ${a.apk_link}`;
+  } else {
+    currentFileEl.textContent = 'No file or link on this entry yet.';
+  }
+  apkModal.classList.remove('hidden');
+}
+
+function closeApkModal() {
+  apkModal.classList.add('hidden');
+}
+
+document.getElementById('apk-modal-close').addEventListener('click', closeApkModal);
+apkModal.addEventListener('click', (e) => {
+  if (e.target === apkModal) closeApkModal();
+});
+
+apkEditForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearFormError('apk-edit-error');
+  const id = document.getElementById('ae-id').value;
+  const a = apkCache.find((x) => x.id === id);
+  if (!a) return;
+
+  const sharedDate = document.getElementById('ae-date').value;
+  if (!sharedDate) {
+    showFormError('apk-edit-error', 'Shared date is required.');
+    flashFields(apkEditForm, 'field-error');
+    return;
+  }
+  const apkLinkVal = document.getElementById('ae-link').value.trim();
+  if (!isValidUrl(apkLinkVal)) {
+    showFormError('apk-edit-error', 'APK link must be a valid http(s) URL, or leave it blank.');
+    flashFields(apkEditForm, 'field-error');
+    return;
+  }
+  const fileInput = document.getElementById('ae-file');
+  const file = fileInput.files && fileInput.files[0];
+  if (file && apkLinkVal) {
+    showFormError('apk-edit-error', 'Use either an uploaded file or a link, not both.');
+    flashFields(apkEditForm, 'field-error');
+    return;
+  }
+  if (file && file.size > APK_MAX_BYTES) {
+    showFormError('apk-edit-error', `That file is ${formatFileSize(file.size)} — over the ${formatFileSize(APK_MAX_BYTES)} upload limit. Raise the limit in Supabase (Storage → apk-files → Settings) or share a link instead.`);
+    flashFields(apkEditForm, 'field-error');
+    return;
+  }
+
+  const payload = {
+    version: document.getElementById('ae-version').value.trim() || null,
+    shared_date: sharedDate,
+    shared_by: document.getElementById('ae-shared-by').value.trim() || null,
+    notes: document.getElementById('ae-notes').value.trim() || null,
+  };
+
+  const submitBtn = document.getElementById('apk-edit-submit-btn');
+  let uploaded = null;
+  const oldFilePath = document.getElementById('ae-file-path').value || null;
+
+  if (file) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Uploading…';
+    try {
+      uploaded = await uploadApkFile(file, a.project_id);
+    } catch (err) {
+      showFormError('apk-edit-error', `Upload failed: ${err.message || err}`);
+      flashFields(apkEditForm, 'field-error');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Save entry';
+      return;
+    }
+    payload.apk_link = uploaded.publicUrl;
+    payload.file_path = uploaded.path;
+    payload.file_name = uploaded.name;
+    payload.file_size = uploaded.size;
+    submitBtn.textContent = 'Save entry';
+    submitBtn.disabled = false;
+  } else if (apkLinkVal) {
+    // Switching to (or updating) a link clears any previously uploaded file.
+    payload.apk_link = apkLinkVal;
+    payload.file_path = null;
+    payload.file_name = null;
+    payload.file_size = null;
+  }
+  // If neither a new file nor a link was provided, leave the existing
+  // file/link fields untouched (they're simply omitted from the payload).
+
+  const { error } = await sb.from('apk_shares').update(payload).eq('id', id);
+  if (error) {
+    // Update failed after a successful upload — clean up the orphaned file.
+    if (uploaded) await sb.storage.from('apk-files').remove([uploaded.path]);
+    showFormError('apk-edit-error', error.message);
+    flashFields(apkEditForm, 'field-error');
+    return;
+  }
+  // Once the row points at the new file (or link), it's safe to delete the
+  // old uploaded file so removed/replaced files don't linger in storage.
+  if (uploaded && oldFilePath) {
+    await sb.storage.from('apk-files').remove([oldFilePath]);
+  } else if (apkLinkVal && !file && oldFilePath) {
+    await sb.storage.from('apk-files').remove([oldFilePath]);
+  }
+
+  toast('APK entry updated.', { emoji: '💾' });
+  closeApkModal();
+  loadApkShares(a.project_id);
+});
+
+document.getElementById('apk-edit-delete').addEventListener('click', async () => {
+  const id = document.getElementById('ae-id').value;
+  if (!id) return;
+  const a = apkCache.find((x) => x.id === id);
+  if (!confirm('Remove this APK log entry?')) return;
+  const { error } = await sb.from('apk_shares').delete().eq('id', id);
+  if (error) {
+    showFormError('apk-edit-error', error.message);
+    return;
+  }
+  if (a && a.file_path) await sb.storage.from('apk-files').remove([a.file_path]);
+  toast('APK entry removed.', { emoji: '🗑️' });
+  closeApkModal();
+  if (a) loadApkShares(a.project_id);
+});
 
 
 function todayStr() {
