@@ -1013,11 +1013,17 @@ function fmtDate(d) {
   return d ? new Date(d + 'T00:00:00').toLocaleDateString() : '—';
 }
 
-function renderProjects(projects) {
+// Shared by the table render and both download buttons, so "download what
+// I'm currently looking at" always matches the Tester filter on screen.
+function getFilteredProjects(projects) {
   const adminFilter = document.getElementById('admin-filter-projects').value;
-  const filtered = isLeader() && adminFilter
+  return isLeader() && adminFilter
     ? projects.filter((p) => p.created_by_email === adminFilter)
     : projects;
+}
+
+function renderProjects(projects) {
+  const filtered = getFilteredProjects(projects);
 
   projectsTbody.innerHTML = '';
   projectCount.textContent = filtered.length ? `${filtered.length} total` : '';
@@ -4258,6 +4264,31 @@ document.getElementById('download-projects-btn').addEventListener('click', () =>
     'Remarks': p.remarks || '',
   }));
   downloadSheet('Projects', rows, 'Projects');
+});
+
+// Projects tab → downloads the FULL detail sheet (every field shown on the
+// Project Details tab) for every project currently matching the Tester
+// filter, one row per project, all in a single .xlsx. With no Tester
+// selected this covers every project.
+document.getElementById('download-projects-details-btn').addEventListener('click', () => {
+  const filtered = getFilteredProjects(projectsCache);
+  if (!filtered.length) {
+    toastError('No projects to download for this filter.');
+    return;
+  }
+  const rows = filtered.map((p) => {
+    const row = { 'Project': p.name };
+    detailFieldGroups.forEach((f) => {
+      if (f.isHeader) return;
+      row[f.label] = p[f.key] || '';
+    });
+    return row;
+  });
+  const adminFilter = document.getElementById('admin-filter-projects').value;
+  const memberLabel = isLeader() && adminFilter
+    ? (teamCache.find((m) => m.email === adminFilter)?.display_name || adminFilter)
+    : 'All Testers';
+  downloadSheet(`${safeFileName(memberLabel)} - All Project Details`, rows, 'Project Details');
 });
 
 // Project Details tab → downloads only the currently selected project's full detail sheet.
