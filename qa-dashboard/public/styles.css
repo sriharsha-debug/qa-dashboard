@@ -1155,8 +1155,13 @@ select option:focus {
 .assigned-tasks { margin-bottom: 4px; }
 .assigned-tasks .detail-label { display: block; margin-bottom: 2px; }
 .report-delete, .report-share { justify-self: end; }
-.report-card { grid-template-columns: 1fr auto auto; }
+.report-card { grid-template-columns: 1fr auto auto auto; }
 .report-body { grid-column: 1 / -1; }
+
+/* A signed-off report shows a round stamp pinned to the top-right corner;
+   reserve space for it so it doesn't sit on top of the edit/remove/share
+   links (which are also right-aligned). */
+.report-card:has(.stamp) { padding-right: 96px; }
 
 @media (max-width: 520px) {
   .report-card { grid-template-columns: 1fr; }
