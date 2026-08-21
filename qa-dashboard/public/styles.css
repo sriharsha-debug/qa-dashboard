@@ -774,6 +774,54 @@ input:focus, textarea:focus {
     rgba(255, 255, 255, 0.06);
 }
 
+input[type="file"] {
+  padding: 8px 10px;
+  cursor: pointer;
+}
+input[type="file"]::file-selector-button {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: rgba(45, 212, 191, 0.14);
+  border: 1px solid var(--cyan);
+  border-radius: 8px;
+  padding: 6px 12px;
+  margin-right: 10px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+input[type="file"]::file-selector-button:hover {
+  background: rgba(45, 212, 191, 0.26);
+}
+
+/* Small helper text under a form field — normal case/weight, unlike the
+   uppercase mono label above it. */
+.field-hint {
+  display: block;
+  text-transform: none;
+  letter-spacing: normal;
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+.field-hint-inline {
+  text-transform: none;
+  letter-spacing: normal;
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: 10px;
+  color: var(--ink-soft);
+}
+.upload-progress {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--cyan);
+  margin-top: 4px;
+}
+
 /* Dropdowns / selects — deliberately distinct from text inputs: violet
    border, smaller radius, always-visible chevron, slightly shorter */
 select {
@@ -1369,6 +1417,7 @@ select option:focus {
 .apk-row-main { display: flex; flex-direction: column; gap: 3px; }
 .apk-row-top {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   align-items: baseline;
   font-family: var(--font-mono);

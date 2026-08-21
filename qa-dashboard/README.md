@@ -221,6 +221,33 @@ Vercel gives you a URL like `https://your-project.vercel.app`. Open it,
 sign in with the email + password you created in Supabase Auth, and
 you're in.
 
+## 8. Upload APK files directly (e.g. builds shared over WhatsApp)
+
+Run `migration-v26.sql` in Supabase SQL Editor after `migration-v25.sql`.
+(Brand new Supabase projects don't need this step — `supabase-schema.sql`
+already includes it.) This creates a Storage bucket called `apk-files` and
+adds a few columns to `apk_shares` to track uploaded files.
+
+Once that's run, **Project Details → APK shares** has an **APK file**
+upload field alongside the existing **APK link** field:
+
+1. Download/save the `.apk` (or `.aab`) your dev team sent on WhatsApp to
+   your phone or computer.
+2. On the APK shares form, click **APK file** and pick it — or keep using
+   **APK link** instead if you'd rather paste a Drive/WeTransfer link like
+   before. Use one or the other, not both.
+3. Fill in the rest (version, shared date, etc.) and click **Log APK**.
+
+The uploaded file gets its own public link automatically, so **Download /
+link**, the Project Details "Latest APK" line, and the WhatsApp share
+message all work exactly the same as they did with a pasted link — nothing
+else changes. Removing an APK entry also deletes its uploaded file from
+storage.
+
+**File size:** Supabase's default upload limit is 50MB per file, which
+covers most APKs. If your builds run bigger, raise it in the Supabase
+dashboard: **Storage → apk-files bucket → Settings → File size limit**.
+
 ## AI test case generation (free — no API key needed)
 
 The Test Execution tracker can turn a requirements document into test

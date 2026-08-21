@@ -49,6 +49,9 @@ create table if not exists apk_shares (
   project_id uuid not null references projects(id) on delete cascade,
   version text,
   apk_link text,
+  file_path text,
+  file_name text,
+  file_size bigint,
   shared_date date not null default current_date,
   shared_by text,
   notes text,
@@ -96,6 +99,27 @@ create policy "apk_shares_owner_or_leader" on apk_shares
   for all
   using (owner_id = auth.uid() or is_team_leader())
   with check (owner_id = auth.uid() or is_team_leader());
+
+-- Storage bucket for uploaded APK files (public, so the same "open link" /
+-- WhatsApp-share flow that already worked for pasted links works for
+-- uploaded files too — see the APK shares panel).
+insert into storage.buckets (id, name, public)
+values ('apk-files', 'apk-files', true)
+on conflict (id) do nothing;
+
+create policy "apk_files_public_read" on storage.objects
+  for select
+  using (bucket_id = 'apk-files');
+
+create policy "apk_files_authenticated_upload" on storage.objects
+  for insert
+  to authenticated
+  with check (bucket_id = 'apk-files');
+
+create policy "apk_files_authenticated_delete" on storage.objects
+  for delete
+  to authenticated
+  using (bucket_id = 'apk-files');
 
 create policy "projects_owner_or_leader" on projects
   for all

@@ -2643,6 +2643,39 @@ document.getElementById('bug-import-add-selected').addEventListener('click', asy
 
 // ---------- APK shares ----------
 
+const APK_MAX_BYTES = 50 * 1024 * 1024; // matches Supabase's default per-file upload limit
+
+function formatFileSize(bytes) {
+  if (!bytes && bytes !== 0) return '';
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// Storage object keys can't safely contain spaces or most punctuation, so
+// strip the file name down to something clean while keeping it readable
+// (and keeping the extension, so uploaded files still look right if
+// someone downloads them straight from the storage bucket).
+function sanitizeStorageFileName(name) {
+  return String(name || 'apk')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .slice(-120);
+}
+
+// Uploads a .apk/.aab straight into the "apk-files" Storage bucket (see
+// migration-v26.sql) and returns its public URL alongside the details we
+// store on the apk_shares row, so "remove" can later delete the file too.
+async function uploadApkFile(file, projectId) {
+  const path = `${projectId}/${Date.now()}-${sanitizeStorageFileName(file.name)}`;
+  const { error } = await sb.storage.from('apk-files').upload(path, file, {
+    cacheControl: '3600',
+    upsert: false,
+  });
+  if (error) throw error;
+  const { data: publicData } = sb.storage.from('apk-files').getPublicUrl(path);
+  return { path, publicUrl: publicData.publicUrl, name: file.name, size: file.size };
+}
+
 apkForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   clearFormError('apk-error');
@@ -2661,6 +2694,18 @@ apkForm.addEventListener('submit', async (e) => {
     flashFields(apkForm, 'field-error');
     return;
   }
+  const fileInput = document.getElementById('apk-file');
+  const file = fileInput.files && fileInput.files[0];
+  if (file && apkLinkVal) {
+    showFormError('apk-error', 'Use either an uploaded file or a link, not both.');
+    flashFields(apkForm, 'field-error');
+    return;
+  }
+  if (file && file.size > APK_MAX_BYTES) {
+    showFormError('apk-error', `That file is ${formatFileSize(file.size)} — over the ${formatFileSize(APK_MAX_BYTES)} upload limit. Raise the limit in Supabase (Storage → apk-files → Settings) or share a link instead.`);
+    flashFields(apkForm, 'field-error');
+    return;
+  }
 
   const payload = {
     project_id,
@@ -2672,8 +2717,34 @@ apkForm.addEventListener('submit', async (e) => {
     logged_by_email: currentUser ? currentUser.email : null,
     owner_id: currentUser ? currentUser.id : null,
   };
+
+  const submitBtn = document.getElementById('apk-submit-btn');
+  let uploaded = null;
+  if (file) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Uploading…';
+    try {
+      uploaded = await uploadApkFile(file, project_id);
+    } catch (err) {
+      showFormError('apk-error', `Upload failed: ${err.message || err}`);
+      flashFields(apkForm, 'field-error');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Log APK';
+      return;
+    }
+    payload.apk_link = uploaded.publicUrl;
+    payload.file_path = uploaded.path;
+    payload.file_name = uploaded.name;
+    payload.file_size = uploaded.size;
+    submitBtn.textContent = 'Log APK';
+    submitBtn.disabled = false;
+  }
+
   const { error } = await sb.from('apk_shares').insert(payload);
   if (error) {
+    // Insert failed after a successful upload — clean up the orphaned file
+    // rather than leaving it in storage with nothing pointing to it.
+    if (uploaded) await sb.storage.from('apk-files').remove([uploaded.path]);
     showFormError('apk-error', error.message);
     flashFields(apkForm, 'field-error');
     return;
@@ -2720,6 +2791,9 @@ function renderApkShares(shares) {
   shares.forEach((a) => {
     const row = document.createElement('div');
     row.className = 'apk-row';
+    const linkLabel = a.file_name
+      ? `Download ${escapeHtml(a.file_name)}${a.file_size ? ` (${formatFileSize(a.file_size)})` : ''}`
+      : 'Download / link';
     row.innerHTML = `
       <div class="apk-row-checkbox-wrap"><input type="checkbox" class="row-checkbox" data-id="${a.id}" /></div>
       <div class="apk-row-main">
@@ -2727,8 +2801,9 @@ function renderApkShares(shares) {
           <span class="apk-version">${escapeHtml(a.version || 'Build')}</span>
           <span>${fmtDate(a.shared_date)}</span>
           ${a.shared_by ? `<span>by ${escapeHtml(a.shared_by)}</span>` : ''}
+          ${a.file_path ? `<span class="auto-badge" title="Uploaded to the dashboard">FILE</span>` : ''}
         </div>
-        ${a.apk_link ? `<a class="bugsheet-link" href="${escapeHtml(a.apk_link)}" target="_blank" rel="noopener">Download / link</a>` : ''}
+        ${a.apk_link ? `<a class="bugsheet-link" href="${escapeHtml(a.apk_link)}" target="_blank" rel="noopener">${linkLabel}</a>` : ''}
         ${a.notes ? `<div class="apk-row-notes">${escapeHtml(a.notes)}</div>` : ''}
       </div>
       <button class="icon-btn" data-apk-delete="${a.id}">remove</button>
@@ -2741,6 +2816,9 @@ function renderApkShares(shares) {
         toastError(error.message);
         return;
       }
+      // Clean up the uploaded file in storage too, so removed entries
+      // don't leave orphaned files behind counting against storage quota.
+      if (a.file_path) await sb.storage.from('apk-files').remove([a.file_path]);
       toast('APK entry removed.', { emoji: '🗑️' });
       showProjectDetails(detailsSelect.value);
     });
@@ -2749,6 +2827,7 @@ function renderApkShares(shares) {
 
   apkBulk.onRendered();
 }
+
 
 function todayStr() {
   // Local calendar date, NOT toISOString() (which is UTC and rolls over

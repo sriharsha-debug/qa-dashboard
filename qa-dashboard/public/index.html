@@ -248,7 +248,11 @@
             <label>Shared date
               <input type="date" id="apk-date" required />
             </label>
-            <label class="span-2">APK link
+            <label class="span-2">APK file
+              <input type="file" id="apk-file" accept=".apk,.aab" />
+              <span class="field-hint">Got it from WhatsApp? Save/download it to your device first, then upload it here.</span>
+            </label>
+            <label class="span-2">Or paste a link instead <span class="field-hint-inline">(use one or the other, not both)</span>
               <input type="url" id="apk-link" placeholder="https://..." maxlength="500" />
             </label>
             <label>Shared by
@@ -258,7 +262,7 @@
               <input type="text" id="apk-notes" placeholder="What changed in this build" maxlength="500" />
             </label>
             <div class="span-2 form-actions">
-              <button type="submit" class="btn btn-primary">Log APK</button>
+              <button type="submit" class="btn btn-primary" id="apk-submit-btn">Log APK</button>
             </div>
           </form>
           <p id="apk-error" class="login-error hidden"></p>
