@@ -1724,6 +1724,12 @@ const bugFilterIssueType = document.getElementById('bug-filter-issue-type');
 const bugFilterClear = document.getElementById('bug-filter-clear');
 const bugFilterCount = document.getElementById('bug-filter-count');
 
+// Once the person types their own Bug ID, stop auto-suggesting over it —
+// autofillNextBugId() only overwrites the field while it's untouched.
+document.getElementById('bug-bugid').addEventListener('input', (e) => {
+  e.target.dataset.autofilled = '';
+});
+
 function getFilteredBugs() {
   const status = bugFilterStatus.value;
   const severity = bugFilterSeverity.value;
@@ -2053,6 +2059,40 @@ async function loadBugs(projectId) {
   renderBugs(filtered, projectId);
   updateBugFilterCount(filtered);
   refreshDetailsBugSummaryIfShowing(projectId);
+  autofillNextBugId();
+}
+
+// Suggests the next Bug ID for the "Add bug" form by looking at the most
+// recently added bug for this project and incrementing its trailing number
+// (e.g. "BUG-001" -> "BUG-002", "PLAPLE-7" -> "PLAPLE-8"). Falls back to
+// "BUG-001" if this project has no bugs yet, or none of them have an ID
+// with a number in it to build off of.
+function nextBugIdSuggestion(bugs) {
+  for (let i = bugs.length - 1; i >= 0; i--) {
+    const val = bugs[i].bug_id;
+    if (!val) continue;
+    const m = val.match(/^(.*?)(\d+)(\D*)$/);
+    if (m) {
+      const [, prefix, digits, suffix] = m;
+      const next = String(parseInt(digits, 10) + 1).padStart(digits.length, '0');
+      return `${prefix}${next}${suffix}`;
+    }
+  }
+  return 'BUG-001';
+}
+
+// Fills the Bug ID field with the next suggested ID, but only when it's
+// empty or still holds a value we auto-filled earlier — so it never
+// clobbers an ID someone typed in by hand while a background refresh
+// happens (e.g. another bug's status changing elsewhere in the list).
+function autofillNextBugId() {
+  const input = document.getElementById('bug-bugid');
+  if (!input) return;
+  const isEmpty = input.value.trim() === '';
+  const isAutofilled = input.dataset.autofilled === '1';
+  if (!isEmpty && !isAutofilled) return;
+  input.value = nextBugIdSuggestion(bugCache);
+  input.dataset.autofilled = '1';
 }
 
 // Bug counts on the Project Details tab are auto-tracked, not manually
