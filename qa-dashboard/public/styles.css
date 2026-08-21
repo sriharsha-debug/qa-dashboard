@@ -2059,3 +2059,12 @@ button, input, select, textarea {
 .row-actions a,.row-actions button{position:static!important;margin:0!important}
 .bug-actions,.testcase-actions{display:flex!important;align-items:center!important;gap:14px!important;flex-wrap:nowrap!important}
 .bug-actions>*,.testcase-actions>*{margin:0!important}
+
+/* Universal per-page search box (injected by setupUniversalFilters) */
+.universal-search-input{
+  display:block;
+  width:100%;
+  max-width:320px;
+  margin:0 0 12px;
+  font-size:13px;
+}

@@ -4049,7 +4049,39 @@ document.getElementById('download-reports-btn').addEventListener('click', async 
 
 // Universal search/filter injection
 function setupUniversalFilters(){
- const targets=['projects-table','tc-list','apk-list','bug-list','reports-list','team-list','audit-list','notif-page-list'];
- targets.forEach(id=>{const el=document.getElementById(id); if(!el||document.getElementById(id+'-search')) return; const i=document.createElement('input'); i.id=id+'-search'; i.placeholder='Search...'; i.style.margin='8px'; el.parentNode.insertBefore(i,el); i.addEventListener('input',()=>{const q=i.value.toLowerCase(); el.querySelectorAll('tr, .card, li').forEach(r=>{r.style.display=(r.innerText||'').toLowerCase().includes(q)?'':'none';});});});
+ // Each list renders its rows/cards with its own class name (not generic
+ // "tr"/".card"/"li"), so the filter has to match the real markup per page.
+ // projects uses the tbody id directly so the <thead> row is never touched.
+ const targets={
+   'projects-tbody':'tr',
+   'tc-list':'.tc-row',
+   'apk-list':'.apk-row',
+   'bug-list':'.tc-row',
+   'reports-list':'.report-card',
+   'team-list':'.team-row',
+   'audit-list':'.audit-item',
+   'notif-page-list':'.notif-item',
+ };
+ Object.keys(targets).forEach(id=>{
+   const el=document.getElementById(id);
+   if(!el||document.getElementById(id+'-search')) return;
+   const itemSelector=targets[id];
+   // Insert above the whole table (not the tbody) for the projects list so
+   // the search box doesn't end up wedged between <thead> and <tbody>.
+   const anchor=el.closest('table')||el;
+   const i=document.createElement('input');
+   i.type='text';
+   i.id=id+'-search';
+   i.className='universal-search-input';
+   i.placeholder='Search...';
+   anchor.parentNode.insertBefore(i,anchor);
+   i.addEventListener('input',()=>{
+     const q=i.value.trim().toLowerCase();
+     el.querySelectorAll(itemSelector).forEach(r=>{
+       const text=(r.innerText||r.textContent||'').toLowerCase();
+       r.style.display=(!q||text.includes(q))?'':'none';
+     });
+   });
+ });
 }
 setTimeout(setupUniversalFilters,1500);
