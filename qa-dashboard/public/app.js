@@ -2075,7 +2075,7 @@ function renderBugs(bugs, projectId) {
   const counts = { Open: 0, 'In Progress': 0, Fixed: 0, Retest: 0, Closed: 0, Reopened: 0 };
   bugs.forEach((b) => { counts[b.status] = (counts[b.status] || 0) + 1; });
   bugSummary.textContent = bugs.length
-    ? `${bugs.length} total · ${counts.Open} open · ${counts['In Progress']} in progress · ${counts.Fixed} fixed · ${counts.Closed} closed`
+    ? `${bugs.length} total · ${counts.Open} open · ${counts['In Progress']} in progress · ${counts.Fixed} fixed · ${counts.Closed} closed · ${counts.Reopened} reopened`
     : '';
 
   const totalPages = Math.max(1, Math.ceil(bugs.length / BUG_PAGE_SIZE));
