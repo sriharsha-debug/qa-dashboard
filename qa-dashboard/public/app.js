@@ -1716,6 +1716,7 @@ const bugFilterStatus = document.getElementById('bug-filter-status');
 const bugFilterSeverity = document.getElementById('bug-filter-severity');
 const bugFilterIssueType = document.getElementById('bug-filter-issue-type');
 const bugFilterClear = document.getElementById('bug-filter-clear');
+const bugFilterCount = document.getElementById('bug-filter-count');
 
 function getFilteredBugs() {
   const status = bugFilterStatus.value;
@@ -1729,10 +1730,22 @@ function getFilteredBugs() {
   });
 }
 
+function updateBugFilterCount(filtered) {
+  const anyFilterActive = bugFilterStatus.value || bugFilterSeverity.value || bugFilterIssueType.value;
+  if (!anyFilterActive) {
+    bugFilterCount.textContent = '';
+    return;
+  }
+  const labelParts = [bugFilterStatus.value, bugFilterSeverity.value, bugFilterIssueType.value].filter(Boolean);
+  bugFilterCount.textContent = `${filtered.length} of ${bugCache.length} bug${bugCache.length === 1 ? '' : 's'} — ${labelParts.join(', ')}`;
+}
+
 [bugFilterStatus, bugFilterSeverity, bugFilterIssueType].forEach((sel) => {
   sel.addEventListener('change', () => {
     bugPageNum = 1;
-    renderBugs(getFilteredBugs(), bugsSelect.value);
+    const filtered = getFilteredBugs();
+    renderBugs(filtered, bugsSelect.value);
+    updateBugFilterCount(filtered);
   });
 });
 
@@ -1741,7 +1754,9 @@ bugFilterClear.addEventListener('click', () => {
   bugFilterSeverity.value = '';
   bugFilterIssueType.value = '';
   bugPageNum = 1;
-  renderBugs(getFilteredBugs(), bugsSelect.value);
+  const filtered = getFilteredBugs();
+  renderBugs(filtered, bugsSelect.value);
+  updateBugFilterCount(filtered);
 });
 
 function renderBugsSelect() {
@@ -1766,6 +1781,10 @@ function showBugsForProject(id) {
   bugsSelect.dataset.current = id;
   bugsTabContent.classList.remove('hidden');
   bugPageNum = 1;
+  bugFilterStatus.value = '';
+  bugFilterSeverity.value = '';
+  bugFilterIssueType.value = '';
+  bugFilterCount.textContent = '';
   loadBugs(id);
 }
 
@@ -2016,10 +2035,9 @@ async function loadBugs(projectId) {
     return;
   }
   bugCache = data || [];
-  bugFilterStatus.value = '';
-  bugFilterSeverity.value = '';
-  bugFilterIssueType.value = '';
-  renderBugs(bugCache, projectId);
+  const filtered = getFilteredBugs();
+  renderBugs(filtered, projectId);
+  updateBugFilterCount(filtered);
   refreshDetailsBugSummaryIfShowing(projectId);
 }
 
