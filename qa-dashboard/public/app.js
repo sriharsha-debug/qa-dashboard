@@ -2796,6 +2796,7 @@ async function buildBatchWhatsAppMessage(reports, dateStr, autoOnly) {
       msg += `• Total Bugs (auto): ${liveCounts.totalBugs}\n`;
       msg += `• Bugs Opened (auto): ${liveCounts.openBugs}\n`;
       msg += `• Bugs Closed (auto): ${liveCounts.closedBugs}\n`;
+      msg += `• Bugs Reopened (auto): ${liveCounts.reopenedBugs}\n`;
       if (a.project.bugsheet) msg += `• Bug Sheet Link: ${a.project.bugsheet}\n`;
     }
   }
@@ -3301,6 +3302,7 @@ async function getProjectLiveCounts(projectId) {
   const functionalityBugs = totalBugs - uiBugs;
   const closedBugs = bugs.filter((b) => b.status === 'Closed').length;
   const openBugs = totalBugs - closedBugs;
+  const reopenedBugs = bugs.filter((b) => b.status === 'Reopened').length;
   // "Major" = Critical or High severity — there's no separate "Major" value
   // in the bugs.severity list (Low/Medium/High/Critical), so this combines
   // the two most severe levels. Adjust here if your team defines it differently.
@@ -3313,7 +3315,7 @@ async function getProjectLiveCounts(projectId) {
   const testCasesBlocked = testCases.filter((t) => t.status === 'Blocked').length;
 
   return {
-    totalBugs, uiBugs, functionalityBugs, openBugs, closedBugs, majorBugs, criticalBugs,
+    totalBugs, uiBugs, functionalityBugs, openBugs, closedBugs, reopenedBugs, majorBugs, criticalBugs,
     testCasesTotal, testCasesPass, testCasesFail, testCasesBlocked,
   };
 }
@@ -3325,7 +3327,7 @@ function formatLiveCountsLine(c) {
   if (c.testCasesFail) tcParts.push(`${c.testCasesFail} fail`);
   if (c.testCasesBlocked) tcParts.push(`${c.testCasesBlocked} blocked`);
   const tcLine = `Test cases: ${c.testCasesTotal}${tcParts.length ? ` (${tcParts.join(', ')})` : ''}`;
-  const bugLine = `Bugs total: ${c.totalBugs} (${c.openBugs} open, ${c.closedBugs} closed, ${c.majorBugs} major) — UI/UX: ${c.uiBugs}, Functionality: ${c.functionalityBugs}`;
+  const bugLine = `Bugs total: ${c.totalBugs} (${c.openBugs} open, ${c.closedBugs} closed, ${c.reopenedBugs} reopened, ${c.majorBugs} major) — UI/UX: ${c.uiBugs}, Functionality: ${c.functionalityBugs}`;
   return `${tcLine} · ${bugLine}`;
 }
 
@@ -3464,6 +3466,7 @@ function formatDailyUpdateBlock(payload, project, bugStats, liveCounts, deadline
     msg += `• Total Bugs (auto): ${liveCounts.totalBugs}\n`;
     msg += `• Bugs Opened (auto): ${liveCounts.openBugs}\n`;
     msg += `• Bugs Closed (auto): ${liveCounts.closedBugs}\n`;
+    msg += `• Bugs Reopened (auto): ${liveCounts.reopenedBugs}\n`;
   }
   const bugsheetLink = (project && project.bugsheet) || payload.bugsheet;
   if (bugsheetLink) msg += `• Bug Sheet Link: ${bugsheetLink}\n`;
@@ -3600,6 +3603,7 @@ async function renderReports(reports) {
           <div class="auto-stat"><span class="auto-stat-label">Total Bugs <span class="auto-badge">AUTO</span></span><span class="auto-stat-value">${liveCounts.totalBugs}</span></div>
           <div class="auto-stat"><span class="auto-stat-label">Bugs Opened <span class="auto-badge">AUTO</span></span><span class="auto-stat-value">${liveCounts.openBugs}</span></div>
           <div class="auto-stat"><span class="auto-stat-label">Bugs Closed <span class="auto-badge">AUTO</span></span><span class="auto-stat-value">${liveCounts.closedBugs}</span></div>
+          <div class="auto-stat"><span class="auto-stat-label">Bugs Reopened <span class="auto-badge">AUTO</span></span><span class="auto-stat-value">${liveCounts.reopenedBugs}</span></div>
         </div>
         <div class="auto-hint">Bug counts are live — they auto-update whenever a bug is added, or its status changes.</div>
         ${bugsheetLive ? `<div>Bug sheet link: <a class="bugsheet-link" href="${escapeHtml(bugsheetLive)}" target="_blank" rel="noopener">${escapeHtml(bugsheetLive)}</a> <span class="auto-badge" title="From Project Details — updates automatically">AUTO</span></div>` : ''}
@@ -3689,6 +3693,7 @@ async function renderAutoOnlyReportCards(existingReports) {
           <div class="auto-stat"><span class="auto-stat-label">Total Bugs <span class="auto-badge">AUTO</span></span><span class="auto-stat-value">${liveCounts.totalBugs}</span></div>
           <div class="auto-stat"><span class="auto-stat-label">Bugs Opened <span class="auto-badge">AUTO</span></span><span class="auto-stat-value">${liveCounts.openBugs}</span></div>
           <div class="auto-stat"><span class="auto-stat-label">Bugs Closed <span class="auto-badge">AUTO</span></span><span class="auto-stat-value">${liveCounts.closedBugs}</span></div>
+          <div class="auto-stat"><span class="auto-stat-label">Bugs Reopened <span class="auto-badge">AUTO</span></span><span class="auto-stat-value">${liveCounts.reopenedBugs}</span></div>
         </div>
         ${project.bugsheet ? `<div>Bug sheet link: <a class="bugsheet-link" href="${escapeHtml(project.bugsheet)}" target="_blank" rel="noopener">${escapeHtml(project.bugsheet)}</a></div>` : ''}
         <div class="auto-hint">Bug counts are live — they auto-update whenever a bug is added, or its status changes.</div>
@@ -4059,6 +4064,7 @@ document.getElementById('download-reports-btn').addEventListener('click', async 
       'Total Bugs (auto)': liveCounts.totalBugs,
       'Bugs Opened (auto)': liveCounts.openBugs,
       'Bugs Closed (auto)': liveCounts.closedBugs,
+      'Bugs Reopened (auto)': liveCounts.reopenedBugs,
       'Bug Sheet Link': (liveProject && liveProject.bugsheet) || r.bugsheet || '',
       'Sign Off': r.sign_off ? 'Yes' : 'No',
       'Sign Off Date': r.sign_off_date || '',
