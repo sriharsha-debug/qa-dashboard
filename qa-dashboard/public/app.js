@@ -1449,6 +1449,12 @@ detailsSelect.addEventListener('change', () => showProjectDetails(detailsSelect.
 async function showProjectDetails(id) {
   const p = projectsCache.find((x) => x.id === id);
   if (!p) return;
+  // Only treat this as "opening a different project" when the id actually
+  // changes. loadProjects() re-runs this on every save anywhere in the app
+  // (adding a project, changing a status, logging a daily update, etc.), so
+  // without this guard the test-case pagination below was silently getting
+  // reset to page 1 any time you saved *anything*, even on another tab.
+  const isProjectChange = detailsSelect.dataset.current !== id;
   detailsSelect.dataset.current = id;
   detailsContent.classList.remove('hidden');
   detailsName.textContent = p.name;
@@ -1528,7 +1534,7 @@ async function showProjectDetails(id) {
   detailsEditBtn.onclick = () => openEditModal(id);
 
   loadApkShares(id);
-  tcPageNum = 1;
+  if (isProjectChange) tcPageNum = 1;
   loadTestCases(id);
 }
 
@@ -1778,13 +1784,21 @@ bugsSelect.addEventListener('change', () => showBugsForProject(bugsSelect.value)
 
 function showBugsForProject(id) {
   if (!id) return;
+  // Same guard as showProjectDetails(): loadProjects() re-runs this every
+  // time anything is saved anywhere in the app, not just when you actually
+  // switch the project dropdown. Without checking whether the id changed,
+  // that meant saving a bug (or a project, or a daily log entry) would
+  // silently snap the Bugs tab back to page 1 and clear your filters.
+  const isProjectChange = bugsSelect.dataset.current !== id;
   bugsSelect.dataset.current = id;
   bugsTabContent.classList.remove('hidden');
-  bugPageNum = 1;
-  bugFilterStatus.value = '';
-  bugFilterSeverity.value = '';
-  bugFilterIssueType.value = '';
-  bugFilterCount.textContent = '';
+  if (isProjectChange) {
+    bugPageNum = 1;
+    bugFilterStatus.value = '';
+    bugFilterSeverity.value = '';
+    bugFilterIssueType.value = '';
+    bugFilterCount.textContent = '';
+  }
   loadBugs(id);
 }
 
