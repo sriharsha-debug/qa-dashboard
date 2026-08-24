@@ -449,7 +449,11 @@ h2 {
 
 .header-role-badge {
   display: inline-block;
-  margin-top: 8px;
+  vertical-align: middle;
+  margin-top: 0;
+  margin-left: 10px;
+  font-size: 11px;
+  transform: translateY(-1px);
 }
 
 .notif-wrap { position: relative; }
