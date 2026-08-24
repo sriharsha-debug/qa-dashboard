@@ -274,6 +274,7 @@ async function onLogin(user) {
     document.getElementById('team-tab').classList.add('hidden');
   }
   initSettingsTab();
+  loadQuickNotes();
   runFallbackCleanup();
   if (notifPollTimer) clearInterval(notifPollTimer);
   notifPollTimer = setInterval(refreshNotifications, 25000);
@@ -2728,6 +2729,54 @@ document.getElementById('bug-import-add-selected').addEventListener('click', asy
   bugImportSheetTabs.value = '';
   bugImportText.value = '';
   loadBugs(projectId);
+});
+
+// ---------- Quick Notes (dashboard-embedded notepad for the automation script) ----------
+
+const quickNotesContent = document.getElementById('quick-notes-content');
+const quickNotesSaveBtn = document.getElementById('quick-notes-save');
+const quickNotesStatus = document.getElementById('quick-notes-status');
+const quickNotesAiReply = document.getElementById('quick-notes-ai-reply');
+const quickNotesAiReplySaveBtn = document.getElementById('quick-notes-ai-reply-save');
+const quickNotesAiReplyStatus = document.getElementById('quick-notes-ai-reply-status');
+
+async function loadQuickNotes() {
+  if (!currentUser) return;
+  const { data, error } = await sb
+    .from('quick_notes')
+    .select('notes_content, ai_reply_content')
+    .eq('owner_id', currentUser.id)
+    .maybeSingle();
+  if (error) {
+    console.error('Failed to load quick notes:', error.message);
+    return;
+  }
+  if (data) {
+    quickNotesContent.value = data.notes_content || '';
+    quickNotesAiReply.value = data.ai_reply_content || '';
+  }
+}
+
+async function saveQuickNotesField(column, value, statusEl) {
+  if (!currentUser) return;
+  statusEl.textContent = 'Saving...';
+  const { error } = await sb
+    .from('quick_notes')
+    .upsert({ owner_id: currentUser.id, [column]: value, updated_at: new Date().toISOString() }, { onConflict: 'owner_id' });
+  if (error) {
+    statusEl.textContent = `Error: ${error.message}`;
+    return;
+  }
+  statusEl.textContent = 'Saved ✓';
+  setTimeout(() => { statusEl.textContent = ''; }, 2000);
+}
+
+quickNotesSaveBtn.addEventListener('click', () => {
+  saveQuickNotesField('notes_content', quickNotesContent.value, quickNotesStatus);
+});
+
+quickNotesAiReplySaveBtn.addEventListener('click', () => {
+  saveQuickNotesField('ai_reply_content', quickNotesAiReply.value, quickNotesAiReplyStatus);
 });
 
 // ---------- AI bug generation from titles (free — copy prompt, paste reply) ----------
