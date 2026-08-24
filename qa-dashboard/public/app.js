@@ -2730,6 +2730,216 @@ document.getElementById('bug-import-add-selected').addEventListener('click', asy
   loadBugs(projectId);
 });
 
+// ---------- AI bug generation from titles (free — copy prompt, paste reply) ----------
+
+const bugAiTitles = document.getElementById('bug-ai-titles');
+const bugAiResponseText = document.getElementById('bug-ai-response-text');
+const bugAiCopyPromptBtn = document.getElementById('bug-ai-copy-prompt');
+const bugAiParseBtn = document.getElementById('bug-ai-parse-btn');
+const bugAiPreview = document.getElementById('bug-ai-preview');
+const bugAiPreviewList = document.getElementById('bug-ai-preview-list');
+let bugAiGeneratedBugs = [];
+
+function buildBugAiPrompt(projectName, titlesText) {
+  return `You are an expert QA engineer writing up full bug reports from just a list of short bug titles, for the project "${projectName || 'this project'}". You don't know the real app beyond the title text, so make plausible, realistic guesses typical of that kind of bug rather than inventing suspiciously specific claims.
+
+For EACH title below (keep them in the same order, one output object per title), fill in:
+- page: a plausible page/screen name based on the title
+- module: a plausible feature area/module name
+- severity: Low, Medium, High, or Critical, based on how serious the title sounds
+- issue_type: one of Functional, UI/UX, Backend, Frontend, API, Performance, Security, Database, Other
+- description: 1-2 sentence overview of the bug
+- steps_to_reproduce: brief numbered-style steps as a single string
+- expected_result: what should happen
+- actual_result: what happens instead (usually a paraphrase of the title)
+
+Respond with ONLY a JSON array, no prose, no markdown fences, in this exact shape, one object per title, same order:
+[{"title": "...", "page": "...", "module": "...", "severity": "Low"|"Medium"|"High"|"Critical", "issue_type": "Functional"|"UI/UX"|"Backend"|"Frontend"|"API"|"Performance"|"Security"|"Database"|"Other", "description": "...", "steps_to_reproduce": "...", "expected_result": "...", "actual_result": "..."}]
+
+Bug titles:
+"""
+${titlesText}
+"""`;
+}
+
+bugAiCopyPromptBtn.addEventListener('click', async () => {
+  clearFormError('bug-ai-error');
+  const projectId = bugsSelect.value;
+  const project = projectsCache.find((p) => p.id === projectId);
+  const titlesText = bugAiTitles.value.trim();
+  if (!titlesText) {
+    showFormError('bug-ai-error', 'Enter at least one bug title above first (one per line).');
+    return;
+  }
+  const prompt = buildBugAiPrompt(project ? project.name : '', titlesText);
+  try {
+    await navigator.clipboard.writeText(prompt);
+  } catch {
+    showFormError('bug-ai-error', 'Could not copy automatically — select the text manually if needed.');
+    return;
+  }
+  const original = bugAiCopyPromptBtn.textContent;
+  bugAiCopyPromptBtn.textContent = 'Copied ✓ — now click Open Claude.ai';
+  setTimeout(() => { bugAiCopyPromptBtn.textContent = original; }, 2500);
+});
+
+function tryParseBugsJson(raw) {
+  let text = raw.trim();
+  text = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+  const start = text.indexOf('[');
+  if (start === -1) return null;
+  text = text.slice(start);
+
+  try {
+    return JSON.parse(text);
+  } catch { /* fall through to repair attempt below */ }
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  let lastGoodEnd = -1;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) { escape = false; continue; }
+    if (ch === '\\') { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') depth++;
+    if (ch === '}') {
+      depth--;
+      if (depth === 0) lastGoodEnd = i;
+    }
+  }
+  if (lastGoodEnd !== -1) {
+    try {
+      return JSON.parse(text.slice(0, lastGoodEnd + 1) + ']');
+    } catch { /* give up below */ }
+  }
+  return null;
+}
+
+bugAiParseBtn.addEventListener('click', () => {
+  clearFormError('bug-ai-error');
+  bugAiPreview.classList.add('hidden');
+  const raw = bugAiResponseText.value.trim();
+  if (!raw) {
+    showFormError('bug-ai-error', 'Paste the AI\'s reply above first.');
+    return;
+  }
+
+  const parsed = tryParseBugsJson(raw);
+  if (!parsed) {
+    showFormError('bug-ai-error', 'Couldn\'t read that reply — the paste may have been cut off. Try copying the AI\'s reply again from the very start ("[") to the very end ("]").');
+    return;
+  }
+  if (!Array.isArray(parsed) || !parsed.length) {
+    showFormError('bug-ai-error', 'That didn\'t look like a list of bugs. Try again.');
+    return;
+  }
+
+  const validSeverities = ['Low', 'Medium', 'High', 'Critical'];
+  const validIssueTypes = ['Functional', 'UI/UX', 'Backend', 'Frontend', 'API', 'Performance', 'Security', 'Database', 'Other'];
+
+  bugAiGeneratedBugs = parsed
+    .filter((b) => b && b.title)
+    .map((b) => ({
+      title: String(b.title).slice(0, 200),
+      page: b.page ? String(b.page).slice(0, 120) : 'Unknown',
+      module: b.module ? String(b.module).slice(0, 120) : null,
+      severity: validSeverities.includes(b.severity) ? b.severity : 'Medium',
+      issue_type: validIssueTypes.includes(b.issue_type) ? b.issue_type : 'Functional',
+      description: b.description ? String(b.description).slice(0, 1000) : null,
+      steps_to_reproduce: b.steps_to_reproduce ? String(b.steps_to_reproduce).slice(0, 1000) : null,
+      expected_result: b.expected_result ? String(b.expected_result).slice(0, 1000) : null,
+      actual_result: b.actual_result ? String(b.actual_result).slice(0, 1000) : null,
+    }));
+
+  if (!bugAiGeneratedBugs.length) {
+    showFormError('bug-ai-error', 'No valid bugs found in that reply.');
+    return;
+  }
+  renderBugAiPreview(bugAiGeneratedBugs);
+});
+
+function renderBugAiPreview(bugs) {
+  bugAiPreviewList.innerHTML = '';
+
+  const summaryEl = document.createElement('p');
+  summaryEl.className = 'ai-coverage-summary';
+  summaryEl.textContent = `${bugs.length} bug${bugs.length === 1 ? '' : 's'} ready to add`;
+  bugAiPreviewList.appendChild(summaryEl);
+
+  bugs.forEach((b, i) => {
+    const row = document.createElement('label');
+    row.className = 'ai-preview-item';
+    row.innerHTML = `
+      <input type="checkbox" class="bug-ai-check" data-idx="${i}" checked />
+      <div>
+        <div class="ai-preview-item-title">
+          ${escapeHtml(b.title)}
+          <span class="priority-pill priority-${escapeHtml(b.severity)}">${escapeHtml(b.severity)}</span>
+          <span class="pill" style="${pillStyle('#34D399')}">${escapeHtml(b.issue_type)}</span>
+        </div>
+        ${b.description ? `<div class="ai-preview-item-desc">${escapeHtml(b.description)}</div>` : ''}
+      </div>
+    `;
+    bugAiPreviewList.appendChild(row);
+  });
+  bugAiPreview.classList.remove('hidden');
+}
+
+document.getElementById('bug-ai-discard').addEventListener('click', () => {
+  bugAiGeneratedBugs = [];
+  bugAiPreview.classList.add('hidden');
+  bugAiTitles.value = '';
+  bugAiResponseText.value = '';
+});
+
+document.getElementById('bug-ai-add-selected').addEventListener('click', async () => {
+  clearFormError('bug-ai-error');
+  const projectId = bugsSelect.value;
+  if (!projectId) return;
+  const checks = bugAiPreviewList.querySelectorAll('.bug-ai-check');
+  const selected = [];
+  checks.forEach((cb) => {
+    if (cb.checked) selected.push(bugAiGeneratedBugs[Number(cb.dataset.idx)]);
+  });
+  if (!selected.length) return;
+
+  const rows = selected.map((b) => ({
+    project_id: projectId,
+    title: b.title,
+    page: b.page,
+    module: b.module,
+    severity: b.severity,
+    issue_type: b.issue_type,
+    status: 'Open',
+    description: b.description,
+    steps_to_reproduce: b.steps_to_reproduce,
+    expected_result: b.expected_result,
+    actual_result: b.actual_result,
+    reported_by: 'AI Draft',
+    developer_status: 'Not Started',
+    retest_status: 'Not Retested',
+    owner_id: currentUser ? currentUser.id : null,
+  }));
+
+  const { error } = await sb.from('bugs').insert(rows);
+  if (error) {
+    showFormError('bug-ai-error', error.message);
+    return;
+  }
+  const project = projectsCache.find((p) => p.id === projectId);
+  notify(`${actorLabel()} added ${rows.length} AI-drafted bug${rows.length === 1 ? '' : 's'} for "${project ? project.name : 'a project'}"`, 'bug', 'ai_generate');
+  celebrate(`${rows.length} bug${rows.length === 1 ? '' : 's'} added!`, '🐞');
+
+  bugAiGeneratedBugs = [];
+  bugAiPreview.classList.add('hidden');
+  bugAiTitles.value = '';
+  bugAiResponseText.value = '';
+  loadBugs(projectId);
+});
+
 // ---------- APK shares ----------
 
 const APK_MAX_BYTES = 50 * 1024 * 1024; // matches Supabase's default per-file upload limit

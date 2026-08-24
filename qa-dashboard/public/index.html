@@ -248,6 +248,43 @@
 
         <div class="panel">
           <div class="panel-head">
+            <h2>Generate full bug details from titles (free — copy prompt, paste reply)</h2>
+          </div>
+          <p class="gate-copy" style="margin:0 0 14px;text-align:left;">
+            Write or paste just the bug titles, one per line. Copy the prompt, paste it into
+            Claude.ai (a free account works fine), paste the reply back below, and review before
+            adding — this doesn't use any API key or cost anything.
+          </p>
+          <div class="grid-form">
+            <label class="span-2">Bug titles (one per line)
+              <textarea id="bug-ai-titles" rows="4" placeholder="Login button unresponsive on Safari&#10;Search results pagination breaks on page 3&#10;Filter dropdown doesn't reset after clearing search"></textarea>
+            </label>
+            <div class="span-2 form-actions" style="justify-content:flex-start;">
+              <button type="button" id="bug-ai-copy-prompt" class="btn btn-primary">Copy prompt</button>
+              <a id="bug-ai-open-claude" class="btn btn-ghost" href="https://claude.ai/new" target="_blank" rel="noopener">Open Claude.ai</a>
+            </div>
+          </div>
+          <p id="bug-ai-error" class="login-error hidden"></p>
+          <div class="grid-form">
+            <label class="span-2">Paste Claude's reply here
+              <textarea id="bug-ai-response-text" rows="4" placeholder="Paste the JSON reply from Claude here"></textarea>
+            </label>
+            <div class="span-2 form-actions" style="justify-content:flex-start;">
+              <button type="button" id="bug-ai-parse-btn" class="btn btn-primary">Parse response</button>
+            </div>
+          </div>
+          <div id="bug-ai-preview" class="ai-preview hidden">
+            <p class="detail-label">Review and add</p>
+            <div id="bug-ai-preview-list" class="ai-preview-list"></div>
+            <div class="form-actions" style="justify-content:flex-start; gap:10px;">
+              <button type="button" id="bug-ai-add-selected" class="btn btn-primary">Add selected to Bugs</button>
+              <button type="button" id="bug-ai-discard" class="btn btn-ghost">Discard</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
             <h2>Bugs</h2>
             <div class="panel-head-right">
               <div class="bulk-bar" id="bug-bulk-bar">
