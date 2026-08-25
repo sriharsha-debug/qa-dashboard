@@ -9,172 +9,6 @@ const loginError = document.getElementById('login-error');
 // ripple expands from the click point and fades out. Delegated to one
 // document-level listener so it works for buttons rendered dynamically on
 // any tab, not just the ones present at page load.
-// ---------- Global CRUD confirmation dialog ----------
-// All create/update/edit/delete/retrieve/destructive account actions pass
-// through this single confirmation UI. The delegated capture listener also
-// covers buttons rendered dynamically inside tables and cards.
-const actionConfirmModal = document.getElementById('action-confirm-modal');
-const actionConfirmTitle = document.getElementById('action-confirm-title');
-const actionConfirmMessage = document.getElementById('action-confirm-message');
-const actionConfirmCancel = document.getElementById('action-confirm-cancel');
-const actionConfirmOk = document.getElementById('action-confirm-ok');
-let actionConfirmResolver = null;
-let actionConfirmBusy = false;
-
-function closeActionConfirm(result) {
-  if (!actionConfirmModal) return;
-  actionConfirmModal.classList.add('hidden');
-  document.removeEventListener('keydown', actionConfirmKeydown);
-  const resolve = actionConfirmResolver;
-  actionConfirmResolver = null;
-  actionConfirmBusy = false;
-  if (resolve) resolve(result);
-}
-
-function actionConfirmKeydown(e) {
-  if (!actionConfirmModal || actionConfirmModal.classList.contains('hidden')) return;
-  if (e.key === 'Escape') {
-    e.preventDefault();
-    closeActionConfirm(false);
-  }
-}
-
-function showActionConfirm({ title = 'Confirm action', message = 'Are you sure you want to continue?', confirmText = 'Confirm' } = {}) {
-  if (!actionConfirmModal) return Promise.resolve(true);
-  if (actionConfirmResolver) closeActionConfirm(false);
-  actionConfirmTitle.textContent = title;
-  actionConfirmMessage.textContent = message;
-  actionConfirmOk.textContent = confirmText;
-  actionConfirmModal.classList.remove('hidden');
-  actionConfirmBusy = true;
-  actionConfirmOk.focus();
-  document.addEventListener('keydown', actionConfirmKeydown);
-  return new Promise((resolve) => { actionConfirmResolver = resolve; });
-}
-
-actionConfirmCancel?.addEventListener('click', () => closeActionConfirm(false));
-actionConfirmOk?.addEventListener('click', () => closeActionConfirm(true));
-actionConfirmModal?.addEventListener('click', (e) => {
-  if (e.target === actionConfirmModal) closeActionConfirm(false);
-});
-
-function confirmationForElement(el) {
-  if (!el) return null;
-  const id = (el.id || '').toLowerCase();
-  const text = (el.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
-  const type = (el.getAttribute('type') || '').toLowerCase();
-  const form = el.closest('form');
-  const formId = (form?.id || '').toLowerCase();
-
-  // Explicitly marked controls always win.
-  const explicit = el.dataset.confirmAction;
-  if (explicit) {
-    const messages = {
-      signout: ['Sign out', 'Are you sure you want to sign out of your account?', 'Sign out'],
-      create: ['Confirm creation', 'Are you sure you want to create this item?', 'Create'],
-      update: ['Confirm update', 'Are you sure you want to save these changes?', 'Save changes'],
-      edit: ['Confirm edit', 'Do you want to open this item for editing?', 'Edit'],
-      delete: ['Confirm deletion', 'Are you sure you want to delete this item? This action cannot be undone.', 'Delete'],
-      retrieve: ['Confirm retrieval', 'Are you sure you want to retrieve the latest data?', 'Retrieve'],
-    };
-    const cfg = messages[explicit];
-    if (cfg) return { title: cfg[0], message: cfg[1], confirmText: cfg[2] };
-  }
-
-  if (id === 'logout') return { title: 'Sign out', message: 'Are you sure you want to sign out of your account?', confirmText: 'Sign out' };
-
-  // Destructive / CRUD buttons, including dynamically rendered row actions.
-  if (id.includes('bulk-delete') || id.includes('edit-delete') || id.includes('delete') ||
-      /\b(remove|delete|clear all|clear old|discard)\b/.test(text)) {
-    return { title: 'Confirm deletion', message: 'Are you sure you want to continue? This action may remove data and cannot be undone.', confirmText: 'Continue' };
-  }
-  if (/\b(save|add|create|log|update|upload|submit|apply)\b/.test(text) && !/download/.test(text)) {
-    return { title: 'Confirm changes', message: 'Are you sure you want to save these changes?', confirmText: 'Save' };
-  }
-  if (/\b(edit|open for edit)\b/.test(text) && !id.includes('filter')) {
-    return { title: 'Edit item', message: 'Do you want to open this item for editing?', confirmText: 'Edit' };
-  }
-  if (id.includes('fetch') || id.includes('retrieve') || id.includes('refresh-counts') ||
-      /\b(fetch from link|refresh from live data|retrieve)\b/.test(text)) {
-    return { title: 'Confirm retrieval', message: 'Are you sure you want to retrieve the latest data?', confirmText: 'Retrieve' };
-  }
-
-  // Form submission is a create/update operation unless it is authentication.
-  if (el.tagName === 'FORM' || (form && type === 'submit')) {
-    if (/login|password/.test(formId)) return null;
-    const editing = /edit|profile|password/.test(formId) || !!form.querySelector('input[type="hidden"][id$="-edit-id"], input[type="hidden"][id$="-id"]');
-    return editing
-      ? { title: 'Confirm update', message: 'Are you sure you want to save these changes?', confirmText: 'Save changes' }
-      : { title: 'Confirm creation', message: 'Are you sure you want to create this item?', confirmText: 'Create' };
-  }
-  return null;
-}
-
-// Existing code contains a few legacy native confirm() calls. The custom
-// dialog is shown before those handlers run; this bypass flag prevents a
-// second native browser dialog after the user has already confirmed here.
-const nativeConfirm = window.confirm.bind(window);
-let allowConfirmedNativeConfirm = false;
-window.confirm = (message) => allowConfirmedNativeConfirm ? true : nativeConfirm(message);
-
-async function runConfirmedElement(el, originalEvent) {
-  const cfg = confirmationForElement(el);
-  if (!cfg || el.dataset.confirmBypass === '1') return true;
-  originalEvent.preventDefault();
-  originalEvent.stopImmediatePropagation();
-  const ok = await showActionConfirm(cfg);
-  if (!ok) return false;
-
-  el.dataset.confirmBypass = '1';
-  const relatedForm = el.type === 'submit' ? el.form : null;
-  if (relatedForm) relatedForm.dataset.confirmBypass = '1';
-  allowConfirmedNativeConfirm = true;
-  try {
-    if (el.tagName === 'FORM') {
-      el.requestSubmit();
-    } else if (el.type === 'submit' && relatedForm) {
-      relatedForm.requestSubmit(el);
-    } else {
-      el.click();
-    }
-  } finally {
-    setTimeout(() => {
-      delete el.dataset.confirmBypass;
-      if (relatedForm) delete relatedForm.dataset.confirmBypass;
-      allowConfirmedNativeConfirm = false;
-    }, 0);
-  }
-  return false;
-}
-
-document.addEventListener('click', async (e) => {
-  if (actionConfirmBusy) return;
-  const target = e.target.closest('button, a');
-  if (!target) return;
-  await runConfirmedElement(target, e);
-}, true);
-
-document.addEventListener('submit', async (e) => {
-  if (actionConfirmBusy) return;
-  const form = e.target;
-  if (!(form instanceof HTMLFormElement) || form.dataset.confirmBypass === '1') return;
-  const cfg = confirmationForElement(form);
-  if (!cfg) return;
-  e.preventDefault();
-  e.stopImmediatePropagation();
-  const ok = await showActionConfirm(cfg);
-  if (!ok) return;
-  form.dataset.confirmBypass = '1';
-  allowConfirmedNativeConfirm = true;
-  try { form.requestSubmit(e.submitter || undefined); }
-  finally {
-    setTimeout(() => {
-      delete form.dataset.confirmBypass;
-      allowConfirmedNativeConfirm = false;
-    }, 0);
-  }
-}, true);
-
 document.addEventListener('click', (e) => {
   const btn = e.target.closest('.btn');
   if (!btn) return;
@@ -1124,27 +958,9 @@ function refreshTab(tabName) {
   }
 }
 
-// Sidebar navigation groups behave like real dropdown menus.
-// Only one section is expanded at a time, while selecting a child page
-// automatically keeps its parent section open.
-const sidebarGroups = Array.from(document.querySelectorAll('.sidebar-group'));
-
-function openSidebarGroup(group) {
-  sidebarGroups.forEach((g) => {
-    if (g !== group) g.classList.add('collapsed');
-  });
-  if (group) group.classList.remove('collapsed');
-}
-
 document.querySelectorAll('.sidebar-group-label').forEach((label) => {
   label.addEventListener('click', () => {
-    const group = label.closest('.sidebar-group');
-    const wasCollapsed = group.classList.contains('collapsed');
-    if (wasCollapsed) {
-      openSidebarGroup(group);
-    } else {
-      group.classList.add('collapsed');
-    }
+    label.closest('.sidebar-group').classList.toggle('collapsed');
   });
 });
 
@@ -1159,15 +975,6 @@ document.querySelectorAll('.tab').forEach((tab) => {
     refreshTab(tab.dataset.tab);
   });
 });
-
-// Start with the current Projects section expanded and the other sections
-// collapsed. The active section changes automatically when another page is selected.
-const initialActiveTab = document.querySelector('.tab.active');
-if (initialActiveTab) {
-  const activeGroup = initialActiveTab.closest('.sidebar-group');
-  sidebarGroups.forEach((g) => g.classList.add('collapsed'));
-  if (activeGroup) activeGroup.classList.remove('collapsed');
-}
 
 // ---------- Background auto-refresh ----------
 // Silently re-pulls the currently visible tab's data every few seconds,
@@ -2985,7 +2792,7 @@ async function loadQuickNotes() {
   if (!currentUser) return;
   const { data, error } = await sb
     .from('quick_notes')
-    .select('notes_content, ai_reply_content, tc_project_id, tc_document_content, tc_ai_reply_content')
+    .select('notes_content, ai_reply_content, tc_project_id, tc_document_content')
     .eq('owner_id', currentUser.id)
     .maybeSingle();
   if (error) {
@@ -2996,7 +2803,6 @@ async function loadQuickNotes() {
     quickNotesContent.value = data.notes_content || '';
     quickNotesAiReply.value = data.ai_reply_content || '';
     tcQuickDocContent.value = data.tc_document_content || '';
-    tcQuickDocAiReply.value = data.tc_ai_reply_content || '';
   }
 }
 
@@ -3017,7 +2823,7 @@ function setStatusError(statusEl, text) {
 // After saving, the textarea is cleared right away (so it doesn't feel
 // stuck), and we poll briefly to see when the local automation script
 // has actually picked the row up (it clears the same column once it's
-// opened Claude.ai / finished syncing) — that flips the status from a
+// finished syncing) — that flips the status from a
 // spinner to a confirmation. Gives up after ~90s if nothing's running.
 function watchForClear(column, statusEl, { attempts = 60, intervalMs = 1500 } = {}) {
   let count = 0;
@@ -3038,14 +2844,12 @@ function watchForClear(column, statusEl, { attempts = 60, intervalMs = 1500 } = 
     if (error || !data) return;
     if (data[column] === '') {
       clearInterval(timer);
-      setStatusDone(statusEl, 'Synced ✓ — Claude.ai should be open');
+      setStatusDone(statusEl, 'Synced ✓');
       toast('Synced ✓', { emoji: '✅' });
-      // Refresh the relevant list right away so newly added bugs/test
-      // cases show up without a manual page reload.
+      // Refresh the relevant list right away so newly added bugs
+      // show up without a manual page reload.
       if (column === 'notes_content' || column === 'ai_reply_content') {
         if (bugsSelect.value) showBugsForProject(bugsSelect.value);
-      } else if (column === 'tc_ai_reply_content') {
-        if (tcSelect.value) showTestExecutionForProject(tcSelect.value);
       }
     }
   }, intervalMs);
@@ -3082,13 +2886,71 @@ quickNotesAiReplySaveBtn.addEventListener('click', () => {
 });
 
 const tcQuickDocContent = document.getElementById('tc-quick-doc-content');
-const tcQuickDocSaveBtn = document.getElementById('tc-quick-doc-save');
+const tcQuickDocGenerateBtn = document.getElementById('tc-quick-doc-generate');
 const tcQuickDocStatus = document.getElementById('tc-quick-doc-status');
-const tcQuickDocAiReply = document.getElementById('tc-quick-doc-ai-reply');
-const tcQuickDocAiReplySaveBtn = document.getElementById('tc-quick-doc-ai-reply-save');
-const tcQuickDocAiReplyStatus = document.getElementById('tc-quick-doc-ai-reply-status');
 
-tcQuickDocSaveBtn.addEventListener('click', async () => {
+const TC_VALID_PRIORITIES = ['Low', 'Medium', 'High'];
+const TC_VALID_CATEGORIES = [
+  'Functional', 'Positive', 'Negative', 'Edge Case', 'Security',
+  'Validation', 'UI/UX', 'Performance', 'Accessibility',
+  'Compatibility', 'Regression', 'UAT',
+];
+
+function buildTcAiPrompt(projectName, documentText, knowledgeContext) {
+  return `You are an expert QA test case writer preparing test cases for real-world, production use — as if a market end user will actually use this feature. Based on the requirements/document text below for the project "${projectName || 'this project'}", generate a THOROUGH, comprehensive set of manual test cases.
+${knowledgeContext ? `\nThe project has also been trained with the following knowledge — use it to ground test cases in the real app (its applications/modules, roles, terminology, and any functionality it describes beyond just the document below):\n${knowledgeContext}\n` : ''}
+You must cover these categories as relevant, not just the happy path — spread the test cases across them realistically based on what the document supports:
+- Functional — each distinct feature or requirement verified individually
+- Positive — valid inputs, normal expected usage, typical end-user flows
+- Negative — invalid inputs, wrong formats, missing required fields, unauthorized access, error handling
+- Edge Case — boundary values, empty/null inputs, maximum length/limits, special characters, duplicate submissions, concurrent actions
+- Security — auth bypass attempts, injection, data exposure, permission checks, session handling
+- Validation — field-level input validation, format checks, required-field enforcement
+- UI/UX — layout, responsiveness, clarity of feedback/errors, navigation flow
+- Performance — load times, behavior under slow/no network, large data sets
+- Accessibility — screen reader support, keyboard navigation, color contrast, labels
+- Compatibility — different devices, browsers, OS versions, screen sizes
+- Regression — verifying existing related functionality still works after this change
+- UAT — end-to-end scenarios matching real acceptance criteria a client/user would check
+
+Respond with ONLY a JSON array, no prose, no markdown fences, in this exact shape:
+[{"title": "short test case title", "description": "steps or scenario to verify, 1-3 sentences", "priority": "Low"|"Medium"|"High", "category": "Functional"|"Positive"|"Negative"|"Edge Case"|"Security"|"Validation"|"UI/UX"|"Performance"|"Accessibility"|"Compatibility"|"Regression"|"UAT"}]
+
+Aim for thorough coverage — typically 20-40 test cases depending on document size and complexity — distributed across the categories that are actually relevant to this document (not every category applies to every feature). Keep titles concise and descriptions actionable.
+
+Document:
+"""
+${documentText}
+"""`;
+}
+
+function tryParseTestCasesJson(raw) {
+  let text = raw.trim();
+  text = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+  const start = text.indexOf('[');
+  if (start === -1) return null;
+  text = text.slice(start);
+  try {
+    return JSON.parse(text);
+  } catch { /* fall through */ }
+
+  let depth = 0, inString = false, escape = false, lastGoodEnd = -1;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) { escape = false; continue; }
+    if (ch === '\\') { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') depth++;
+    if (ch === '}') { depth--; if (depth === 0) lastGoodEnd = i; }
+  }
+  if (lastGoodEnd !== -1) {
+    try { return JSON.parse(text.slice(0, lastGoodEnd + 1) + ']'); } catch { /* give up */ }
+  }
+  return null;
+}
+
+tcQuickDocGenerateBtn.addEventListener('click', async () => {
   if (!currentUser) return;
   const projectId = tcSelect.value;
   if (!projectId) {
@@ -3096,32 +2958,76 @@ tcQuickDocSaveBtn.addEventListener('click', async () => {
     toastError('Select a project above first.');
     return;
   }
-  const value = tcQuickDocContent.value;
-  setStatusLoading(tcQuickDocStatus, 'Saving...');
-  const { error } = await sb
-    .from('quick_notes')
-    .upsert(
-      { owner_id: currentUser.id, tc_project_id: projectId, tc_document_content: value, updated_at: new Date().toISOString() },
-      { onConflict: 'owner_id' }
-    );
-  if (error) {
-    setStatusError(tcQuickDocStatus, `Error: ${error.message}`);
-    toastError(`Couldn't save the document: ${error.message}`);
+  const documentText = tcQuickDocContent.value.trim();
+  if (!documentText) {
+    setStatusError(tcQuickDocStatus, 'Paste requirements/document text first.');
     return;
   }
-  tcQuickDocContent.value = '';
-  if (value.trim()) {
-    setStatusLoading(tcQuickDocStatus, 'Saved — waiting for automation script…');
-    toast('Document saved — waiting for the automation script to pick it up.', { emoji: '💾' });
-    watchForClear('tc_document_content', tcQuickDocStatus);
-  } else {
-    setStatusDone(tcQuickDocStatus, 'Saved ✓');
-    toast('Saved ✓', { emoji: '✅' });
-  }
-});
 
-tcQuickDocAiReplySaveBtn.addEventListener('click', () => {
-  saveQuickNotesField('tc_ai_reply_content', tcQuickDocAiReply.value, tcQuickDocAiReplyStatus, tcQuickDocAiReply, 'AI reply');
+  const project = projectsCache.find((p) => p.id === projectId);
+  const original = tcQuickDocGenerateBtn.textContent;
+  tcQuickDocGenerateBtn.disabled = true;
+  tcQuickDocGenerateBtn.textContent = 'Generating with Grok…';
+  setStatusLoading(tcQuickDocStatus, 'Generating test cases with Grok…');
+
+  try {
+    const knowledgeContext = await fetchKnowledgeContext(projectId, '');
+    const prompt = buildTcAiPrompt(project ? project.name : '', documentText, knowledgeContext);
+
+    const res = await fetch('/api/grok', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, maxTokens: 8000 }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setStatusError(tcQuickDocStatus, data.error || `Grok request failed (${res.status}).`);
+      toastError(data.error || 'Grok request failed.');
+      return;
+    }
+
+    const parsed = tryParseTestCasesJson(data.text || '');
+    if (!parsed || !Array.isArray(parsed) || !parsed.length) {
+      setStatusError(tcQuickDocStatus, "Couldn't read Grok's reply as a list of test cases — try again.");
+      return;
+    }
+
+    const rows = parsed
+      .filter((t) => t && t.title)
+      .map((t) => ({
+        project_id: projectId,
+        title: String(t.title).slice(0, 200),
+        description: t.description ? String(t.description).slice(0, 1000) : null,
+        priority: TC_VALID_PRIORITIES.includes(t.priority) ? t.priority : 'Medium',
+        category: TC_VALID_CATEGORIES.includes(t.category) ? t.category : 'Functional',
+        status: 'Not Run',
+        owner_id: currentUser.id,
+      }));
+
+    if (!rows.length) {
+      setStatusError(tcQuickDocStatus, 'No valid test cases found in Grok\'s reply.');
+      return;
+    }
+
+    const { error } = await sb.from('test_cases').insert(rows);
+    if (error) {
+      setStatusError(tcQuickDocStatus, error.message);
+      toastError(`Couldn't save test cases: ${error.message}`);
+      return;
+    }
+
+    tcQuickDocContent.value = '';
+    setStatusDone(tcQuickDocStatus, `Added ${rows.length} test case${rows.length === 1 ? '' : 's'} ✓`);
+    notify(`${actorLabel()} generated ${rows.length} test case${rows.length === 1 ? '' : 's'} for "${project ? project.name : 'a project'}"`, 'test_case', 'ai_generate');
+    celebrate(`${rows.length} test case${rows.length === 1 ? '' : 's'} added!`, '✅');
+    loadTestCases(projectId);
+  } catch (err) {
+    setStatusError(tcQuickDocStatus, `Request failed: ${err.message}`);
+    toastError(`Request failed: ${err.message}`);
+  } finally {
+    tcQuickDocGenerateBtn.disabled = false;
+    tcQuickDocGenerateBtn.textContent = original;
+  }
 });
 
 // ---------- Knowledge Base (train a project so AI replies know the app) ----------
@@ -3369,12 +3275,10 @@ async function fetchKnowledgeContext(projectId, focusHint) {
   return `PROJECT KNOWLEDGE (trained context for this project — ground your answer in this and don't contradict it; if something isn't covered here, fall back to reasonable QA judgement):\n${out.trim()}\n`;
 }
 
-// ---------- AI bug generation from titles (free — copy prompt, paste reply) ----------
+// ---------- AI bug generation from titles (Grok, via /api/grok — no tab, no copy/paste) ----------
 
 const bugAiTitles = document.getElementById('bug-ai-titles');
-const bugAiResponseText = document.getElementById('bug-ai-response-text');
-const bugAiCopyPromptBtn = document.getElementById('bug-ai-copy-prompt');
-const bugAiParseBtn = document.getElementById('bug-ai-parse-btn');
+const bugAiGenerateBtn = document.getElementById('bug-ai-generate');
 const bugAiPreview = document.getElementById('bug-ai-preview');
 const bugAiPreviewList = document.getElementById('bug-ai-preview-list');
 let bugAiGeneratedBugs = [];
@@ -3400,28 +3304,6 @@ Bug titles:
 ${titlesText}
 """`;
 }
-
-bugAiCopyPromptBtn.addEventListener('click', async () => {
-  clearFormError('bug-ai-error');
-  const projectId = bugsSelect.value;
-  const project = projectsCache.find((p) => p.id === projectId);
-  const titlesText = bugAiTitles.value.trim();
-  if (!titlesText) {
-    showFormError('bug-ai-error', 'Enter at least one bug title above first (one per line).');
-    return;
-  }
-  const knowledgeContext = await fetchKnowledgeContext(projectId, titlesText);
-  const prompt = buildBugAiPrompt(project ? project.name : '', titlesText, knowledgeContext);
-  try {
-    await navigator.clipboard.writeText(prompt);
-  } catch {
-    showFormError('bug-ai-error', 'Could not copy automatically — select the text manually if needed.');
-    return;
-  }
-  const original = bugAiCopyPromptBtn.textContent;
-  bugAiCopyPromptBtn.textContent = 'Copied ✓ — now click Open Claude.ai';
-  setTimeout(() => { bugAiCopyPromptBtn.textContent = original; }, 2500);
-});
 
 function tryParseBugsJson(raw) {
   let text = raw.trim();
@@ -3458,47 +3340,71 @@ function tryParseBugsJson(raw) {
   return null;
 }
 
-bugAiParseBtn.addEventListener('click', () => {
+bugAiGenerateBtn.addEventListener('click', async () => {
   clearFormError('bug-ai-error');
   bugAiPreview.classList.add('hidden');
-  const raw = bugAiResponseText.value.trim();
-  if (!raw) {
-    showFormError('bug-ai-error', 'Paste the AI\'s reply above first.');
+
+  const projectId = bugsSelect.value;
+  const project = projectsCache.find((p) => p.id === projectId);
+  const titlesText = bugAiTitles.value.trim();
+  if (!titlesText) {
+    showFormError('bug-ai-error', 'Enter at least one bug title above first (one per line).');
     return;
   }
 
-  const parsed = tryParseBugsJson(raw);
-  if (!parsed) {
-    showFormError('bug-ai-error', 'Couldn\'t read that reply — the paste may have been cut off. Try copying the AI\'s reply again from the very start ("[") to the very end ("]").');
-    return;
-  }
-  if (!Array.isArray(parsed) || !parsed.length) {
-    showFormError('bug-ai-error', 'That didn\'t look like a list of bugs. Try again.');
-    return;
-  }
+  const original = bugAiGenerateBtn.textContent;
+  bugAiGenerateBtn.disabled = true;
+  bugAiGenerateBtn.textContent = 'Generating with Grok…';
 
-  const validSeverities = ['Low', 'Medium', 'High', 'Critical'];
-  const validIssueTypes = ['Functional', 'UI/UX', 'Backend', 'Frontend', 'API', 'Performance', 'Security', 'Database', 'Other'];
+  try {
+    const knowledgeContext = await fetchKnowledgeContext(projectId, titlesText);
+    const prompt = buildBugAiPrompt(project ? project.name : '', titlesText, knowledgeContext);
 
-  bugAiGeneratedBugs = parsed
-    .filter((b) => b && b.title)
-    .map((b) => ({
-      title: String(b.title).slice(0, 200),
-      page: b.page ? String(b.page).slice(0, 120) : 'Unknown',
-      module: b.module ? String(b.module).slice(0, 120) : null,
-      severity: validSeverities.includes(b.severity) ? b.severity : 'Medium',
-      issue_type: validIssueTypes.includes(b.issue_type) ? b.issue_type : 'Functional',
-      description: b.description ? String(b.description).slice(0, 1000) : null,
-      steps_to_reproduce: b.steps_to_reproduce ? String(b.steps_to_reproduce).slice(0, 1000) : null,
-      expected_result: b.expected_result ? String(b.expected_result).slice(0, 1000) : null,
-      actual_result: b.actual_result ? String(b.actual_result).slice(0, 1000) : null,
-    }));
+    const res = await fetch('/api/grok', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, maxTokens: 4000 }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      showFormError('bug-ai-error', data.error || `Grok request failed (${res.status}).`);
+      return;
+    }
 
-  if (!bugAiGeneratedBugs.length) {
-    showFormError('bug-ai-error', 'No valid bugs found in that reply.');
-    return;
+    const parsed = tryParseBugsJson(data.text || '');
+    if (!parsed || !Array.isArray(parsed) || !parsed.length) {
+      showFormError('bug-ai-error', 'Grok\'s reply didn\'t come back as a list of bugs — try again.');
+      return;
+    }
+
+    const validSeverities = ['Low', 'Medium', 'High', 'Critical'];
+    const validIssueTypes = ['Functional', 'UI/UX', 'Backend', 'Frontend', 'API', 'Performance', 'Security', 'Database', 'Other'];
+
+    bugAiGeneratedBugs = parsed
+      .filter((b) => b && b.title)
+      .map((b) => ({
+        title: String(b.title).slice(0, 200),
+        page: b.page ? String(b.page).slice(0, 120) : 'Unknown',
+        module: b.module ? String(b.module).slice(0, 120) : null,
+        severity: validSeverities.includes(b.severity) ? b.severity : 'Medium',
+        issue_type: validIssueTypes.includes(b.issue_type) ? b.issue_type : 'Functional',
+        description: b.description ? String(b.description).slice(0, 1000) : null,
+        steps_to_reproduce: b.steps_to_reproduce ? String(b.steps_to_reproduce).slice(0, 1000) : null,
+        expected_result: b.expected_result ? String(b.expected_result).slice(0, 1000) : null,
+        actual_result: b.actual_result ? String(b.actual_result).slice(0, 1000) : null,
+      }));
+
+    if (!bugAiGeneratedBugs.length) {
+      showFormError('bug-ai-error', 'No valid bugs found in Grok\'s reply.');
+      return;
+    }
+    renderBugAiPreview(bugAiGeneratedBugs);
+  } catch (err) {
+    showFormError('bug-ai-error', `Request failed: ${err.message}`);
+  } finally {
+    bugAiGenerateBtn.disabled = false;
+    bugAiGenerateBtn.textContent = original;
   }
-  renderBugAiPreview(bugAiGeneratedBugs);
 });
 
 function renderBugAiPreview(bugs) {
@@ -3532,7 +3438,6 @@ document.getElementById('bug-ai-discard').addEventListener('click', () => {
   bugAiGeneratedBugs = [];
   bugAiPreview.classList.add('hidden');
   bugAiTitles.value = '';
-  bugAiResponseText.value = '';
 });
 
 document.getElementById('bug-ai-add-selected').addEventListener('click', async () => {
@@ -3576,7 +3481,6 @@ document.getElementById('bug-ai-add-selected').addEventListener('click', async (
   bugAiGeneratedBugs = [];
   bugAiPreview.classList.add('hidden');
   bugAiTitles.value = '';
-  bugAiResponseText.value = '';
   loadBugs(projectId);
 });
 

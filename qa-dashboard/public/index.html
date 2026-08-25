@@ -57,6 +57,8 @@
             <p class="empty-state" id="notif-empty">No activity yet.</p>
           </div>
         </div>
+        <span id="who-email" class="who-email"></span>
+        <button id="logout" class="btn btn-ghost">Sign out</button>
       </div>
     </header>
 
@@ -75,7 +77,7 @@
 
         <div class="sidebar-group" data-group="qa">
           <button type="button" class="sidebar-group-label">
-            <span>QA</span><span class="group-chevron">▾</span>
+            <span>Bugs &amp; Testing</span><span class="group-chevron">▾</span>
           </button>
           <div class="sidebar-group-items">
             <button class="tab" data-tab="bugs">Bugs</button>
@@ -97,15 +99,10 @@
 
         <div class="sidebar-group" data-group="account">
           <button type="button" class="sidebar-group-label">
-            <span>Accounts</span><span class="group-chevron">▾</span>
+            <span>Account</span><span class="group-chevron">▾</span>
           </button>
           <div class="sidebar-group-items">
-            <div class="sidebar-account-email">
-              <span class="sidebar-account-label">Email</span>
-              <span id="who-email" class="who-email"></span>
-            </div>
             <button class="tab" data-tab="settings">Settings</button>
-            <button id="logout" type="button" class="tab sidebar-signout">Sign out</button>
           </div>
         </div>
       </nav>
@@ -252,14 +249,17 @@
 
       <div class="panel">
         <div class="panel-head">
-          <h2>AI reply (paste here)</h2>
+          <h2>AI reply (advanced — local script only)</h2>
         </div>
         <p class="gate-copy" style="margin:0 0 14px;text-align:left;">
-          When the automation script needs AI help for a bug title, it'll copy a prompt to
-          your clipboard and open Claude.ai. Paste Claude's full JSON reply into this box and
-          save — the script picks it up from here instead of a local file.
+          Only needed if you're running the local <code>qa-automation</code> script
+          (<code>npm run watch-dashboard</code>) with AI autofill turned off in its
+          <code>.env</code> — in that case it'll ask you to paste a reply here. With AI
+          autofill on (the default), the script fills in blank bug fields with Grok on its
+          own and this box stays empty. For most people, use "Generate with Grok" below
+          instead — no separate script needed.
         </p>
-        <textarea id="quick-notes-ai-reply" rows="6" placeholder="Paste Claude's JSON reply here" style="width:100%;font-family:monospace;"></textarea>
+        <textarea id="quick-notes-ai-reply" rows="6" placeholder="Paste AI JSON reply here" style="width:100%;font-family:monospace;"></textarea>
         <div class="form-actions" style="justify-content:flex-start; gap:10px; margin-top:10px;">
           <button type="button" id="quick-notes-ai-reply-save" class="btn btn-primary">Save reply</button>
           <span id="quick-notes-ai-reply-status" class="count"></span>
@@ -317,31 +317,22 @@
 
         <div class="panel">
           <div class="panel-head">
-            <h2>Generate full bug details from titles (free — copy prompt, paste reply)</h2>
+            <h2>Generate full bug details from titles (Grok)</h2>
           </div>
           <p class="gate-copy" style="margin:0 0 14px;text-align:left;">
-            Write or paste just the bug titles, one per line. Copy the prompt, paste it into
-            Claude.ai (a free account works fine), paste the reply back below, and review before
-            adding — this doesn't use any API key or cost anything.
+            Write or paste just the bug titles, one per line, then click Generate — Grok fills in
+            page, module, severity, steps, and expected/actual result right here, no tab-switching
+            or copy/paste. Review the results below before adding.
           </p>
           <div class="grid-form">
             <label class="span-2">Bug titles (one per line)
               <textarea id="bug-ai-titles" rows="4" placeholder="Login button unresponsive on Safari&#10;Search results pagination breaks on page 3&#10;Filter dropdown doesn't reset after clearing search"></textarea>
             </label>
             <div class="span-2 form-actions" style="justify-content:flex-start;">
-              <button type="button" id="bug-ai-copy-prompt" class="btn btn-primary">Copy prompt</button>
-              <a id="bug-ai-open-claude" class="btn btn-ghost" href="https://claude.ai/new" target="_blank" rel="noopener">Open Claude.ai</a>
+              <button type="button" id="bug-ai-generate" class="btn btn-primary">Generate with Grok</button>
             </div>
           </div>
           <p id="bug-ai-error" class="login-error hidden"></p>
-          <div class="grid-form">
-            <label class="span-2">Paste Claude's reply here
-              <textarea id="bug-ai-response-text" rows="4" placeholder="Paste the JSON reply from Claude here"></textarea>
-            </label>
-            <div class="span-2 form-actions" style="justify-content:flex-start;">
-              <button type="button" id="bug-ai-parse-btn" class="btn btn-primary">Parse response</button>
-            </div>
-          </div>
           <div id="bug-ai-preview" class="ai-preview hidden">
             <p class="detail-label">Review and add</p>
             <div id="bug-ai-preview-list" class="ai-preview-list"></div>
@@ -536,22 +527,14 @@
           </div>
 
           <div class="ai-gen-box">
-            <p class="detail-label">Generate test cases via automation script (no button clicking)</p>
-            <p class="ai-gen-hint">Paste requirements/document text below and click Save. If your
-              <code>qa-automation</code> script is running (<code>npm run watch-dashboard</code>),
-              it automatically copies the prompt and opens Claude.ai for you — paste the reply
-              into the box below that and save, and the test cases get added on their own.</p>
+            <p class="detail-label">Generate test cases with Grok</p>
+            <p class="ai-gen-hint">Paste requirements/document text below and click Generate —
+              Grok drafts a thorough set of test cases and adds them straight to this project,
+              right here in the dashboard. No tab-switching, no copy/paste.</p>
             <textarea id="tc-quick-doc-content" rows="3" placeholder="Paste requirements or document text here"></textarea>
             <div class="form-actions" style="justify-content:flex-start; gap:10px;">
-              <button type="button" id="tc-quick-doc-save" class="btn btn-primary">Save document</button>
+              <button type="button" id="tc-quick-doc-generate" class="btn btn-primary">Generate with Grok</button>
               <span id="tc-quick-doc-status" class="count"></span>
-            </div>
-
-            <p class="detail-label ai-response-label">AI reply (paste here)</p>
-            <textarea id="tc-quick-doc-ai-reply" rows="4" placeholder="Paste Claude's JSON reply here"></textarea>
-            <div class="form-actions" style="justify-content:flex-start; gap:10px;">
-              <button type="button" id="tc-quick-doc-ai-reply-save" class="btn btn-primary">Save reply</button>
-              <span id="tc-quick-doc-ai-reply-status" class="count"></span>
             </div>
           </div>
 
@@ -1246,20 +1229,6 @@
           <button type="submit" class="btn btn-primary" id="apk-edit-submit-btn">Save entry</button>
         </div>
       </form>
-    </div>
-  </div>
-
-  <!-- Global CRUD confirmation dialog -->
-  <div id="action-confirm-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="action-confirm-title">
-    <div class="modal action-confirm-modal">
-      <div class="modal-head">
-        <h2 id="action-confirm-title">Confirm action</h2>
-      </div>
-      <p id="action-confirm-message" class="action-confirm-message">Are you sure you want to continue?</p>
-      <div class="form-actions action-confirm-actions">
-        <button type="button" id="action-confirm-cancel" class="btn btn-ghost">Cancel</button>
-        <button type="button" id="action-confirm-ok" class="btn btn-primary">Confirm</button>
-      </div>
     </div>
   </div>
 
