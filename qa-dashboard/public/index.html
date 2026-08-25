@@ -64,16 +64,47 @@
 
     <div class="app-body">
       <nav class="sidebar">
-        <button class="tab active" data-tab="projects">Projects</button>
-        <button class="tab" data-tab="details">Project Details</button>
-        <button class="tab" data-tab="bugs">Bugs</button>
-        <button class="tab" data-tab="testexec">Test Execution</button>
-        <button class="tab" data-tab="knowledge">Knowledge Base</button>
-        <button class="tab" data-tab="daily">Daily Log</button>
-        <button class="tab hidden" id="team-tab" data-tab="team">Team</button>
-        <button class="tab" data-tab="notifications">Notifications<span id="sidebar-notif-badge" class="notif-badge hidden">0</span></button>
-        <button class="tab hidden" id="audit-tab" data-tab="audit">Audit Logs</button>
-        <button class="tab" data-tab="settings">Settings</button>
+        <div class="sidebar-group" data-group="projects">
+          <button type="button" class="sidebar-group-label">
+            <span>Projects</span><span class="group-chevron">▾</span>
+          </button>
+          <div class="sidebar-group-items">
+            <button class="tab active" data-tab="projects">Projects</button>
+            <button class="tab" data-tab="details">Project Details</button>
+            <button class="tab" data-tab="daily">Daily Log</button>
+          </div>
+        </div>
+
+        <div class="sidebar-group" data-group="qa">
+          <button type="button" class="sidebar-group-label">
+            <span>Bugs &amp; Testing</span><span class="group-chevron">▾</span>
+          </button>
+          <div class="sidebar-group-items">
+            <button class="tab" data-tab="bugs">Bugs</button>
+            <button class="tab" data-tab="testexec">Test Execution</button>
+            <button class="tab" data-tab="knowledge">Knowledge Base</button>
+          </div>
+        </div>
+
+        <div class="sidebar-group" data-group="team">
+          <button type="button" class="sidebar-group-label">
+            <span>Team</span><span class="group-chevron">▾</span>
+          </button>
+          <div class="sidebar-group-items">
+            <button class="tab hidden" id="team-tab" data-tab="team">Team</button>
+            <button class="tab" data-tab="notifications">Notifications<span id="sidebar-notif-badge" class="notif-badge hidden">0</span></button>
+            <button class="tab hidden" id="audit-tab" data-tab="audit">Audit Logs</button>
+          </div>
+        </div>
+
+        <div class="sidebar-group" data-group="account">
+          <button type="button" class="sidebar-group-label">
+            <span>Account</span><span class="group-chevron">▾</span>
+          </button>
+          <div class="sidebar-group-items">
+            <button class="tab" data-tab="settings">Settings</button>
+          </div>
+        </div>
       </nav>
 
       <div class="tab-content">

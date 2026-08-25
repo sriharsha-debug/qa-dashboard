@@ -958,12 +958,20 @@ function refreshTab(tabName) {
   }
 }
 
+document.querySelectorAll('.sidebar-group-label').forEach((label) => {
+  label.addEventListener('click', () => {
+    label.closest('.sidebar-group').classList.toggle('collapsed');
+  });
+});
+
 document.querySelectorAll('.tab').forEach((tab) => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
     document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
     tab.classList.add('active');
     document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+    const group = tab.closest('.sidebar-group');
+    if (group) group.classList.remove('collapsed');
     refreshTab(tab.dataset.tab);
   });
 });
@@ -1047,6 +1055,15 @@ function pillStyle(hex) {
 
 function fmtDate(d) {
   return d ? new Date(d + 'T00:00:00').toLocaleDateString() : '—';
+}
+
+// For timestamptz columns (e.g. created_at) — these already carry a full
+// ISO datetime, so (unlike fmtDate above, which is for plain date columns)
+// appending a fake time would break parsing and show "Invalid Date".
+function fmtDateTime(d) {
+  if (!d) return '—';
+  const date = new Date(d);
+  return isNaN(date.getTime()) ? '—' : date.toLocaleDateString();
 }
 
 // Shared by the table render and both download buttons, so "download what
@@ -2815,7 +2832,9 @@ function watchForClear(column, statusEl, { attempts = 60, intervalMs = 1500 } = 
     count++;
     if (count > attempts) {
       clearInterval(timer);
-      setStatusError(statusEl, 'Still waiting — is qa-automation (npm run watch-dashboard) running?');
+      const msg = 'Still waiting — is qa-automation (npm run watch-dashboard) running?';
+      setStatusError(statusEl, msg);
+      toastError(msg);
       return;
     }
     const { data, error } = await sb
@@ -2827,6 +2846,7 @@ function watchForClear(column, statusEl, { attempts = 60, intervalMs = 1500 } = 
     if (data[column] === '') {
       clearInterval(timer);
       setStatusDone(statusEl, 'Synced ✓ — Claude.ai should be open');
+      toast('Synced ✓', { emoji: '✅' });
       // Refresh the relevant list right away so newly added bugs/test
       // cases show up without a manual page reload.
       if (column === 'notes_content' || column === 'ai_reply_content') {
@@ -2838,7 +2858,7 @@ function watchForClear(column, statusEl, { attempts = 60, intervalMs = 1500 } = 
   }, intervalMs);
 }
 
-async function saveQuickNotesField(column, value, statusEl, textareaEl) {
+async function saveQuickNotesField(column, value, statusEl, textareaEl, label) {
   if (!currentUser) return;
   setStatusLoading(statusEl, 'Saving...');
   const { error } = await sb
@@ -2846,23 +2866,26 @@ async function saveQuickNotesField(column, value, statusEl, textareaEl) {
     .upsert({ owner_id: currentUser.id, [column]: value, updated_at: new Date().toISOString() }, { onConflict: 'owner_id' });
   if (error) {
     setStatusError(statusEl, `Error: ${error.message}`);
+    toastError(`Couldn't save ${label || 'this'}: ${error.message}`);
     return;
   }
   if (textareaEl) textareaEl.value = '';
   if (value.trim()) {
     setStatusLoading(statusEl, 'Saved — waiting for automation script…');
+    toast(`${label || 'Saved'} — waiting for the automation script to pick it up.`, { emoji: '💾' });
     watchForClear(column, statusEl);
   } else {
     setStatusDone(statusEl, 'Saved ✓');
+    toast(`${label || 'Saved'} ✓`, { emoji: '✅' });
   }
 }
 
 quickNotesSaveBtn.addEventListener('click', () => {
-  saveQuickNotesField('notes_content', quickNotesContent.value, quickNotesStatus, quickNotesContent);
+  saveQuickNotesField('notes_content', quickNotesContent.value, quickNotesStatus, quickNotesContent, 'Quick Notes');
 });
 
 quickNotesAiReplySaveBtn.addEventListener('click', () => {
-  saveQuickNotesField('ai_reply_content', quickNotesAiReply.value, quickNotesAiReplyStatus, quickNotesAiReply);
+  saveQuickNotesField('ai_reply_content', quickNotesAiReply.value, quickNotesAiReplyStatus, quickNotesAiReply, 'AI reply');
 });
 
 const tcQuickDocContent = document.getElementById('tc-quick-doc-content');
@@ -2877,6 +2900,7 @@ tcQuickDocSaveBtn.addEventListener('click', async () => {
   const projectId = tcSelect.value;
   if (!projectId) {
     setStatusError(tcQuickDocStatus, 'Select a project above first.');
+    toastError('Select a project above first.');
     return;
   }
   const value = tcQuickDocContent.value;
@@ -2889,19 +2913,22 @@ tcQuickDocSaveBtn.addEventListener('click', async () => {
     );
   if (error) {
     setStatusError(tcQuickDocStatus, `Error: ${error.message}`);
+    toastError(`Couldn't save the document: ${error.message}`);
     return;
   }
   tcQuickDocContent.value = '';
   if (value.trim()) {
     setStatusLoading(tcQuickDocStatus, 'Saved — waiting for automation script…');
+    toast('Document saved — waiting for the automation script to pick it up.', { emoji: '💾' });
     watchForClear('tc_document_content', tcQuickDocStatus);
   } else {
     setStatusDone(tcQuickDocStatus, 'Saved ✓');
+    toast('Saved ✓', { emoji: '✅' });
   }
 });
 
 tcQuickDocAiReplySaveBtn.addEventListener('click', () => {
-  saveQuickNotesField('tc_ai_reply_content', tcQuickDocAiReply.value, tcQuickDocAiReplyStatus, tcQuickDocAiReply);
+  saveQuickNotesField('tc_ai_reply_content', tcQuickDocAiReply.value, tcQuickDocAiReplyStatus, tcQuickDocAiReply, 'AI reply');
 });
 
 // ---------- Knowledge Base (train a project so AI replies know the app) ----------
@@ -3007,7 +3034,7 @@ function renderKnowledgeList() {
         <div class="apk-row-top">
           <span class="apk-version">${escapeHtml(k.app_segment || 'General')}</span>
           <span>${escapeHtml(k.doc_type || 'Notes')}</span>
-          <span>${fmtDate(k.created_at)}</span>
+          <span>${fmtDateTime(k.created_at)}</span>
         </div>
         <div><strong>${escapeHtml(k.title || 'Untitled')}</strong></div>
         <div class="apk-row-notes">${escapeHtml(preview)}${(k.content || '').length > 220 ? '…' : ''}</div>
