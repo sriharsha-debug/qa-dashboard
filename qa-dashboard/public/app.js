@@ -967,7 +967,7 @@ function openSidebarGroup(group) {
   sidebarGroups.forEach((g) => {
     if (g !== group) g.classList.add('collapsed');
   });
-  if (group) openSidebarGroup(group);
+  if (group) group.classList.remove('collapsed');
 }
 
 document.querySelectorAll('.sidebar-group-label').forEach((label) => {
@@ -989,7 +989,7 @@ document.querySelectorAll('.tab').forEach((tab) => {
     tab.classList.add('active');
     document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
     const group = tab.closest('.sidebar-group');
-    if (group) openSidebarGroup(group);
+    if (group) group.classList.remove('collapsed');
     refreshTab(tab.dataset.tab);
   });
 });
