@@ -1540,6 +1540,21 @@ select option:focus {
 .ai-gen-btn-row { justify-content: flex-start; gap: 10px; }
 .ai-response-label { margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--line-strong); }
 
+.mini-spinner {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--accent, #34D399);
+  border-radius: 50%;
+  vertical-align: -1px;
+  margin-right: 6px;
+  animation: miniSpin 0.7s linear infinite;
+}
+@keyframes miniSpin { to { transform: rotate(360deg); } }
+.count.is-waiting { color: var(--ink-soft); }
+.count.is-error { color: #F87171; }
+
 @keyframes toastBounceIn {
   0% { transform: translateY(30px) scale(0.8); opacity: 0; }
   60% { transform: translateY(-6px) scale(1.04); opacity: 1; }

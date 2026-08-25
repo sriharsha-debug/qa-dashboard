@@ -937,6 +937,9 @@ function refreshTab(tabName) {
     case 'testexec':
       loadProjects(); // also drives renderTcSelect() -> showTestExecutionForProject()
       break;
+    case 'knowledge':
+      loadProjects(); // also drives renderKnowledgeSelect() -> showKnowledgeForProject()
+      break;
     case 'daily':
       loadProjects();
       loadReports();
@@ -965,6 +968,33 @@ document.querySelectorAll('.tab').forEach((tab) => {
   });
 });
 
+// ---------- Background auto-refresh ----------
+// Silently re-pulls the currently visible tab's data every few seconds,
+// so anything added by the automation script, a teammate, or another
+// browser tab shows up on its own — no manual page reload needed.
+// Paused whenever it would be disruptive: a modal is open, or the user
+// is actively typing somewhere (a quick-notes box, a form field, etc.).
+const AUTO_REFRESH_MS = 8000;
+
+function autoRefreshShouldPause() {
+  if (document.visibilityState !== 'visible') return true;
+  if (document.querySelector('.modal-overlay:not(.hidden)')) return true;
+  const el = document.activeElement;
+  if (!el) return false;
+  const tag = el.tagName;
+  if (tag === 'TEXTAREA') return true;
+  if (tag === 'INPUT' && !['checkbox', 'radio', 'button', 'submit'].includes(el.type)) return true;
+  return false;
+}
+
+setInterval(() => {
+  if (!currentUser) return;
+  if (autoRefreshShouldPause()) return;
+  const activeTab = document.querySelector('.tab.active');
+  if (!activeTab) return;
+  refreshTab(activeTab.dataset.tab);
+}, AUTO_REFRESH_MS);
+
 // ---------- Projects ----------
 
 const projectsTbody = document.getElementById('projects-tbody');
@@ -990,6 +1020,7 @@ async function loadProjects() {
   renderDetailsSelect();
   renderBugsSelect();
   renderTcSelect();
+  renderKnowledgeSelect();
 }
 
 const projectsBulk = createBulkSelector({
@@ -2759,30 +2790,34 @@ async function loadQuickNotes() {
   }
 }
 
-async function saveQuickNotesField(column, value, statusEl) {
-  if (!currentUser) return;
-  statusEl.textContent = 'Saving...';
-  const { error } = await sb
-    .from('quick_notes')
-    .upsert({ owner_id: currentUser.id, [column]: value, updated_at: new Date().toISOString() }, { onConflict: 'owner_id' });
-  if (error) {
-    statusEl.textContent = `Error: ${error.message}`;
-    return;
-  }
-  statusEl.textContent = 'Saved ✓';
-  setTimeout(() => { statusEl.textContent = ''; }, 2000);
+function setStatusLoading(statusEl, text) {
+  statusEl.className = 'count is-waiting';
+  statusEl.innerHTML = `<span class="mini-spinner"></span>${text}`;
+}
+function setStatusDone(statusEl, text, autoClearMs = 2500) {
+  statusEl.className = 'count';
+  statusEl.textContent = text;
+  if (autoClearMs) setTimeout(() => { if (statusEl.textContent === text) statusEl.textContent = ''; }, autoClearMs);
+}
+function setStatusError(statusEl, text) {
+  statusEl.className = 'count is-error';
+  statusEl.textContent = text;
 }
 
-// After saving non-empty content, briefly poll to see if the local
-// automation script cleared it (meaning it finished syncing) and, if
-// so, clear the textarea on screen too — so it feels live without a
-// page refresh. Gives up after ~2 minutes if nothing's running.
-function watchForClear(column, textareaEl, statusEl, { attempts = 40, intervalMs = 3000 } = {}) {
-  if (!textareaEl.value.trim()) return;
+// After saving, the textarea is cleared right away (so it doesn't feel
+// stuck), and we poll briefly to see when the local automation script
+// has actually picked the row up (it clears the same column once it's
+// opened Claude.ai / finished syncing) — that flips the status from a
+// spinner to a confirmation. Gives up after ~90s if nothing's running.
+function watchForClear(column, statusEl, { attempts = 60, intervalMs = 1500 } = {}) {
   let count = 0;
   const timer = setInterval(async () => {
     count++;
-    if (count > attempts) { clearInterval(timer); return; }
+    if (count > attempts) {
+      clearInterval(timer);
+      setStatusError(statusEl, 'Still waiting — is qa-automation (npm run watch-dashboard) running?');
+      return;
+    }
     const { data, error } = await sb
       .from('quick_notes')
       .select(column)
@@ -2790,24 +2825,44 @@ function watchForClear(column, textareaEl, statusEl, { attempts = 40, intervalMs
       .maybeSingle();
     if (error || !data) return;
     if (data[column] === '') {
-      textareaEl.value = '';
-      if (statusEl) {
-        statusEl.textContent = 'Synced ✓';
-        setTimeout(() => { statusEl.textContent = ''; }, 2000);
-      }
       clearInterval(timer);
+      setStatusDone(statusEl, 'Synced ✓ — Claude.ai should be open');
+      // Refresh the relevant list right away so newly added bugs/test
+      // cases show up without a manual page reload.
+      if (column === 'notes_content' || column === 'ai_reply_content') {
+        if (bugsSelect.value) showBugsForProject(bugsSelect.value);
+      } else if (column === 'tc_ai_reply_content') {
+        if (tcSelect.value) showTestExecutionForProject(tcSelect.value);
+      }
     }
   }, intervalMs);
 }
 
+async function saveQuickNotesField(column, value, statusEl, textareaEl) {
+  if (!currentUser) return;
+  setStatusLoading(statusEl, 'Saving...');
+  const { error } = await sb
+    .from('quick_notes')
+    .upsert({ owner_id: currentUser.id, [column]: value, updated_at: new Date().toISOString() }, { onConflict: 'owner_id' });
+  if (error) {
+    setStatusError(statusEl, `Error: ${error.message}`);
+    return;
+  }
+  if (textareaEl) textareaEl.value = '';
+  if (value.trim()) {
+    setStatusLoading(statusEl, 'Saved — waiting for automation script…');
+    watchForClear(column, statusEl);
+  } else {
+    setStatusDone(statusEl, 'Saved ✓');
+  }
+}
+
 quickNotesSaveBtn.addEventListener('click', () => {
-  saveQuickNotesField('notes_content', quickNotesContent.value, quickNotesStatus);
-  watchForClear('notes_content', quickNotesContent, quickNotesStatus);
+  saveQuickNotesField('notes_content', quickNotesContent.value, quickNotesStatus, quickNotesContent);
 });
 
 quickNotesAiReplySaveBtn.addEventListener('click', () => {
-  saveQuickNotesField('ai_reply_content', quickNotesAiReply.value, quickNotesAiReplyStatus);
-  watchForClear('ai_reply_content', quickNotesAiReply, quickNotesAiReplyStatus);
+  saveQuickNotesField('ai_reply_content', quickNotesAiReply.value, quickNotesAiReplyStatus, quickNotesAiReply);
 });
 
 const tcQuickDocContent = document.getElementById('tc-quick-doc-content');
@@ -2821,29 +2876,278 @@ tcQuickDocSaveBtn.addEventListener('click', async () => {
   if (!currentUser) return;
   const projectId = tcSelect.value;
   if (!projectId) {
-    tcQuickDocStatus.textContent = 'Select a project above first.';
+    setStatusError(tcQuickDocStatus, 'Select a project above first.');
     return;
   }
-  tcQuickDocStatus.textContent = 'Saving...';
+  const value = tcQuickDocContent.value;
+  setStatusLoading(tcQuickDocStatus, 'Saving...');
   const { error } = await sb
     .from('quick_notes')
     .upsert(
-      { owner_id: currentUser.id, tc_project_id: projectId, tc_document_content: tcQuickDocContent.value, updated_at: new Date().toISOString() },
+      { owner_id: currentUser.id, tc_project_id: projectId, tc_document_content: value, updated_at: new Date().toISOString() },
       { onConflict: 'owner_id' }
     );
   if (error) {
-    tcQuickDocStatus.textContent = `Error: ${error.message}`;
+    setStatusError(tcQuickDocStatus, `Error: ${error.message}`);
     return;
   }
-  tcQuickDocStatus.textContent = 'Saved ✓';
-  setTimeout(() => { tcQuickDocStatus.textContent = ''; }, 2000);
-  watchForClear('tc_document_content', tcQuickDocContent, tcQuickDocStatus);
+  tcQuickDocContent.value = '';
+  if (value.trim()) {
+    setStatusLoading(tcQuickDocStatus, 'Saved — waiting for automation script…');
+    watchForClear('tc_document_content', tcQuickDocStatus);
+  } else {
+    setStatusDone(tcQuickDocStatus, 'Saved ✓');
+  }
 });
 
 tcQuickDocAiReplySaveBtn.addEventListener('click', () => {
-  saveQuickNotesField('tc_ai_reply_content', tcQuickDocAiReply.value, tcQuickDocAiReplyStatus);
-  watchForClear('tc_ai_reply_content', tcQuickDocAiReply, tcQuickDocAiReplyStatus);
+  saveQuickNotesField('tc_ai_reply_content', tcQuickDocAiReply.value, tcQuickDocAiReplyStatus, tcQuickDocAiReply);
 });
+
+// ---------- Knowledge Base (train a project so AI replies know the app) ----------
+
+const kbSelect = document.getElementById('kb-project-select');
+const kbTabEmpty = document.getElementById('kb-tab-empty');
+const kbTabContent = document.getElementById('kb-tab-content');
+const kbForm = document.getElementById('kb-form');
+const kbEditId = document.getElementById('kb-edit-id');
+const kbAppSegment = document.getElementById('kb-app-segment');
+const kbAppSegmentCustomWrap = document.getElementById('kb-app-segment-custom-wrap');
+const kbAppSegmentCustom = document.getElementById('kb-app-segment-custom');
+const kbDocType = document.getElementById('kb-doc-type');
+const kbTitle = document.getElementById('kb-title');
+const kbContent = document.getElementById('kb-content');
+const kbFormSubmit = document.getElementById('kb-form-submit');
+const kbFormCancel = document.getElementById('kb-form-cancel');
+const kbList = document.getElementById('kb-list');
+const kbEmpty = document.getElementById('kb-empty');
+const kbCount = document.getElementById('kb-count');
+const kbFilterSegment = document.getElementById('kb-filter-segment');
+let kbCache = [];
+
+function renderKnowledgeSelect() {
+  const opts = projectsCache.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+  kbSelect.innerHTML = opts;
+  if (!projectsCache.length) {
+    kbTabEmpty.classList.remove('hidden');
+    kbTabContent.classList.add('hidden');
+    return;
+  }
+  kbTabEmpty.classList.add('hidden');
+  const keep = projectsCache.find((p) => p.id === kbSelect.dataset.current);
+  const targetId = keep ? keep.id : projectsCache[0].id;
+  kbSelect.value = targetId;
+  showKnowledgeForProject(targetId);
+}
+
+kbSelect.addEventListener('change', () => showKnowledgeForProject(kbSelect.value));
+
+function showKnowledgeForProject(id) {
+  if (!id) return;
+  const isProjectChange = kbSelect.dataset.current !== id;
+  kbSelect.dataset.current = id;
+  kbTabContent.classList.remove('hidden');
+  if (isProjectChange) {
+    resetKbForm();
+    kbFilterSegment.value = '';
+  }
+  loadKnowledgeEntries(id);
+}
+
+kbAppSegment.addEventListener('change', () => {
+  kbAppSegmentCustomWrap.classList.toggle('hidden', kbAppSegment.value !== '__custom__');
+});
+
+function resetKbForm() {
+  kbForm.reset();
+  kbEditId.value = '';
+  kbAppSegmentCustomWrap.classList.add('hidden');
+  kbFormSubmit.textContent = 'Add to Knowledge Base';
+  kbFormCancel.classList.add('hidden');
+  clearFormError('kb-error');
+}
+
+kbFormCancel.addEventListener('click', resetKbForm);
+
+async function loadKnowledgeEntries(projectId) {
+  const { data, error } = await sb
+    .from('project_knowledge')
+    .select('*')
+    .eq('project_id', projectId)
+    .order('app_segment', { ascending: true })
+    .order('created_at', { ascending: false });
+  if (error) {
+    console.error(error);
+    return;
+  }
+  kbCache = data || [];
+  const segments = Array.from(new Set(kbCache.map((k) => k.app_segment || 'General'))).sort();
+  const keepFilter = kbFilterSegment.value;
+  kbFilterSegment.innerHTML = '<option value="">All applications</option>' +
+    segments.map((s) => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+  kbFilterSegment.value = segments.includes(keepFilter) ? keepFilter : '';
+  renderKnowledgeList();
+}
+
+kbFilterSegment.addEventListener('change', renderKnowledgeList);
+
+function renderKnowledgeList() {
+  const filter = kbFilterSegment.value;
+  const rows = filter ? kbCache.filter((k) => (k.app_segment || 'General') === filter) : kbCache;
+  kbList.innerHTML = '';
+  kbCount.textContent = kbCache.length ? `${kbCache.length} entr${kbCache.length === 1 ? 'y' : 'ies'}` : '';
+  kbEmpty.style.display = rows.length ? 'none' : 'block';
+
+  rows.forEach((k) => {
+    const row = document.createElement('div');
+    row.className = 'apk-row';
+    const preview = (k.content || '').slice(0, 220);
+    row.innerHTML = `
+      <div class="apk-row-main">
+        <div class="apk-row-top">
+          <span class="apk-version">${escapeHtml(k.app_segment || 'General')}</span>
+          <span>${escapeHtml(k.doc_type || 'Notes')}</span>
+          <span>${fmtDate(k.created_at)}</span>
+        </div>
+        <div><strong>${escapeHtml(k.title || 'Untitled')}</strong></div>
+        <div class="apk-row-notes">${escapeHtml(preview)}${(k.content || '').length > 220 ? '…' : ''}</div>
+      </div>
+      <div class="apk-row-actions">
+        <button class="icon-btn" data-kb-edit="${k.id}">edit</button>
+        <button class="icon-btn" data-kb-delete="${k.id}">remove</button>
+      </div>
+    `;
+    row.querySelector('[data-kb-edit]').addEventListener('click', () => {
+      kbEditId.value = k.id;
+      const presetValues = Array.from(kbAppSegment.options).map((o) => o.value);
+      if (presetValues.includes(k.app_segment)) {
+        kbAppSegment.value = k.app_segment;
+        kbAppSegmentCustomWrap.classList.add('hidden');
+      } else {
+        kbAppSegment.value = '__custom__';
+        kbAppSegmentCustom.value = k.app_segment || '';
+        kbAppSegmentCustomWrap.classList.remove('hidden');
+      }
+      kbDocType.value = k.doc_type || 'Requirement';
+      kbTitle.value = k.title || '';
+      kbContent.value = k.content || '';
+      kbFormSubmit.textContent = 'Save changes';
+      kbFormCancel.classList.remove('hidden');
+      clearFormError('kb-error');
+      kbForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    row.querySelector('[data-kb-delete]').addEventListener('click', async () => {
+      if (!confirm('Remove this training entry?')) return;
+      await flashRowRemoving(row);
+      const { error } = await sb.from('project_knowledge').delete().eq('id', k.id);
+      if (error) {
+        toastError(error.message);
+        return;
+      }
+      toast('Training entry removed.', { emoji: '🗑️' });
+      loadKnowledgeEntries(kbSelect.value);
+    });
+    kbList.appendChild(row);
+  });
+}
+
+kbForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearFormError('kb-error');
+  const projectId = kbSelect.value;
+  if (!projectId) return;
+
+  const segment = kbAppSegment.value === '__custom__' ? kbAppSegmentCustom.value.trim() : kbAppSegment.value;
+  if (!segment) {
+    showFormError('kb-error', 'Enter a custom application name, or pick one from the list.');
+    flashFields(kbForm, 'field-error');
+    return;
+  }
+  const title = kbTitle.value.trim();
+  const content = kbContent.value.trim();
+  if (!title || !content) {
+    showFormError('kb-error', 'Title and content are both required.');
+    flashFields(kbForm, 'field-error');
+    return;
+  }
+
+  const payload = {
+    project_id: projectId,
+    owner_id: currentUser ? currentUser.id : null,
+    app_segment: segment,
+    doc_type: kbDocType.value,
+    title,
+    content,
+    updated_at: new Date().toISOString(),
+  };
+
+  const editId = kbEditId.value;
+  const { error } = editId
+    ? await sb.from('project_knowledge').update(payload).eq('id', editId)
+    : await sb.from('project_knowledge').insert(payload);
+
+  if (error) {
+    showFormError('kb-error', error.message);
+    flashFields(kbForm, 'field-error');
+    return;
+  }
+  toast(editId ? 'Training entry updated.' : 'Added to Knowledge Base.', { emoji: '🧠' });
+  flashFields(kbForm, 'field-success');
+  resetKbForm();
+  loadKnowledgeEntries(projectId);
+});
+
+// Fetches this project's trained knowledge and formats it as a context
+// block for an AI prompt. focusHint (e.g. a Page/Module name) nudges the
+// matching application's entries to the front when present. Capped so a
+// heavily-trained project still produces a clipboard-friendly prompt.
+async function fetchKnowledgeContext(projectId, focusHint) {
+  if (!projectId) return '';
+  const { data, error } = await sb
+    .from('project_knowledge')
+    .select('app_segment, doc_type, title, content')
+    .eq('project_id', projectId)
+    .order('app_segment', { ascending: true })
+    .order('created_at', { ascending: true });
+  if (error || !data || !data.length) return '';
+
+  const MAX_ENTRY_CHARS = 1600;
+  const MAX_TOTAL_CHARS = 9000;
+
+  const groups = {};
+  data.forEach((row) => {
+    const seg = row.app_segment || 'General';
+    (groups[seg] = groups[seg] || []).push(row);
+  });
+
+  let segments = Object.keys(groups);
+  if (focusHint) {
+    const hint = focusHint.toLowerCase();
+    segments = segments.sort((a, b) => {
+      const aHit = hint.includes(a.toLowerCase()) || a.toLowerCase().includes(hint) ? 0 : 1;
+      const bHit = hint.includes(b.toLowerCase()) || b.toLowerCase().includes(hint) ? 0 : 1;
+      return aHit - bHit;
+    });
+  }
+
+  let out = '';
+  for (const seg of segments) {
+    let block = `\n== ${seg} ==\n`;
+    for (const row of groups[seg]) {
+      let content = row.content || '';
+      if (content.length > MAX_ENTRY_CHARS) content = content.slice(0, MAX_ENTRY_CHARS) + '... (truncated)';
+      block += `[${row.doc_type || 'Notes'}] ${row.title || 'Untitled'}\n${content}\n\n`;
+    }
+    if (out.length + block.length > MAX_TOTAL_CHARS) {
+      if (!out) out = block.slice(0, MAX_TOTAL_CHARS);
+      break;
+    }
+    out += block;
+  }
+
+  if (!out.trim()) return '';
+  return `PROJECT KNOWLEDGE (trained context for this project — ground your answer in this and don't contradict it; if something isn't covered here, fall back to reasonable QA judgement):\n${out.trim()}\n`;
+}
 
 // ---------- AI bug generation from titles (free — copy prompt, paste reply) ----------
 
@@ -2855,9 +3159,9 @@ const bugAiPreview = document.getElementById('bug-ai-preview');
 const bugAiPreviewList = document.getElementById('bug-ai-preview-list');
 let bugAiGeneratedBugs = [];
 
-function buildBugAiPrompt(projectName, titlesText) {
-  return `You are an expert QA engineer writing up full bug reports from just a list of short bug titles, for the project "${projectName || 'this project'}". You don't know the real app beyond the title text, so make plausible, realistic guesses typical of that kind of bug rather than inventing suspiciously specific claims.
-
+function buildBugAiPrompt(projectName, titlesText, knowledgeContext) {
+  return `You are an expert QA engineer writing up full bug reports from just a list of short bug titles, for the project "${projectName || 'this project'}". ${knowledgeContext ? 'Use the trained project knowledge below to ground your guesses in the real app — its pages, modules, and terminology.' : "You don't know the real app beyond the title text, so make plausible, realistic guesses typical of that kind of bug rather than inventing suspiciously specific claims."}
+${knowledgeContext ? `\n${knowledgeContext}\n` : ''}
 For EACH title below (keep them in the same order, one output object per title), fill in:
 - page: a plausible page/screen name based on the title
 - module: a plausible feature area/module name
@@ -2886,7 +3190,8 @@ bugAiCopyPromptBtn.addEventListener('click', async () => {
     showFormError('bug-ai-error', 'Enter at least one bug title above first (one per line).');
     return;
   }
-  const prompt = buildBugAiPrompt(project ? project.name : '', titlesText);
+  const knowledgeContext = await fetchKnowledgeContext(projectId, titlesText);
+  const prompt = buildBugAiPrompt(project ? project.name : '', titlesText, knowledgeContext);
   try {
     await navigator.clipboard.writeText(prompt);
   } catch {

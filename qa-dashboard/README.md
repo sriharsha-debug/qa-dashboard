@@ -248,6 +248,31 @@ storage.
 covers most APKs. If your builds run bigger, raise it in the Supabase
 dashboard: **Storage → apk-files bucket → Settings → File size limit**.
 
+## 9. Train a project (Knowledge Base) so AI replies know your app
+
+Run `migration-v29.sql` in Supabase SQL Editor after `migration-v28.sql`.
+
+This adds a **Knowledge Base** tab. For each project, paste in your requirements,
+functionality notes, or any project document — split up by which application it
+belongs to (pick from **User App (Mobile)**, **Vendor App (Mobile)**, **Admin Panel
+(Web)**, **Sub Admin Panel (Web)**, **Common / Cross-App**, or type a custom name,
+e.g. a second mobile app or a delivery-partner app). Give each entry a Title, a
+Type (Requirement / Functionality / User Flow / API-Technical / Other), and the
+content itself.
+
+Everything you add here is automatically pulled in as context every time the AI
+generates something for that project — both bug-detail generation (from just a
+title) and test-case generation from a requirements document — whether you're
+using the free Claude.ai copy/paste flow, the dashboard's script-driven panels, or
+the paid API autofill. You don't need to do anything extra per bug or per
+document; the AI prompt is built with your trained content already included, so
+replies reference your actual pages, modules, roles, and terminology instead of
+generic guesses. Entries whose application name matches the bug's Page/Module are
+prioritized first if the trained content is large enough to need trimming.
+
+You can edit or remove entries any time from the same tab — changes apply to the
+next AI request, nothing needs to be regenerated retroactively.
+
 ## AI test case generation (free — no API key needed)
 
 The Test Execution tracker can turn a requirements document into test

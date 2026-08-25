@@ -68,6 +68,7 @@
         <button class="tab" data-tab="details">Project Details</button>
         <button class="tab" data-tab="bugs">Bugs</button>
         <button class="tab" data-tab="testexec">Test Execution</button>
+        <button class="tab" data-tab="knowledge">Knowledge Base</button>
         <button class="tab" data-tab="daily">Daily Log</button>
         <button class="tab hidden" id="team-tab" data-tab="team">Team</button>
         <button class="tab" data-tab="notifications">Notifications<span id="sidebar-notif-badge" class="notif-badge hidden">0</span></button>
@@ -600,6 +601,85 @@
           <div id="tc-list" class="tc-list"></div>
           <p class="empty-state" id="tc-empty">No test cases logged yet for this project.</p>
           <div id="tc-pager" class="pager"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- KNOWLEDGE BASE TAB -->
+    <section id="tab-knowledge" class="tab-panel">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Select a project</h2>
+        </div>
+        <select id="kb-project-select" class="details-select"></select>
+      </div>
+
+      <div id="kb-tab-empty" class="panel">
+        <p class="empty-state" style="display:block;">Add a project to train it here.</p>
+      </div>
+
+      <div id="kb-tab-content" class="hidden">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Train this project</h2>
+          </div>
+          <p class="gate-copy" style="margin:0 0 14px;text-align:left;">
+            Add your requirements, functionality notes, or any project document here — split
+            up by which application it belongs to (e.g. User App, Vendor App, Admin Panel,
+            Sub Admin Panel). Everything you save here is automatically included as context
+            every time the AI generates bug reports or test cases for this project, so its
+            answers are grounded in your actual app instead of generic guesses.
+          </p>
+          <form id="kb-form" class="grid-form">
+            <input type="hidden" id="kb-edit-id" value="" />
+            <label>Application / segment
+              <select id="kb-app-segment">
+                <option value="Common / Cross-App">Common / Cross-App</option>
+                <option value="User App (Mobile)">User App (Mobile)</option>
+                <option value="Vendor App (Mobile)">Vendor App (Mobile)</option>
+                <option value="Admin Panel (Web)">Admin Panel (Web)</option>
+                <option value="Sub Admin Panel (Web)">Sub Admin Panel (Web)</option>
+                <option value="__custom__">Other (type below)</option>
+              </select>
+            </label>
+            <label id="kb-app-segment-custom-wrap" class="hidden">Custom application name
+              <input type="text" id="kb-app-segment-custom" placeholder="e.g. Delivery Partner App" maxlength="80" />
+            </label>
+            <label>Type
+              <select id="kb-doc-type">
+                <option value="Requirement">Requirement</option>
+                <option value="Functionality">Functionality</option>
+                <option value="User Flow">User Flow</option>
+                <option value="API / Technical">API / Technical</option>
+                <option value="Other">Other</option>
+              </select>
+            </label>
+            <label class="span-2">Title
+              <input type="text" id="kb-title" placeholder="e.g. Login &amp; OTP verification" maxlength="200" required />
+            </label>
+            <label class="span-2">Content — paste the requirement/functionality text or document content
+              <textarea id="kb-content" rows="8" placeholder="Describe the feature, flow, fields, validations, roles/permissions, edge cases the app should handle, etc." required></textarea>
+            </label>
+            <div class="span-2 form-actions" style="justify-content:flex-start; gap:10px;">
+              <button type="submit" id="kb-form-submit" class="btn btn-primary">Add to Knowledge Base</button>
+              <button type="button" id="kb-form-cancel" class="btn btn-ghost hidden">Cancel edit</button>
+            </div>
+          </form>
+          <p id="kb-error" class="login-error hidden"></p>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Trained content</h2>
+            <div class="panel-head-right">
+              <select id="kb-filter-segment">
+                <option value="">All applications</option>
+              </select>
+              <span class="count" id="kb-count"></span>
+            </div>
+          </div>
+          <div id="kb-list" class="tc-list"></div>
+          <p class="empty-state" id="kb-empty">No training content added yet for this project.</p>
         </div>
       </div>
     </section>
