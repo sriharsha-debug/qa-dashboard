@@ -2792,7 +2792,7 @@ async function loadQuickNotes() {
   if (!currentUser) return;
   const { data, error } = await sb
     .from('quick_notes')
-    .select('notes_content, ai_reply_content, tc_project_id, tc_document_content')
+    .select('notes_content, ai_reply_content, tc_project_id, tc_document_content, tc_ai_reply_content')
     .eq('owner_id', currentUser.id)
     .maybeSingle();
   if (error) {
@@ -2803,6 +2803,7 @@ async function loadQuickNotes() {
     quickNotesContent.value = data.notes_content || '';
     quickNotesAiReply.value = data.ai_reply_content || '';
     tcQuickDocContent.value = data.tc_document_content || '';
+    tcQuickDocAiReply.value = data.tc_ai_reply_content || '';
   }
 }
 
@@ -2823,7 +2824,7 @@ function setStatusError(statusEl, text) {
 // After saving, the textarea is cleared right away (so it doesn't feel
 // stuck), and we poll briefly to see when the local automation script
 // has actually picked the row up (it clears the same column once it's
-// finished syncing) — that flips the status from a
+// opened Claude.ai / finished syncing) — that flips the status from a
 // spinner to a confirmation. Gives up after ~90s if nothing's running.
 function watchForClear(column, statusEl, { attempts = 60, intervalMs = 1500 } = {}) {
   let count = 0;
@@ -2844,12 +2845,14 @@ function watchForClear(column, statusEl, { attempts = 60, intervalMs = 1500 } = 
     if (error || !data) return;
     if (data[column] === '') {
       clearInterval(timer);
-      setStatusDone(statusEl, 'Synced ✓');
+      setStatusDone(statusEl, 'Synced ✓ — Claude.ai should be open');
       toast('Synced ✓', { emoji: '✅' });
-      // Refresh the relevant list right away so newly added bugs
-      // show up without a manual page reload.
+      // Refresh the relevant list right away so newly added bugs/test
+      // cases show up without a manual page reload.
       if (column === 'notes_content' || column === 'ai_reply_content') {
         if (bugsSelect.value) showBugsForProject(bugsSelect.value);
+      } else if (column === 'tc_ai_reply_content') {
+        if (tcSelect.value) showTestExecutionForProject(tcSelect.value);
       }
     }
   }, intervalMs);
@@ -2886,71 +2889,13 @@ quickNotesAiReplySaveBtn.addEventListener('click', () => {
 });
 
 const tcQuickDocContent = document.getElementById('tc-quick-doc-content');
-const tcQuickDocGenerateBtn = document.getElementById('tc-quick-doc-generate');
+const tcQuickDocSaveBtn = document.getElementById('tc-quick-doc-save');
 const tcQuickDocStatus = document.getElementById('tc-quick-doc-status');
+const tcQuickDocAiReply = document.getElementById('tc-quick-doc-ai-reply');
+const tcQuickDocAiReplySaveBtn = document.getElementById('tc-quick-doc-ai-reply-save');
+const tcQuickDocAiReplyStatus = document.getElementById('tc-quick-doc-ai-reply-status');
 
-const TC_VALID_PRIORITIES = ['Low', 'Medium', 'High'];
-const TC_VALID_CATEGORIES = [
-  'Functional', 'Positive', 'Negative', 'Edge Case', 'Security',
-  'Validation', 'UI/UX', 'Performance', 'Accessibility',
-  'Compatibility', 'Regression', 'UAT',
-];
-
-function buildTcAiPrompt(projectName, documentText, knowledgeContext) {
-  return `You are an expert QA test case writer preparing test cases for real-world, production use — as if a market end user will actually use this feature. Based on the requirements/document text below for the project "${projectName || 'this project'}", generate a THOROUGH, comprehensive set of manual test cases.
-${knowledgeContext ? `\nThe project has also been trained with the following knowledge — use it to ground test cases in the real app (its applications/modules, roles, terminology, and any functionality it describes beyond just the document below):\n${knowledgeContext}\n` : ''}
-You must cover these categories as relevant, not just the happy path — spread the test cases across them realistically based on what the document supports:
-- Functional — each distinct feature or requirement verified individually
-- Positive — valid inputs, normal expected usage, typical end-user flows
-- Negative — invalid inputs, wrong formats, missing required fields, unauthorized access, error handling
-- Edge Case — boundary values, empty/null inputs, maximum length/limits, special characters, duplicate submissions, concurrent actions
-- Security — auth bypass attempts, injection, data exposure, permission checks, session handling
-- Validation — field-level input validation, format checks, required-field enforcement
-- UI/UX — layout, responsiveness, clarity of feedback/errors, navigation flow
-- Performance — load times, behavior under slow/no network, large data sets
-- Accessibility — screen reader support, keyboard navigation, color contrast, labels
-- Compatibility — different devices, browsers, OS versions, screen sizes
-- Regression — verifying existing related functionality still works after this change
-- UAT — end-to-end scenarios matching real acceptance criteria a client/user would check
-
-Respond with ONLY a JSON array, no prose, no markdown fences, in this exact shape:
-[{"title": "short test case title", "description": "steps or scenario to verify, 1-3 sentences", "priority": "Low"|"Medium"|"High", "category": "Functional"|"Positive"|"Negative"|"Edge Case"|"Security"|"Validation"|"UI/UX"|"Performance"|"Accessibility"|"Compatibility"|"Regression"|"UAT"}]
-
-Aim for thorough coverage — typically 20-40 test cases depending on document size and complexity — distributed across the categories that are actually relevant to this document (not every category applies to every feature). Keep titles concise and descriptions actionable.
-
-Document:
-"""
-${documentText}
-"""`;
-}
-
-function tryParseTestCasesJson(raw) {
-  let text = raw.trim();
-  text = text.replace(/```json/gi, '').replace(/```/g, '').trim();
-  const start = text.indexOf('[');
-  if (start === -1) return null;
-  text = text.slice(start);
-  try {
-    return JSON.parse(text);
-  } catch { /* fall through */ }
-
-  let depth = 0, inString = false, escape = false, lastGoodEnd = -1;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (escape) { escape = false; continue; }
-    if (ch === '\\') { escape = true; continue; }
-    if (ch === '"') { inString = !inString; continue; }
-    if (inString) continue;
-    if (ch === '{') depth++;
-    if (ch === '}') { depth--; if (depth === 0) lastGoodEnd = i; }
-  }
-  if (lastGoodEnd !== -1) {
-    try { return JSON.parse(text.slice(0, lastGoodEnd + 1) + ']'); } catch { /* give up */ }
-  }
-  return null;
-}
-
-tcQuickDocGenerateBtn.addEventListener('click', async () => {
+tcQuickDocSaveBtn.addEventListener('click', async () => {
   if (!currentUser) return;
   const projectId = tcSelect.value;
   if (!projectId) {
@@ -2958,76 +2903,32 @@ tcQuickDocGenerateBtn.addEventListener('click', async () => {
     toastError('Select a project above first.');
     return;
   }
-  const documentText = tcQuickDocContent.value.trim();
-  if (!documentText) {
-    setStatusError(tcQuickDocStatus, 'Paste requirements/document text first.');
+  const value = tcQuickDocContent.value;
+  setStatusLoading(tcQuickDocStatus, 'Saving...');
+  const { error } = await sb
+    .from('quick_notes')
+    .upsert(
+      { owner_id: currentUser.id, tc_project_id: projectId, tc_document_content: value, updated_at: new Date().toISOString() },
+      { onConflict: 'owner_id' }
+    );
+  if (error) {
+    setStatusError(tcQuickDocStatus, `Error: ${error.message}`);
+    toastError(`Couldn't save the document: ${error.message}`);
     return;
   }
-
-  const project = projectsCache.find((p) => p.id === projectId);
-  const original = tcQuickDocGenerateBtn.textContent;
-  tcQuickDocGenerateBtn.disabled = true;
-  tcQuickDocGenerateBtn.textContent = 'Generating with Grok…';
-  setStatusLoading(tcQuickDocStatus, 'Generating test cases with Grok…');
-
-  try {
-    const knowledgeContext = await fetchKnowledgeContext(projectId, '');
-    const prompt = buildTcAiPrompt(project ? project.name : '', documentText, knowledgeContext);
-
-    const res = await fetch('/api/grok', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, maxTokens: 8000 }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      setStatusError(tcQuickDocStatus, data.error || `Grok request failed (${res.status}).`);
-      toastError(data.error || 'Grok request failed.');
-      return;
-    }
-
-    const parsed = tryParseTestCasesJson(data.text || '');
-    if (!parsed || !Array.isArray(parsed) || !parsed.length) {
-      setStatusError(tcQuickDocStatus, "Couldn't read Grok's reply as a list of test cases — try again.");
-      return;
-    }
-
-    const rows = parsed
-      .filter((t) => t && t.title)
-      .map((t) => ({
-        project_id: projectId,
-        title: String(t.title).slice(0, 200),
-        description: t.description ? String(t.description).slice(0, 1000) : null,
-        priority: TC_VALID_PRIORITIES.includes(t.priority) ? t.priority : 'Medium',
-        category: TC_VALID_CATEGORIES.includes(t.category) ? t.category : 'Functional',
-        status: 'Not Run',
-        owner_id: currentUser.id,
-      }));
-
-    if (!rows.length) {
-      setStatusError(tcQuickDocStatus, 'No valid test cases found in Grok\'s reply.');
-      return;
-    }
-
-    const { error } = await sb.from('test_cases').insert(rows);
-    if (error) {
-      setStatusError(tcQuickDocStatus, error.message);
-      toastError(`Couldn't save test cases: ${error.message}`);
-      return;
-    }
-
-    tcQuickDocContent.value = '';
-    setStatusDone(tcQuickDocStatus, `Added ${rows.length} test case${rows.length === 1 ? '' : 's'} ✓`);
-    notify(`${actorLabel()} generated ${rows.length} test case${rows.length === 1 ? '' : 's'} for "${project ? project.name : 'a project'}"`, 'test_case', 'ai_generate');
-    celebrate(`${rows.length} test case${rows.length === 1 ? '' : 's'} added!`, '✅');
-    loadTestCases(projectId);
-  } catch (err) {
-    setStatusError(tcQuickDocStatus, `Request failed: ${err.message}`);
-    toastError(`Request failed: ${err.message}`);
-  } finally {
-    tcQuickDocGenerateBtn.disabled = false;
-    tcQuickDocGenerateBtn.textContent = original;
+  tcQuickDocContent.value = '';
+  if (value.trim()) {
+    setStatusLoading(tcQuickDocStatus, 'Saved — waiting for automation script…');
+    toast('Document saved — waiting for the automation script to pick it up.', { emoji: '💾' });
+    watchForClear('tc_document_content', tcQuickDocStatus);
+  } else {
+    setStatusDone(tcQuickDocStatus, 'Saved ✓');
+    toast('Saved ✓', { emoji: '✅' });
   }
+});
+
+tcQuickDocAiReplySaveBtn.addEventListener('click', () => {
+  saveQuickNotesField('tc_ai_reply_content', tcQuickDocAiReply.value, tcQuickDocAiReplyStatus, tcQuickDocAiReply, 'AI reply');
 });
 
 // ---------- Knowledge Base (train a project so AI replies know the app) ----------
@@ -3275,10 +3176,12 @@ async function fetchKnowledgeContext(projectId, focusHint) {
   return `PROJECT KNOWLEDGE (trained context for this project — ground your answer in this and don't contradict it; if something isn't covered here, fall back to reasonable QA judgement):\n${out.trim()}\n`;
 }
 
-// ---------- AI bug generation from titles (Grok, via /api/grok — no tab, no copy/paste) ----------
+// ---------- AI bug generation from titles (free — copy prompt, paste reply) ----------
 
 const bugAiTitles = document.getElementById('bug-ai-titles');
-const bugAiGenerateBtn = document.getElementById('bug-ai-generate');
+const bugAiResponseText = document.getElementById('bug-ai-response-text');
+const bugAiCopyPromptBtn = document.getElementById('bug-ai-copy-prompt');
+const bugAiParseBtn = document.getElementById('bug-ai-parse-btn');
 const bugAiPreview = document.getElementById('bug-ai-preview');
 const bugAiPreviewList = document.getElementById('bug-ai-preview-list');
 let bugAiGeneratedBugs = [];
@@ -3304,6 +3207,28 @@ Bug titles:
 ${titlesText}
 """`;
 }
+
+bugAiCopyPromptBtn.addEventListener('click', async () => {
+  clearFormError('bug-ai-error');
+  const projectId = bugsSelect.value;
+  const project = projectsCache.find((p) => p.id === projectId);
+  const titlesText = bugAiTitles.value.trim();
+  if (!titlesText) {
+    showFormError('bug-ai-error', 'Enter at least one bug title above first (one per line).');
+    return;
+  }
+  const knowledgeContext = await fetchKnowledgeContext(projectId, titlesText);
+  const prompt = buildBugAiPrompt(project ? project.name : '', titlesText, knowledgeContext);
+  try {
+    await navigator.clipboard.writeText(prompt);
+  } catch {
+    showFormError('bug-ai-error', 'Could not copy automatically — select the text manually if needed.');
+    return;
+  }
+  const original = bugAiCopyPromptBtn.textContent;
+  bugAiCopyPromptBtn.textContent = 'Copied ✓ — now click Open Claude.ai';
+  setTimeout(() => { bugAiCopyPromptBtn.textContent = original; }, 2500);
+});
 
 function tryParseBugsJson(raw) {
   let text = raw.trim();
@@ -3340,71 +3265,47 @@ function tryParseBugsJson(raw) {
   return null;
 }
 
-bugAiGenerateBtn.addEventListener('click', async () => {
+bugAiParseBtn.addEventListener('click', () => {
   clearFormError('bug-ai-error');
   bugAiPreview.classList.add('hidden');
-
-  const projectId = bugsSelect.value;
-  const project = projectsCache.find((p) => p.id === projectId);
-  const titlesText = bugAiTitles.value.trim();
-  if (!titlesText) {
-    showFormError('bug-ai-error', 'Enter at least one bug title above first (one per line).');
+  const raw = bugAiResponseText.value.trim();
+  if (!raw) {
+    showFormError('bug-ai-error', 'Paste the AI\'s reply above first.');
     return;
   }
 
-  const original = bugAiGenerateBtn.textContent;
-  bugAiGenerateBtn.disabled = true;
-  bugAiGenerateBtn.textContent = 'Generating with Grok…';
-
-  try {
-    const knowledgeContext = await fetchKnowledgeContext(projectId, titlesText);
-    const prompt = buildBugAiPrompt(project ? project.name : '', titlesText, knowledgeContext);
-
-    const res = await fetch('/api/grok', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, maxTokens: 4000 }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      showFormError('bug-ai-error', data.error || `Grok request failed (${res.status}).`);
-      return;
-    }
-
-    const parsed = tryParseBugsJson(data.text || '');
-    if (!parsed || !Array.isArray(parsed) || !parsed.length) {
-      showFormError('bug-ai-error', 'Grok\'s reply didn\'t come back as a list of bugs — try again.');
-      return;
-    }
-
-    const validSeverities = ['Low', 'Medium', 'High', 'Critical'];
-    const validIssueTypes = ['Functional', 'UI/UX', 'Backend', 'Frontend', 'API', 'Performance', 'Security', 'Database', 'Other'];
-
-    bugAiGeneratedBugs = parsed
-      .filter((b) => b && b.title)
-      .map((b) => ({
-        title: String(b.title).slice(0, 200),
-        page: b.page ? String(b.page).slice(0, 120) : 'Unknown',
-        module: b.module ? String(b.module).slice(0, 120) : null,
-        severity: validSeverities.includes(b.severity) ? b.severity : 'Medium',
-        issue_type: validIssueTypes.includes(b.issue_type) ? b.issue_type : 'Functional',
-        description: b.description ? String(b.description).slice(0, 1000) : null,
-        steps_to_reproduce: b.steps_to_reproduce ? String(b.steps_to_reproduce).slice(0, 1000) : null,
-        expected_result: b.expected_result ? String(b.expected_result).slice(0, 1000) : null,
-        actual_result: b.actual_result ? String(b.actual_result).slice(0, 1000) : null,
-      }));
-
-    if (!bugAiGeneratedBugs.length) {
-      showFormError('bug-ai-error', 'No valid bugs found in Grok\'s reply.');
-      return;
-    }
-    renderBugAiPreview(bugAiGeneratedBugs);
-  } catch (err) {
-    showFormError('bug-ai-error', `Request failed: ${err.message}`);
-  } finally {
-    bugAiGenerateBtn.disabled = false;
-    bugAiGenerateBtn.textContent = original;
+  const parsed = tryParseBugsJson(raw);
+  if (!parsed) {
+    showFormError('bug-ai-error', 'Couldn\'t read that reply — the paste may have been cut off. Try copying the AI\'s reply again from the very start ("[") to the very end ("]").');
+    return;
   }
+  if (!Array.isArray(parsed) || !parsed.length) {
+    showFormError('bug-ai-error', 'That didn\'t look like a list of bugs. Try again.');
+    return;
+  }
+
+  const validSeverities = ['Low', 'Medium', 'High', 'Critical'];
+  const validIssueTypes = ['Functional', 'UI/UX', 'Backend', 'Frontend', 'API', 'Performance', 'Security', 'Database', 'Other'];
+
+  bugAiGeneratedBugs = parsed
+    .filter((b) => b && b.title)
+    .map((b) => ({
+      title: String(b.title).slice(0, 200),
+      page: b.page ? String(b.page).slice(0, 120) : 'Unknown',
+      module: b.module ? String(b.module).slice(0, 120) : null,
+      severity: validSeverities.includes(b.severity) ? b.severity : 'Medium',
+      issue_type: validIssueTypes.includes(b.issue_type) ? b.issue_type : 'Functional',
+      description: b.description ? String(b.description).slice(0, 1000) : null,
+      steps_to_reproduce: b.steps_to_reproduce ? String(b.steps_to_reproduce).slice(0, 1000) : null,
+      expected_result: b.expected_result ? String(b.expected_result).slice(0, 1000) : null,
+      actual_result: b.actual_result ? String(b.actual_result).slice(0, 1000) : null,
+    }));
+
+  if (!bugAiGeneratedBugs.length) {
+    showFormError('bug-ai-error', 'No valid bugs found in that reply.');
+    return;
+  }
+  renderBugAiPreview(bugAiGeneratedBugs);
 });
 
 function renderBugAiPreview(bugs) {
@@ -3438,6 +3339,7 @@ document.getElementById('bug-ai-discard').addEventListener('click', () => {
   bugAiGeneratedBugs = [];
   bugAiPreview.classList.add('hidden');
   bugAiTitles.value = '';
+  bugAiResponseText.value = '';
 });
 
 document.getElementById('bug-ai-add-selected').addEventListener('click', async () => {
@@ -3481,6 +3383,7 @@ document.getElementById('bug-ai-add-selected').addEventListener('click', async (
   bugAiGeneratedBugs = [];
   bugAiPreview.classList.add('hidden');
   bugAiTitles.value = '';
+  bugAiResponseText.value = '';
   loadBugs(projectId);
 });
 
