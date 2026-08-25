@@ -2744,7 +2744,7 @@ async function loadQuickNotes() {
   if (!currentUser) return;
   const { data, error } = await sb
     .from('quick_notes')
-    .select('notes_content, ai_reply_content')
+    .select('notes_content, ai_reply_content, tc_project_id, tc_document_content, tc_ai_reply_content')
     .eq('owner_id', currentUser.id)
     .maybeSingle();
   if (error) {
@@ -2754,6 +2754,8 @@ async function loadQuickNotes() {
   if (data) {
     quickNotesContent.value = data.notes_content || '';
     quickNotesAiReply.value = data.ai_reply_content || '';
+    tcQuickDocContent.value = data.tc_document_content || '';
+    tcQuickDocAiReply.value = data.tc_ai_reply_content || '';
   }
 }
 
@@ -2777,6 +2779,39 @@ quickNotesSaveBtn.addEventListener('click', () => {
 
 quickNotesAiReplySaveBtn.addEventListener('click', () => {
   saveQuickNotesField('ai_reply_content', quickNotesAiReply.value, quickNotesAiReplyStatus);
+});
+
+const tcQuickDocContent = document.getElementById('tc-quick-doc-content');
+const tcQuickDocSaveBtn = document.getElementById('tc-quick-doc-save');
+const tcQuickDocStatus = document.getElementById('tc-quick-doc-status');
+const tcQuickDocAiReply = document.getElementById('tc-quick-doc-ai-reply');
+const tcQuickDocAiReplySaveBtn = document.getElementById('tc-quick-doc-ai-reply-save');
+const tcQuickDocAiReplyStatus = document.getElementById('tc-quick-doc-ai-reply-status');
+
+tcQuickDocSaveBtn.addEventListener('click', async () => {
+  if (!currentUser) return;
+  const projectId = tcSelect.value;
+  if (!projectId) {
+    tcQuickDocStatus.textContent = 'Select a project above first.';
+    return;
+  }
+  tcQuickDocStatus.textContent = 'Saving...';
+  const { error } = await sb
+    .from('quick_notes')
+    .upsert(
+      { owner_id: currentUser.id, tc_project_id: projectId, tc_document_content: tcQuickDocContent.value, updated_at: new Date().toISOString() },
+      { onConflict: 'owner_id' }
+    );
+  if (error) {
+    tcQuickDocStatus.textContent = `Error: ${error.message}`;
+    return;
+  }
+  tcQuickDocStatus.textContent = 'Saved ✓';
+  setTimeout(() => { tcQuickDocStatus.textContent = ''; }, 2000);
+});
+
+tcQuickDocAiReplySaveBtn.addEventListener('click', () => {
+  saveQuickNotesField('tc_ai_reply_content', tcQuickDocAiReply.value, tcQuickDocAiReplyStatus);
 });
 
 // ---------- AI bug generation from titles (free — copy prompt, paste reply) ----------
