@@ -2773,12 +2773,41 @@ async function saveQuickNotesField(column, value, statusEl) {
   setTimeout(() => { statusEl.textContent = ''; }, 2000);
 }
 
+// After saving non-empty content, briefly poll to see if the local
+// automation script cleared it (meaning it finished syncing) and, if
+// so, clear the textarea on screen too — so it feels live without a
+// page refresh. Gives up after ~2 minutes if nothing's running.
+function watchForClear(column, textareaEl, statusEl, { attempts = 40, intervalMs = 3000 } = {}) {
+  if (!textareaEl.value.trim()) return;
+  let count = 0;
+  const timer = setInterval(async () => {
+    count++;
+    if (count > attempts) { clearInterval(timer); return; }
+    const { data, error } = await sb
+      .from('quick_notes')
+      .select(column)
+      .eq('owner_id', currentUser.id)
+      .maybeSingle();
+    if (error || !data) return;
+    if (data[column] === '') {
+      textareaEl.value = '';
+      if (statusEl) {
+        statusEl.textContent = 'Synced ✓';
+        setTimeout(() => { statusEl.textContent = ''; }, 2000);
+      }
+      clearInterval(timer);
+    }
+  }, intervalMs);
+}
+
 quickNotesSaveBtn.addEventListener('click', () => {
   saveQuickNotesField('notes_content', quickNotesContent.value, quickNotesStatus);
+  watchForClear('notes_content', quickNotesContent, quickNotesStatus);
 });
 
 quickNotesAiReplySaveBtn.addEventListener('click', () => {
   saveQuickNotesField('ai_reply_content', quickNotesAiReply.value, quickNotesAiReplyStatus);
+  watchForClear('ai_reply_content', quickNotesAiReply, quickNotesAiReplyStatus);
 });
 
 const tcQuickDocContent = document.getElementById('tc-quick-doc-content');
@@ -2808,10 +2837,12 @@ tcQuickDocSaveBtn.addEventListener('click', async () => {
   }
   tcQuickDocStatus.textContent = 'Saved ✓';
   setTimeout(() => { tcQuickDocStatus.textContent = ''; }, 2000);
+  watchForClear('tc_document_content', tcQuickDocContent, tcQuickDocStatus);
 });
 
 tcQuickDocAiReplySaveBtn.addEventListener('click', () => {
   saveQuickNotesField('tc_ai_reply_content', tcQuickDocAiReply.value, tcQuickDocAiReplyStatus);
+  watchForClear('tc_ai_reply_content', tcQuickDocAiReply, tcQuickDocAiReplyStatus);
 });
 
 // ---------- AI bug generation from titles (free — copy prompt, paste reply) ----------
