@@ -958,9 +958,27 @@ function refreshTab(tabName) {
   }
 }
 
+// Sidebar navigation groups behave like real dropdown menus.
+// Only one section is expanded at a time, while selecting a child page
+// automatically keeps its parent section open.
+const sidebarGroups = Array.from(document.querySelectorAll('.sidebar-group'));
+
+function openSidebarGroup(group) {
+  sidebarGroups.forEach((g) => {
+    if (g !== group) g.classList.add('collapsed');
+  });
+  if (group) openSidebarGroup(group);
+}
+
 document.querySelectorAll('.sidebar-group-label').forEach((label) => {
   label.addEventListener('click', () => {
-    label.closest('.sidebar-group').classList.toggle('collapsed');
+    const group = label.closest('.sidebar-group');
+    const wasCollapsed = group.classList.contains('collapsed');
+    if (wasCollapsed) {
+      openSidebarGroup(group);
+    } else {
+      group.classList.add('collapsed');
+    }
   });
 });
 
@@ -971,10 +989,19 @@ document.querySelectorAll('.tab').forEach((tab) => {
     tab.classList.add('active');
     document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
     const group = tab.closest('.sidebar-group');
-    if (group) group.classList.remove('collapsed');
+    if (group) openSidebarGroup(group);
     refreshTab(tab.dataset.tab);
   });
 });
+
+// Start with the current Projects section expanded and the other sections
+// collapsed. The active section changes automatically when another page is selected.
+const initialActiveTab = document.querySelector('.tab.active');
+if (initialActiveTab) {
+  const activeGroup = initialActiveTab.closest('.sidebar-group');
+  sidebarGroups.forEach((g) => g.classList.add('collapsed'));
+  if (activeGroup) activeGroup.classList.remove('collapsed');
+}
 
 // ---------- Background auto-refresh ----------
 // Silently re-pulls the currently visible tab's data every few seconds,
@@ -1111,11 +1138,8 @@ function renderProjects(projects) {
     projectsTbody.appendChild(tr);
   });
 
-  projectsTbody.querySelectorAll('[data-edit]').forEach((btn) => {
-    btn.addEventListener('click', () => openProjectDetails(btn.dataset.edit));
-  });
-  projectsTbody.querySelectorAll('[data-edit-btn]').forEach((btn) => {
-    btn.addEventListener('click', () => openEditModal(btn.dataset.editBtn));
+  projectsTbody.querySelectorAll('[data-edit], [data-edit-btn]').forEach((btn) => {
+    btn.addEventListener('click', () => openEditModal(btn.dataset.edit || btn.dataset.editBtn));
   });
 
   projectsTbody.querySelectorAll('.status-select').forEach((sel) => {
@@ -1491,31 +1515,6 @@ const detailFieldGroups = [
   { key: 'created_by_email', label: 'Created by' },
   { key: 'updated_by_email', label: 'Last updated by' },
 ];
-
-function openProjectDetails(id) {
-  const p = projectsCache.find((x) => x.id === id);
-  if (!p) return;
-  document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
-  document.querySelectorAll('.tab-panel').forEach((panel) => panel.classList.remove('active'));
-  const detailsTab = document.querySelector('.tab[data-tab="details"]');
-  if (detailsTab) detailsTab.classList.add('active');
-  const detailsPanel = document.getElementById('tab-details');
-  if (detailsPanel) detailsPanel.classList.add('active');
-  detailsSelect.dataset.current = id;
-  detailsSelect.value = id;
-  showProjectDetails(id);
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
-document.getElementById('back-to-projects')?.addEventListener('click', () => {
-  const projectsTab = document.querySelector('.tab[data-tab="projects"]');
-  document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
-  document.querySelectorAll('.tab-panel').forEach((panel) => panel.classList.remove('active'));
-  projectsTab?.classList.add('active');
-  document.getElementById('tab-projects')?.classList.add('active');
-  loadProjects();
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-});
 
 function renderDetailsSelect() {
   const opts = projectsCache.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
