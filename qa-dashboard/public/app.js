@@ -1111,8 +1111,11 @@ function renderProjects(projects) {
     projectsTbody.appendChild(tr);
   });
 
-  projectsTbody.querySelectorAll('[data-edit], [data-edit-btn]').forEach((btn) => {
-    btn.addEventListener('click', () => openEditModal(btn.dataset.edit || btn.dataset.editBtn));
+  projectsTbody.querySelectorAll('[data-edit]').forEach((btn) => {
+    btn.addEventListener('click', () => openProjectDetails(btn.dataset.edit));
+  });
+  projectsTbody.querySelectorAll('[data-edit-btn]').forEach((btn) => {
+    btn.addEventListener('click', () => openEditModal(btn.dataset.editBtn));
   });
 
   projectsTbody.querySelectorAll('.status-select').forEach((sel) => {
@@ -1488,6 +1491,31 @@ const detailFieldGroups = [
   { key: 'created_by_email', label: 'Created by' },
   { key: 'updated_by_email', label: 'Last updated by' },
 ];
+
+function openProjectDetails(id) {
+  const p = projectsCache.find((x) => x.id === id);
+  if (!p) return;
+  document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach((panel) => panel.classList.remove('active'));
+  const detailsTab = document.querySelector('.tab[data-tab="details"]');
+  if (detailsTab) detailsTab.classList.add('active');
+  const detailsPanel = document.getElementById('tab-details');
+  if (detailsPanel) detailsPanel.classList.add('active');
+  detailsSelect.dataset.current = id;
+  detailsSelect.value = id;
+  showProjectDetails(id);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+document.getElementById('back-to-projects')?.addEventListener('click', () => {
+  const projectsTab = document.querySelector('.tab[data-tab="projects"]');
+  document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach((panel) => panel.classList.remove('active'));
+  projectsTab?.classList.add('active');
+  document.getElementById('tab-projects')?.classList.add('active');
+  loadProjects();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+});
 
 function renderDetailsSelect() {
   const opts = projectsCache.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
