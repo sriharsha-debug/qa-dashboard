@@ -57,8 +57,6 @@
             <p class="empty-state" id="notif-empty">No activity yet.</p>
           </div>
         </div>
-        <span id="who-email" class="who-email"></span>
-        <button id="logout" class="btn btn-ghost">Sign out</button>
       </div>
     </header>
 
@@ -102,7 +100,12 @@
             <span>Accounts</span><span class="group-chevron">▾</span>
           </button>
           <div class="sidebar-group-items">
+            <div class="sidebar-account-email">
+              <span class="sidebar-account-label">Email</span>
+              <span id="who-email" class="who-email"></span>
+            </div>
             <button class="tab" data-tab="settings">Settings</button>
+            <button id="logout" type="button" class="tab sidebar-signout">Sign out</button>
           </div>
         </div>
       </nav>

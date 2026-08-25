@@ -612,6 +612,36 @@ h2 {
 .sidebar-group.collapsed .group-chevron {
   transform: rotate(-90deg);
 }
+
+.sidebar-account-email {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  min-width: 0;
+}
+.sidebar-account-label {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.sidebar-account-email .who-email {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar-signout {
+  color: var(--danger, #ff6b6b);
+}
+
 .sidebar-group-items {
   display: flex;
   flex-direction: column;
