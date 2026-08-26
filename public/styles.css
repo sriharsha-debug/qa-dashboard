@@ -423,7 +423,6 @@ h2 {
   display: inline-flex;
   align-items: center;
   vertical-align: middle;
-  margin-left: 14px;
   font-size: 0.95em;
   line-height: 1;
   font-weight: 800;
@@ -446,6 +445,15 @@ h2 {
   border: 1px solid rgba(45, 212, 191, 0.4);
   color: var(--cyan);
   background: rgba(45, 212, 191, 0.10);
+}
+
+.header-role-badge {
+  display: inline-block;
+  vertical-align: middle;
+  margin-top: 0;
+  margin-left: 10px;
+  font-size: 11px;
+  transform: translateY(-1px);
 }
 
 .notif-wrap { position: relative; }
@@ -558,10 +566,44 @@ h2 {
   flex: 0 0 200px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 16px;
   position: sticky;
   top: 24px;
 }
+.sidebar-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sidebar-group-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  opacity: 0.7;
+  background: none;
+  border: none;
+  padding: 4px 8px;
+  cursor: pointer;
+  width: 100%;
+}
+.sidebar-group-label:hover { opacity: 1; }
+.sidebar-group-label .group-chevron {
+  font-size: 10px;
+  transition: transform 0.15s ease;
+}
+.sidebar-group.collapsed .group-chevron { transform: rotate(-90deg); }
+.sidebar-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+}
+.sidebar-group.collapsed .sidebar-group-items { display: none; }
 .tab {
   font-family: var(--font-mono);
   font-size: 13px;
@@ -620,6 +662,9 @@ h2 {
     position: static;
     gap: 8px;
   }
+  .sidebar-group { display: contents; }
+  .sidebar-group-label { display: none; }
+  .sidebar-group-items { display: contents; }
   .tab { flex: 1 1 auto; text-align: center; }
 }
 
@@ -772,6 +817,54 @@ input:focus, textarea:focus {
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(45, 212, 191, 0.06)),
     rgba(255, 255, 255, 0.06);
+}
+
+input[type="file"] {
+  padding: 8px 10px;
+  cursor: pointer;
+}
+input[type="file"]::file-selector-button {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: rgba(45, 212, 191, 0.14);
+  border: 1px solid var(--cyan);
+  border-radius: 8px;
+  padding: 6px 12px;
+  margin-right: 10px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+input[type="file"]::file-selector-button:hover {
+  background: rgba(45, 212, 191, 0.26);
+}
+
+/* Small helper text under a form field — normal case/weight, unlike the
+   uppercase mono label above it. */
+.field-hint {
+  display: block;
+  text-transform: none;
+  letter-spacing: normal;
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+.field-hint-inline {
+  text-transform: none;
+  letter-spacing: normal;
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: 10px;
+  color: var(--ink-soft);
+}
+.upload-progress {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--cyan);
+  margin-top: 4px;
 }
 
 /* Dropdowns / selects — deliberately distinct from text inputs: violet
@@ -1155,8 +1248,13 @@ select option:focus {
 .assigned-tasks { margin-bottom: 4px; }
 .assigned-tasks .detail-label { display: block; margin-bottom: 2px; }
 .report-delete, .report-share { justify-self: end; }
-.report-card { grid-template-columns: 1fr auto auto; }
+.report-card { grid-template-columns: 1fr auto auto auto; }
 .report-body { grid-column: 1 / -1; }
+
+/* A signed-off report shows a round stamp pinned to the top-right corner;
+   reserve space for it so it doesn't sit on top of the edit/remove/share
+   links (which are also right-aligned). */
+.report-card:has(.stamp) { padding-right: 96px; }
 
 @media (max-width: 520px) {
   .report-card { grid-template-columns: 1fr; }
@@ -1364,6 +1462,7 @@ select option:focus {
 .apk-row-main { display: flex; flex-direction: column; gap: 3px; }
 .apk-row-top {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   align-items: baseline;
   font-family: var(--font-mono);
@@ -1372,6 +1471,7 @@ select option:focus {
 }
 .apk-row-top .apk-version { font-family: var(--font-body); font-weight: 600; font-size: 14px; color: var(--ink); }
 .apk-row-notes { font-size: 13px; color: var(--ink-soft); }
+.apk-row-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
 
 .tc-list { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
 .tc-row {
@@ -1476,6 +1576,21 @@ select option:focus {
 .ai-preview-item-desc { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
 .ai-gen-btn-row { justify-content: flex-start; gap: 10px; }
 .ai-response-label { margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--line-strong); }
+
+.mini-spinner {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--accent, #34D399);
+  border-radius: 50%;
+  vertical-align: -1px;
+  margin-right: 6px;
+  animation: miniSpin 0.7s linear infinite;
+}
+@keyframes miniSpin { to { transform: rotate(360deg); } }
+.count.is-waiting { color: var(--ink-soft); }
+.count.is-error { color: #F87171; }
 
 @keyframes toastBounceIn {
   0% { transform: translateY(30px) scale(0.8); opacity: 0; }
@@ -2022,10 +2137,6 @@ button, input, select, textarea {
 
 
 /* Alignment fix for project/bug action buttons */
-.ledger {
-  table-layout: fixed;
-}
-
 .row-actions {
   display: flex;
   justify-content: flex-end;
@@ -2047,15 +2158,16 @@ button, input, select, textarea {
 
 
 /* FORCE PROJECT/BUG ALIGNMENT FIX */
-.ledger{table-layout:fixed!important;width:100%!important;min-width:1200px!important}
-.ledger th:nth-child(1){width:28%!important}
-.ledger th:nth-child(2){width:14%!important}
-.ledger th:nth-child(3){width:10%!important}
-.ledger th:nth-child(4){width:16%!important}
-.ledger th:nth-child(5){width:20%!important}
-.ledger th:nth-child(6){width:12%!important}
-.ledger td{overflow:hidden;text-overflow:ellipsis}
 .row-actions{display:flex!important;justify-content:flex-end!important;align-items:center!important;gap:12px!important;flex-wrap:nowrap!important}
 .row-actions a,.row-actions button{position:static!important;margin:0!important}
 .bug-actions,.testcase-actions{display:flex!important;align-items:center!important;gap:14px!important;flex-wrap:nowrap!important}
 .bug-actions>*,.testcase-actions>*{margin:0!important}
+
+/* Universal per-page search box (injected by setupUniversalFilters) */
+.universal-search-input{
+  display:block;
+  width:100%;
+  max-width:320px;
+  margin:0 0 12px;
+  font-size:13px;
+}

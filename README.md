@@ -221,13 +221,65 @@ Vercel gives you a URL like `https://your-project.vercel.app`. Open it,
 sign in with the email + password you created in Supabase Auth, and
 you're in.
 
+## 8. Upload APK files directly (e.g. builds shared over WhatsApp)
+
+Run `migration-v26.sql` in Supabase SQL Editor after `migration-v25.sql`.
+(Brand new Supabase projects don't need this step — `supabase-schema.sql`
+already includes it.) This creates a Storage bucket called `apk-files` and
+adds a few columns to `apk_shares` to track uploaded files.
+
+Once that's run, **Project Details → APK shares** has an **APK file**
+upload field alongside the existing **APK link** field:
+
+1. Download/save the `.apk` (or `.aab`) your dev team sent on WhatsApp to
+   your phone or computer.
+2. On the APK shares form, click **APK file** and pick it — or keep using
+   **APK link** instead if you'd rather paste a Drive/WeTransfer link like
+   before. Use one or the other, not both.
+3. Fill in the rest (version, shared date, etc.) and click **Log APK**.
+
+The uploaded file gets its own public link automatically, so **Download /
+link**, the Project Details "Latest APK" line, and the WhatsApp share
+message all work exactly the same as they did with a pasted link — nothing
+else changes. Removing an APK entry also deletes its uploaded file from
+storage.
+
+**File size:** Supabase's default upload limit is 50MB per file, which
+covers most APKs. If your builds run bigger, raise it in the Supabase
+dashboard: **Storage → apk-files bucket → Settings → File size limit**.
+
+## 9. Train a project (Knowledge Base) so AI replies know your app
+
+Run `migration-v29.sql` in Supabase SQL Editor after `migration-v28.sql`.
+
+This adds a **Knowledge Base** tab. For each project, paste in your requirements,
+functionality notes, or any project document — split up by which application it
+belongs to (pick from **User App (Mobile)**, **Vendor App (Mobile)**, **Admin Panel
+(Web)**, **Sub Admin Panel (Web)**, **Common / Cross-App**, or type a custom name,
+e.g. a second mobile app or a delivery-partner app). Give each entry a Title, a
+Type (Requirement / Functionality / User Flow / API-Technical / Other), and the
+content itself.
+
+Everything you add here is automatically pulled in as context every time the AI
+generates something for that project — both bug-detail generation (from just a
+title) and test-case generation from a requirements document — whether you're
+using the free Claude.ai copy/paste flow, the dashboard's script-driven panels, or
+the paid API autofill. You don't need to do anything extra per bug or per
+document; the AI prompt is built with your trained content already included, so
+replies reference your actual pages, modules, roles, and terminology instead of
+generic guesses. Entries whose application name matches the bug's Page/Module are
+prioritized first if the trained content is large enough to need trimming.
+
+You can edit or remove entries any time from the same tab — changes apply to the
+next AI request, nothing needs to be regenerated retroactively.
+
 ## AI test case generation (free — no API key needed)
 
 The Test Execution tracker can turn a requirements document into test
 cases using Claude — with **no billing and no backend function**. It works
 like this:
 
-1. In Project Details → Test execution, paste your requirements text.
+1. In the Test Execution tab, paste your requirements text.
 2. Click **Generate test cases (opens Claude.ai)** — this copies a
    ready-made prompt (your document included) to your clipboard and opens
    a free Claude.ai chat in a new tab.

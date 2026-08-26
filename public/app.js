@@ -23,6 +23,13 @@ document.addEventListener('click', (e) => {
   ripple.addEventListener('animationend', () => ripple.remove());
 });
 
+// Shared confirmation prompt used before every add/edit/update save across
+// the app (deletes already had their own confirm() calls). Centralized here
+// so wording stays consistent and any one save flow can't accidentally skip it.
+function confirmSave(message) {
+  return confirm(message);
+}
+
 let projectsCache = [];
 let statusesCache = [];
 let teamCache = [];
@@ -31,6 +38,7 @@ let currentProfile = null;
 let notifPollTimer = null;
 let tcCache = [];
 let bugCache = [];
+let apkCache = [];
 let reportsCache = [];
 let auditCache = [];
 let auditPageNum = 1;
@@ -273,6 +281,7 @@ async function onLogin(user) {
     document.getElementById('team-tab').classList.add('hidden');
   }
   initSettingsTab();
+  loadQuickNotes();
   runFallbackCleanup();
   if (notifPollTimer) clearInterval(notifPollTimer);
   notifPollTimer = setInterval(refreshNotifications, 25000);
@@ -638,6 +647,7 @@ document.getElementById('profile-form').addEventListener('submit', async (e) => 
     showFormError('profile-error', 'Display name cannot be empty.');
     return;
   }
+  if (!confirmSave(`Update your display name to "${name}"?`)) return;
   const { error } = await sb.from('profiles').update({ display_name: name }).eq('id', currentUser.id);
   if (error) {
     showFormError('profile-error', error.message);
@@ -664,6 +674,7 @@ document.getElementById('password-form').addEventListener('submit', async (e) =>
     showFormError('password-error', 'Passwords do not match.');
     return;
   }
+  if (!confirmSave('Update your password?')) return;
   const { error } = await sb.auth.updateUser({ password: pw });
   if (error) {
     showFormError('password-error', error.message);
@@ -932,6 +943,12 @@ function refreshTab(tabName) {
     case 'bugs':
       loadProjects(); // also drives renderBugsSelect() -> showBugsForProject()
       break;
+    case 'testexec':
+      loadProjects(); // also drives renderTcSelect() -> showTestExecutionForProject()
+      break;
+    case 'knowledge':
+      loadProjects(); // also drives renderKnowledgeSelect() -> showKnowledgeForProject()
+      break;
     case 'daily':
       loadProjects();
       loadReports();
@@ -950,15 +967,55 @@ function refreshTab(tabName) {
   }
 }
 
+document.querySelectorAll('.sidebar-group-label').forEach((label) => {
+  label.addEventListener('click', () => {
+    label.closest('.sidebar-group').classList.toggle('collapsed');
+  });
+});
+
 document.querySelectorAll('.tab').forEach((tab) => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
     document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
     tab.classList.add('active');
     document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+    const group = tab.closest('.sidebar-group');
+    if (group) group.classList.remove('collapsed');
+    // Switching tabs swaps which panel is visible, but the page itself
+    // (not a separate inner container) is what scrolls — so without this,
+    // a new tab opens wherever the previous tab had been scrolled to,
+    // instead of at its own top.
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
     refreshTab(tab.dataset.tab);
   });
 });
+
+// ---------- Background auto-refresh ----------
+// Silently re-pulls the currently visible tab's data every few seconds,
+// so anything added by the automation script, a teammate, or another
+// browser tab shows up on its own — no manual page reload needed.
+// Paused whenever it would be disruptive: a modal is open, or the user
+// is actively typing somewhere (a quick-notes box, a form field, etc.).
+const AUTO_REFRESH_MS = 8000;
+
+function autoRefreshShouldPause() {
+  if (document.visibilityState !== 'visible') return true;
+  if (document.querySelector('.modal-overlay:not(.hidden)')) return true;
+  const el = document.activeElement;
+  if (!el) return false;
+  const tag = el.tagName;
+  if (tag === 'TEXTAREA') return true;
+  if (tag === 'INPUT' && !['checkbox', 'radio', 'button', 'submit'].includes(el.type)) return true;
+  return false;
+}
+
+setInterval(() => {
+  if (!currentUser) return;
+  if (autoRefreshShouldPause()) return;
+  const activeTab = document.querySelector('.tab.active');
+  if (!activeTab) return;
+  refreshTab(activeTab.dataset.tab);
+}, AUTO_REFRESH_MS);
 
 // ---------- Projects ----------
 
@@ -984,6 +1041,8 @@ async function loadProjects() {
   renderProjectSelects(data);
   renderDetailsSelect();
   renderBugsSelect();
+  renderTcSelect();
+  renderKnowledgeSelect();
 }
 
 const projectsBulk = createBulkSelector({
@@ -1012,11 +1071,26 @@ function fmtDate(d) {
   return d ? new Date(d + 'T00:00:00').toLocaleDateString() : '—';
 }
 
-function renderProjects(projects) {
+// For timestamptz columns (e.g. created_at) — these already carry a full
+// ISO datetime, so (unlike fmtDate above, which is for plain date columns)
+// appending a fake time would break parsing and show "Invalid Date".
+function fmtDateTime(d) {
+  if (!d) return '—';
+  const date = new Date(d);
+  return isNaN(date.getTime()) ? '—' : date.toLocaleDateString();
+}
+
+// Shared by the table render and both download buttons, so "download what
+// I'm currently looking at" always matches the Tester filter on screen.
+function getFilteredProjects(projects) {
   const adminFilter = document.getElementById('admin-filter-projects').value;
-  const filtered = isLeader() && adminFilter
+  return isLeader() && adminFilter
     ? projects.filter((p) => p.created_by_email === adminFilter)
     : projects;
+}
+
+function renderProjects(projects) {
+  const filtered = getFilteredProjects(projects);
 
   projectsTbody.innerHTML = '';
   projectCount.textContent = filtered.length ? `${filtered.length} total` : '';
@@ -1122,6 +1196,7 @@ if (statusForm) statusForm.addEventListener('submit', async (e) => {
     showFormError('status-error', 'A status with that name already exists.');
     return;
   }
+  if (!confirmSave(`Add status "${name}"?`)) return;
   const { count } = await sb.from('statuses').select('*', { count: 'exact', head: true });
   const { error } = await sb.from('statuses').insert({ name, color, sort_order: count || 0 });
   if (error) {
@@ -1336,6 +1411,7 @@ editForm.addEventListener('submit', async (e) => {
   if (!payload.status) payload.status = statusesCache[0] ? statusesCache[0].name : 'Not Started';
 
   if (id) {
+    if (!confirmSave(`Save changes to "${payload.name}"?`)) return;
     payload.updated_at = new Date().toISOString();
     payload.updated_by_email = currentUser ? currentUser.email : null;
     const { error } = await sb.from('projects').update(payload).eq('id', id);
@@ -1352,6 +1428,7 @@ editForm.addEventListener('submit', async (e) => {
     // name/detail could be displayed — not just the Projects tab.
     loadReports();
   } else {
+    if (!confirmSave(`Add project "${payload.name}"?`)) return;
     payload.created_by_email = currentUser ? currentUser.email : null;
     payload.owner_id = currentUser ? currentUser.id : null;
     const { error } = await sb.from('projects').insert(payload);
@@ -1528,16 +1605,98 @@ async function showProjectDetails(id) {
   detailsEditBtn.onclick = () => openEditModal(id);
 
   loadApkShares(id);
-  tcPageNum = 1;
-  loadTestCases(id);
 }
 
-// ---------- Test execution ----------
+// ---------- Test execution (own tab, own project selector) ----------
 
+const tcSelect = document.getElementById('tc-project-select');
+const tcTabEmpty = document.getElementById('tc-tab-empty');
+const tcTabContent = document.getElementById('tc-tab-content');
 const tcForm = document.getElementById('tc-form');
 const tcList = document.getElementById('tc-list');
 const tcEmpty = document.getElementById('tc-empty');
 const tcSummary = document.getElementById('tc-summary');
+const tcFilterStatus = document.getElementById('tc-filter-status');
+const tcFilterPriority = document.getElementById('tc-filter-priority');
+const tcFilterCategory = document.getElementById('tc-filter-category');
+const tcFilterClear = document.getElementById('tc-filter-clear');
+const tcFilterCount = document.getElementById('tc-filter-count');
+
+function getFilteredTestCases() {
+  const status = tcFilterStatus.value;
+  const priority = tcFilterPriority.value;
+  const category = tcFilterCategory.value;
+  return tcCache.filter((c) => {
+    if (status && c.status !== status) return false;
+    if (priority && (c.priority || 'Medium') !== priority) return false;
+    if (category && (c.category || 'Functional') !== category) return false;
+    return true;
+  });
+}
+
+function updateTcFilterCount(filtered) {
+  const anyFilterActive = tcFilterStatus.value || tcFilterPriority.value || tcFilterCategory.value;
+  if (!anyFilterActive) {
+    tcFilterCount.textContent = '';
+    return;
+  }
+  const labelParts = [tcFilterStatus.value, tcFilterPriority.value, tcFilterCategory.value].filter(Boolean);
+  tcFilterCount.textContent = `${filtered.length} of ${tcCache.length} test case${tcCache.length === 1 ? '' : 's'} — ${labelParts.join(', ')}`;
+}
+
+[tcFilterStatus, tcFilterPriority, tcFilterCategory].forEach((sel) => {
+  sel.addEventListener('change', () => {
+    tcPageNum = 1;
+    const filtered = getFilteredTestCases();
+    renderTestCases(filtered, tcSelect.value);
+    updateTcFilterCount(filtered);
+  });
+});
+
+tcFilterClear.addEventListener('click', () => {
+  tcFilterStatus.value = '';
+  tcFilterPriority.value = '';
+  tcFilterCategory.value = '';
+  tcPageNum = 1;
+  const filtered = getFilteredTestCases();
+  renderTestCases(filtered, tcSelect.value);
+  updateTcFilterCount(filtered);
+});
+
+function renderTcSelect() {
+  const opts = projectsCache.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+  tcSelect.innerHTML = opts;
+  if (!projectsCache.length) {
+    tcTabEmpty.classList.remove('hidden');
+    tcTabContent.classList.add('hidden');
+    return;
+  }
+  tcTabEmpty.classList.add('hidden');
+  const keep = projectsCache.find((p) => p.id === tcSelect.dataset.current);
+  const targetId = keep ? keep.id : projectsCache[0].id;
+  tcSelect.value = targetId;
+  showTestExecutionForProject(targetId);
+}
+
+tcSelect.addEventListener('change', () => showTestExecutionForProject(tcSelect.value));
+
+function showTestExecutionForProject(id) {
+  if (!id) return;
+  // Same guard as showProjectDetails()/showBugsForProject(): loadProjects()
+  // re-runs this every time anything is saved anywhere in the app, not just
+  // when you actually switch the project dropdown.
+  const isProjectChange = tcSelect.dataset.current !== id;
+  tcSelect.dataset.current = id;
+  tcTabContent.classList.remove('hidden');
+  if (isProjectChange) {
+    tcPageNum = 1;
+    tcFilterStatus.value = '';
+    tcFilterPriority.value = '';
+    tcFilterCategory.value = '';
+    tcFilterCount.textContent = '';
+  }
+  loadTestCases(id);
+}
 
 function tcStatusColor(status) {
   return { 'Not Run': '#7FA0A6', Pass: '#34D399', Fail: '#F87171', Blocked: '#FBBF24' }[status] || '#7FA0A6';
@@ -1546,7 +1705,7 @@ function tcStatusColor(status) {
 tcForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   clearFormError('tc-error');
-  const project_id = detailsSelect.value;
+  const project_id = tcSelect.value;
   if (!project_id) return;
 
   const title = document.getElementById('tc-title').value.trim();
@@ -1567,6 +1726,7 @@ tcForm.addEventListener('submit', async (e) => {
     last_run_date: status === 'Not Run' ? null : todayStr(),
     owner_id: currentUser ? currentUser.id : null,
   };
+  if (!confirmSave(`Add test case "${title}"?`)) return;
   const { error } = await sb.from('test_cases').insert(payload);
   if (error) {
     showFormError('tc-error', error.message);
@@ -1595,7 +1755,9 @@ async function loadTestCases(projectId) {
     return;
   }
   tcCache = data || [];
-  renderTestCases(data, projectId);
+  const filtered = getFilteredTestCases();
+  renderTestCases(filtered, projectId);
+  updateTcFilterCount(filtered);
 }
 
 let tcPageNum = 1;
@@ -1609,7 +1771,7 @@ const tcBulk = createBulkSelector({
   itemLabel: 'test case',
   getAllIds: () => tcCache.map((c) => c.id),
   onDeleted: async () => {
-    await loadTestCases(detailsSelect.value);
+    await loadTestCases(tcSelect.value);
   },
 });
 
@@ -1712,6 +1874,58 @@ const bugForm = document.getElementById('bug-form');
 const bugList = document.getElementById('bug-list');
 const bugEmpty = document.getElementById('bug-empty');
 const bugSummary = document.getElementById('bug-summary');
+const bugFilterStatus = document.getElementById('bug-filter-status');
+const bugFilterSeverity = document.getElementById('bug-filter-severity');
+const bugFilterIssueType = document.getElementById('bug-filter-issue-type');
+const bugFilterClear = document.getElementById('bug-filter-clear');
+const bugFilterCount = document.getElementById('bug-filter-count');
+
+// Once the person types their own Bug ID, stop auto-suggesting over it —
+// autofillNextBugId() only overwrites the field while it's untouched.
+document.getElementById('bug-bugid').addEventListener('input', (e) => {
+  e.target.dataset.autofilled = '';
+});
+
+function getFilteredBugs() {
+  const status = bugFilterStatus.value;
+  const severity = bugFilterSeverity.value;
+  const issueType = bugFilterIssueType.value;
+  return bugCache.filter((b) => {
+    if (status && b.status !== status) return false;
+    if (severity && b.severity !== severity) return false;
+    if (issueType && b.issue_type !== issueType) return false;
+    return true;
+  });
+}
+
+function updateBugFilterCount(filtered) {
+  const anyFilterActive = bugFilterStatus.value || bugFilterSeverity.value || bugFilterIssueType.value;
+  if (!anyFilterActive) {
+    bugFilterCount.textContent = '';
+    return;
+  }
+  const labelParts = [bugFilterStatus.value, bugFilterSeverity.value, bugFilterIssueType.value].filter(Boolean);
+  bugFilterCount.textContent = `${filtered.length} of ${bugCache.length} bug${bugCache.length === 1 ? '' : 's'} — ${labelParts.join(', ')}`;
+}
+
+[bugFilterStatus, bugFilterSeverity, bugFilterIssueType].forEach((sel) => {
+  sel.addEventListener('change', () => {
+    bugPageNum = 1;
+    const filtered = getFilteredBugs();
+    renderBugs(filtered, bugsSelect.value);
+    updateBugFilterCount(filtered);
+  });
+});
+
+bugFilterClear.addEventListener('click', () => {
+  bugFilterStatus.value = '';
+  bugFilterSeverity.value = '';
+  bugFilterIssueType.value = '';
+  bugPageNum = 1;
+  const filtered = getFilteredBugs();
+  renderBugs(filtered, bugsSelect.value);
+  updateBugFilterCount(filtered);
+});
 
 function renderBugsSelect() {
   const opts = projectsCache.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
@@ -1732,9 +1946,21 @@ bugsSelect.addEventListener('change', () => showBugsForProject(bugsSelect.value)
 
 function showBugsForProject(id) {
   if (!id) return;
+  // Same guard as showProjectDetails(): loadProjects() re-runs this every
+  // time anything is saved anywhere in the app, not just when you actually
+  // switch the project dropdown. Without checking whether the id changed,
+  // that meant saving a bug (or a project, or a daily log entry) would
+  // silently snap the Bugs tab back to page 1 and clear your filters.
+  const isProjectChange = bugsSelect.dataset.current !== id;
   bugsSelect.dataset.current = id;
   bugsTabContent.classList.remove('hidden');
-  bugPageNum = 1;
+  if (isProjectChange) {
+    bugPageNum = 1;
+    bugFilterStatus.value = '';
+    bugFilterSeverity.value = '';
+    bugFilterIssueType.value = '';
+    bugFilterCount.textContent = '';
+  }
   loadBugs(id);
 }
 
@@ -1849,6 +2075,7 @@ bugForm.addEventListener('submit', async (e) => {
     notes: document.getElementById('bug-notes').value.trim() || null,
     owner_id: currentUser ? currentUser.id : null,
   };
+  if (!confirmSave(`Log bug "${title}"?`)) return;
   const { error } = await sb.from('bugs').insert(payload);
   if (error) {
     showFormError('bug-error', error.message);
@@ -1947,6 +2174,7 @@ bugEditForm.addEventListener('submit', async (e) => {
     notes: document.getElementById('be-notes').value.trim() || null,
     updated_at: new Date().toISOString(),
   };
+  if (!confirmSave(`Save changes to bug "${title}"?`)) return;
   const { error } = await sb.from('bugs').update(payload).eq('id', id);
   if (error) {
     showFormError('bug-edit-error', error.message);
@@ -1985,8 +2213,44 @@ async function loadBugs(projectId) {
     return;
   }
   bugCache = data || [];
-  renderBugs(bugCache, projectId);
+  const filtered = getFilteredBugs();
+  renderBugs(filtered, projectId);
+  updateBugFilterCount(filtered);
   refreshDetailsBugSummaryIfShowing(projectId);
+  autofillNextBugId();
+}
+
+// Suggests the next Bug ID for the "Add bug" form by looking at the most
+// recently added bug for this project and incrementing its trailing number
+// (e.g. "BUG-001" -> "BUG-002", "PLAPLE-7" -> "PLAPLE-8"). Falls back to
+// "BUG-001" if this project has no bugs yet, or none of them have an ID
+// with a number in it to build off of.
+function nextBugIdSuggestion(bugs) {
+  for (let i = bugs.length - 1; i >= 0; i--) {
+    const val = bugs[i].bug_id;
+    if (!val) continue;
+    const m = val.match(/^(.*?)(\d+)(\D*)$/);
+    if (m) {
+      const [, prefix, digits, suffix] = m;
+      const next = String(parseInt(digits, 10) + 1).padStart(digits.length, '0');
+      return `${prefix}${next}${suffix}`;
+    }
+  }
+  return 'BUG-001';
+}
+
+// Fills the Bug ID field with the next suggested ID, but only when it's
+// empty or still holds a value we auto-filled earlier — so it never
+// clobbers an ID someone typed in by hand while a background refresh
+// happens (e.g. another bug's status changing elsewhere in the list).
+function autofillNextBugId() {
+  const input = document.getElementById('bug-bugid');
+  if (!input) return;
+  const isEmpty = input.value.trim() === '';
+  const isAutofilled = input.dataset.autofilled === '1';
+  if (!isEmpty && !isAutofilled) return;
+  input.value = nextBugIdSuggestion(bugCache);
+  input.dataset.autofilled = '1';
 }
 
 // Bug counts on the Project Details tab are auto-tracked, not manually
@@ -2023,7 +2287,7 @@ function renderBugs(bugs, projectId) {
   const counts = { Open: 0, 'In Progress': 0, Fixed: 0, Retest: 0, Closed: 0, Reopened: 0 };
   bugs.forEach((b) => { counts[b.status] = (counts[b.status] || 0) + 1; });
   bugSummary.textContent = bugs.length
-    ? `${bugs.length} total · ${counts.Open} open · ${counts['In Progress']} in progress · ${counts.Fixed} fixed · ${counts.Closed} closed`
+    ? `${bugs.length} total · ${counts.Open} open · ${counts['In Progress']} in progress · ${counts.Fixed} fixed · ${counts.Closed} closed · ${counts.Reopened} reopened`
     : '';
 
   const totalPages = Math.max(1, Math.ceil(bugs.length / BUG_PAGE_SIZE));
@@ -2535,7 +2799,649 @@ document.getElementById('bug-import-add-selected').addEventListener('click', asy
   loadBugs(projectId);
 });
 
+// ---------- Quick Notes (dashboard-embedded notepad for the automation script) ----------
+
+const quickNotesContent = document.getElementById('quick-notes-content');
+const quickNotesSaveBtn = document.getElementById('quick-notes-save');
+const quickNotesStatus = document.getElementById('quick-notes-status');
+const quickNotesAiReply = document.getElementById('quick-notes-ai-reply');
+const quickNotesAiReplySaveBtn = document.getElementById('quick-notes-ai-reply-save');
+const quickNotesAiReplyStatus = document.getElementById('quick-notes-ai-reply-status');
+
+async function loadQuickNotes() {
+  if (!currentUser) return;
+  const { data, error } = await sb
+    .from('quick_notes')
+    .select('notes_content, ai_reply_content, tc_project_id, tc_document_content, tc_ai_reply_content')
+    .eq('owner_id', currentUser.id)
+    .maybeSingle();
+  if (error) {
+    console.error('Failed to load quick notes:', error.message);
+    return;
+  }
+  if (data) {
+    quickNotesContent.value = data.notes_content || '';
+    quickNotesAiReply.value = data.ai_reply_content || '';
+    tcQuickDocContent.value = data.tc_document_content || '';
+    tcQuickDocAiReply.value = data.tc_ai_reply_content || '';
+  }
+}
+
+function setStatusLoading(statusEl, text) {
+  statusEl.className = 'count is-waiting';
+  statusEl.innerHTML = `<span class="mini-spinner"></span>${text}`;
+}
+function setStatusDone(statusEl, text, autoClearMs = 2500) {
+  statusEl.className = 'count';
+  statusEl.textContent = text;
+  if (autoClearMs) setTimeout(() => { if (statusEl.textContent === text) statusEl.textContent = ''; }, autoClearMs);
+}
+function setStatusError(statusEl, text) {
+  statusEl.className = 'count is-error';
+  statusEl.textContent = text;
+}
+
+// After saving, the textarea is cleared right away (so it doesn't feel
+// stuck), and we poll briefly to see when the local automation script
+// has actually picked the row up (it clears the same column once it's
+// opened Claude.ai / finished syncing) — that flips the status from a
+// spinner to a confirmation. Gives up after ~90s if nothing's running.
+function watchForClear(column, statusEl, { attempts = 60, intervalMs = 1500 } = {}) {
+  let count = 0;
+  const timer = setInterval(async () => {
+    count++;
+    if (count > attempts) {
+      clearInterval(timer);
+      const msg = 'Still waiting — is qa-automation (npm run watch-dashboard) running?';
+      setStatusError(statusEl, msg);
+      toastError(msg);
+      return;
+    }
+    const { data, error } = await sb
+      .from('quick_notes')
+      .select(column)
+      .eq('owner_id', currentUser.id)
+      .maybeSingle();
+    if (error || !data) return;
+    if (data[column] === '') {
+      clearInterval(timer);
+      setStatusDone(statusEl, 'Synced ✓ — Claude.ai should be open');
+      toast('Synced ✓', { emoji: '✅' });
+      // Refresh the relevant list right away so newly added bugs/test
+      // cases show up without a manual page reload.
+      if (column === 'notes_content' || column === 'ai_reply_content') {
+        if (bugsSelect.value) showBugsForProject(bugsSelect.value);
+      } else if (column === 'tc_ai_reply_content') {
+        if (tcSelect.value) showTestExecutionForProject(tcSelect.value);
+      }
+    }
+  }, intervalMs);
+}
+
+async function saveQuickNotesField(column, value, statusEl, textareaEl, label) {
+  if (!currentUser) return;
+  setStatusLoading(statusEl, 'Saving...');
+  const { error } = await sb
+    .from('quick_notes')
+    .upsert({ owner_id: currentUser.id, [column]: value, updated_at: new Date().toISOString() }, { onConflict: 'owner_id' });
+  if (error) {
+    setStatusError(statusEl, `Error: ${error.message}`);
+    toastError(`Couldn't save ${label || 'this'}: ${error.message}`);
+    return;
+  }
+  if (textareaEl) textareaEl.value = '';
+  if (value.trim()) {
+    setStatusLoading(statusEl, 'Saved — waiting for automation script…');
+    toast(`${label || 'Saved'} — waiting for the automation script to pick it up.`, { emoji: '💾' });
+    watchForClear(column, statusEl);
+  } else {
+    setStatusDone(statusEl, 'Saved ✓');
+    toast(`${label || 'Saved'} ✓`, { emoji: '✅' });
+  }
+}
+
+quickNotesSaveBtn.addEventListener('click', () => {
+  saveQuickNotesField('notes_content', quickNotesContent.value, quickNotesStatus, quickNotesContent, 'Quick Notes');
+});
+
+quickNotesAiReplySaveBtn.addEventListener('click', () => {
+  saveQuickNotesField('ai_reply_content', quickNotesAiReply.value, quickNotesAiReplyStatus, quickNotesAiReply, 'AI reply');
+});
+
+const tcQuickDocContent = document.getElementById('tc-quick-doc-content');
+const tcQuickDocSaveBtn = document.getElementById('tc-quick-doc-save');
+const tcQuickDocStatus = document.getElementById('tc-quick-doc-status');
+const tcQuickDocAiReply = document.getElementById('tc-quick-doc-ai-reply');
+const tcQuickDocAiReplySaveBtn = document.getElementById('tc-quick-doc-ai-reply-save');
+const tcQuickDocAiReplyStatus = document.getElementById('tc-quick-doc-ai-reply-status');
+
+tcQuickDocSaveBtn.addEventListener('click', async () => {
+  if (!currentUser) return;
+  const projectId = tcSelect.value;
+  if (!projectId) {
+    setStatusError(tcQuickDocStatus, 'Select a project above first.');
+    toastError('Select a project above first.');
+    return;
+  }
+  const value = tcQuickDocContent.value;
+  setStatusLoading(tcQuickDocStatus, 'Saving...');
+  const { error } = await sb
+    .from('quick_notes')
+    .upsert(
+      { owner_id: currentUser.id, tc_project_id: projectId, tc_document_content: value, updated_at: new Date().toISOString() },
+      { onConflict: 'owner_id' }
+    );
+  if (error) {
+    setStatusError(tcQuickDocStatus, `Error: ${error.message}`);
+    toastError(`Couldn't save the document: ${error.message}`);
+    return;
+  }
+  tcQuickDocContent.value = '';
+  if (value.trim()) {
+    setStatusLoading(tcQuickDocStatus, 'Saved — waiting for automation script…');
+    toast('Document saved — waiting for the automation script to pick it up.', { emoji: '💾' });
+    watchForClear('tc_document_content', tcQuickDocStatus);
+  } else {
+    setStatusDone(tcQuickDocStatus, 'Saved ✓');
+    toast('Saved ✓', { emoji: '✅' });
+  }
+});
+
+tcQuickDocAiReplySaveBtn.addEventListener('click', () => {
+  saveQuickNotesField('tc_ai_reply_content', tcQuickDocAiReply.value, tcQuickDocAiReplyStatus, tcQuickDocAiReply, 'AI reply');
+});
+
+// ---------- Knowledge Base (train a project so AI replies know the app) ----------
+
+const kbSelect = document.getElementById('kb-project-select');
+const kbTabEmpty = document.getElementById('kb-tab-empty');
+const kbTabContent = document.getElementById('kb-tab-content');
+const kbForm = document.getElementById('kb-form');
+const kbEditId = document.getElementById('kb-edit-id');
+const kbAppSegment = document.getElementById('kb-app-segment');
+const kbAppSegmentCustomWrap = document.getElementById('kb-app-segment-custom-wrap');
+const kbAppSegmentCustom = document.getElementById('kb-app-segment-custom');
+const kbDocType = document.getElementById('kb-doc-type');
+const kbTitle = document.getElementById('kb-title');
+const kbContent = document.getElementById('kb-content');
+const kbFormSubmit = document.getElementById('kb-form-submit');
+const kbFormCancel = document.getElementById('kb-form-cancel');
+const kbList = document.getElementById('kb-list');
+const kbEmpty = document.getElementById('kb-empty');
+const kbCount = document.getElementById('kb-count');
+const kbFilterSegment = document.getElementById('kb-filter-segment');
+let kbCache = [];
+
+function renderKnowledgeSelect() {
+  const opts = projectsCache.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+  kbSelect.innerHTML = opts;
+  if (!projectsCache.length) {
+    kbTabEmpty.classList.remove('hidden');
+    kbTabContent.classList.add('hidden');
+    return;
+  }
+  kbTabEmpty.classList.add('hidden');
+  const keep = projectsCache.find((p) => p.id === kbSelect.dataset.current);
+  const targetId = keep ? keep.id : projectsCache[0].id;
+  kbSelect.value = targetId;
+  showKnowledgeForProject(targetId);
+}
+
+kbSelect.addEventListener('change', () => showKnowledgeForProject(kbSelect.value));
+
+function showKnowledgeForProject(id) {
+  if (!id) return;
+  const isProjectChange = kbSelect.dataset.current !== id;
+  kbSelect.dataset.current = id;
+  kbTabContent.classList.remove('hidden');
+  if (isProjectChange) {
+    resetKbForm();
+    kbFilterSegment.value = '';
+  }
+  loadKnowledgeEntries(id);
+}
+
+kbAppSegment.addEventListener('change', () => {
+  kbAppSegmentCustomWrap.classList.toggle('hidden', kbAppSegment.value !== '__custom__');
+});
+
+function resetKbForm() {
+  kbForm.reset();
+  kbEditId.value = '';
+  kbAppSegmentCustomWrap.classList.add('hidden');
+  kbFormSubmit.textContent = 'Add to Knowledge Base';
+  kbFormCancel.classList.add('hidden');
+  clearFormError('kb-error');
+}
+
+kbFormCancel.addEventListener('click', resetKbForm);
+
+async function loadKnowledgeEntries(projectId) {
+  const { data, error } = await sb
+    .from('project_knowledge')
+    .select('*')
+    .eq('project_id', projectId)
+    .order('app_segment', { ascending: true })
+    .order('created_at', { ascending: false });
+  if (error) {
+    console.error(error);
+    return;
+  }
+  kbCache = data || [];
+  const segments = Array.from(new Set(kbCache.map((k) => k.app_segment || 'General'))).sort();
+  const keepFilter = kbFilterSegment.value;
+  kbFilterSegment.innerHTML = '<option value="">All applications</option>' +
+    segments.map((s) => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+  kbFilterSegment.value = segments.includes(keepFilter) ? keepFilter : '';
+  renderKnowledgeList();
+}
+
+kbFilterSegment.addEventListener('change', renderKnowledgeList);
+
+function renderKnowledgeList() {
+  const filter = kbFilterSegment.value;
+  const rows = filter ? kbCache.filter((k) => (k.app_segment || 'General') === filter) : kbCache;
+  kbList.innerHTML = '';
+  kbCount.textContent = kbCache.length ? `${kbCache.length} entr${kbCache.length === 1 ? 'y' : 'ies'}` : '';
+  kbEmpty.style.display = rows.length ? 'none' : 'block';
+
+  rows.forEach((k) => {
+    const row = document.createElement('div');
+    row.className = 'apk-row';
+    const preview = (k.content || '').slice(0, 220);
+    row.innerHTML = `
+      <div class="apk-row-main">
+        <div class="apk-row-top">
+          <span class="apk-version">${escapeHtml(k.app_segment || 'General')}</span>
+          <span>${escapeHtml(k.doc_type || 'Notes')}</span>
+          <span>${fmtDateTime(k.created_at)}</span>
+        </div>
+        <div><strong>${escapeHtml(k.title || 'Untitled')}</strong></div>
+        <div class="apk-row-notes">${escapeHtml(preview)}${(k.content || '').length > 220 ? '…' : ''}</div>
+      </div>
+      <div class="apk-row-actions">
+        <button class="icon-btn" data-kb-edit="${k.id}">edit</button>
+        <button class="icon-btn" data-kb-delete="${k.id}">remove</button>
+      </div>
+    `;
+    row.querySelector('[data-kb-edit]').addEventListener('click', () => {
+      kbEditId.value = k.id;
+      const presetValues = Array.from(kbAppSegment.options).map((o) => o.value);
+      if (presetValues.includes(k.app_segment)) {
+        kbAppSegment.value = k.app_segment;
+        kbAppSegmentCustomWrap.classList.add('hidden');
+      } else {
+        kbAppSegment.value = '__custom__';
+        kbAppSegmentCustom.value = k.app_segment || '';
+        kbAppSegmentCustomWrap.classList.remove('hidden');
+      }
+      kbDocType.value = k.doc_type || 'Requirement';
+      kbTitle.value = k.title || '';
+      kbContent.value = k.content || '';
+      kbFormSubmit.textContent = 'Save changes';
+      kbFormCancel.classList.remove('hidden');
+      clearFormError('kb-error');
+      kbForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    row.querySelector('[data-kb-delete]').addEventListener('click', async () => {
+      if (!confirm('Remove this training entry?')) return;
+      await flashRowRemoving(row);
+      const { error } = await sb.from('project_knowledge').delete().eq('id', k.id);
+      if (error) {
+        toastError(error.message);
+        return;
+      }
+      toast('Training entry removed.', { emoji: '🗑️' });
+      loadKnowledgeEntries(kbSelect.value);
+    });
+    kbList.appendChild(row);
+  });
+}
+
+kbForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearFormError('kb-error');
+  const projectId = kbSelect.value;
+  if (!projectId) return;
+
+  const segment = kbAppSegment.value === '__custom__' ? kbAppSegmentCustom.value.trim() : kbAppSegment.value;
+  if (!segment) {
+    showFormError('kb-error', 'Enter a custom application name, or pick one from the list.');
+    flashFields(kbForm, 'field-error');
+    return;
+  }
+  const title = kbTitle.value.trim();
+  const content = kbContent.value.trim();
+  if (!title || !content) {
+    showFormError('kb-error', 'Title and content are both required.');
+    flashFields(kbForm, 'field-error');
+    return;
+  }
+
+  const payload = {
+    project_id: projectId,
+    owner_id: currentUser ? currentUser.id : null,
+    app_segment: segment,
+    doc_type: kbDocType.value,
+    title,
+    content,
+    updated_at: new Date().toISOString(),
+  };
+
+  const editId = kbEditId.value;
+  if (!confirmSave(editId ? `Save changes to "${title}"?` : `Add "${title}" to the Knowledge Base?`)) return;
+  const { error } = editId
+    ? await sb.from('project_knowledge').update(payload).eq('id', editId)
+    : await sb.from('project_knowledge').insert(payload);
+
+  if (error) {
+    showFormError('kb-error', error.message);
+    flashFields(kbForm, 'field-error');
+    return;
+  }
+  toast(editId ? 'Training entry updated.' : 'Added to Knowledge Base.', { emoji: '🧠' });
+  flashFields(kbForm, 'field-success');
+  resetKbForm();
+  loadKnowledgeEntries(projectId);
+});
+
+// Fetches this project's trained knowledge and formats it as a context
+// block for an AI prompt. focusHint (e.g. a Page/Module name) nudges the
+// matching application's entries to the front when present. Capped so a
+// heavily-trained project still produces a clipboard-friendly prompt.
+async function fetchKnowledgeContext(projectId, focusHint) {
+  if (!projectId) return '';
+  const { data, error } = await sb
+    .from('project_knowledge')
+    .select('app_segment, doc_type, title, content')
+    .eq('project_id', projectId)
+    .order('app_segment', { ascending: true })
+    .order('created_at', { ascending: true });
+  if (error || !data || !data.length) return '';
+
+  const MAX_ENTRY_CHARS = 1600;
+  const MAX_TOTAL_CHARS = 9000;
+
+  const groups = {};
+  data.forEach((row) => {
+    const seg = row.app_segment || 'General';
+    (groups[seg] = groups[seg] || []).push(row);
+  });
+
+  let segments = Object.keys(groups);
+  if (focusHint) {
+    const hint = focusHint.toLowerCase();
+    segments = segments.sort((a, b) => {
+      const aHit = hint.includes(a.toLowerCase()) || a.toLowerCase().includes(hint) ? 0 : 1;
+      const bHit = hint.includes(b.toLowerCase()) || b.toLowerCase().includes(hint) ? 0 : 1;
+      return aHit - bHit;
+    });
+  }
+
+  let out = '';
+  for (const seg of segments) {
+    let block = `\n== ${seg} ==\n`;
+    for (const row of groups[seg]) {
+      let content = row.content || '';
+      if (content.length > MAX_ENTRY_CHARS) content = content.slice(0, MAX_ENTRY_CHARS) + '... (truncated)';
+      block += `[${row.doc_type || 'Notes'}] ${row.title || 'Untitled'}\n${content}\n\n`;
+    }
+    if (out.length + block.length > MAX_TOTAL_CHARS) {
+      if (!out) out = block.slice(0, MAX_TOTAL_CHARS);
+      break;
+    }
+    out += block;
+  }
+
+  if (!out.trim()) return '';
+  return `PROJECT KNOWLEDGE (trained context for this project — ground your answer in this and don't contradict it; if something isn't covered here, fall back to reasonable QA judgement):\n${out.trim()}\n`;
+}
+
+// ---------- AI bug generation from titles (free — copy prompt, paste reply) ----------
+
+const bugAiTitles = document.getElementById('bug-ai-titles');
+const bugAiResponseText = document.getElementById('bug-ai-response-text');
+const bugAiCopyPromptBtn = document.getElementById('bug-ai-copy-prompt');
+const bugAiParseBtn = document.getElementById('bug-ai-parse-btn');
+const bugAiPreview = document.getElementById('bug-ai-preview');
+const bugAiPreviewList = document.getElementById('bug-ai-preview-list');
+let bugAiGeneratedBugs = [];
+
+function buildBugAiPrompt(projectName, titlesText, knowledgeContext) {
+  return `You are an expert QA engineer writing up full bug reports from just a list of short bug titles, for the project "${projectName || 'this project'}". ${knowledgeContext ? 'Use the trained project knowledge below to ground your guesses in the real app — its pages, modules, and terminology.' : "You don't know the real app beyond the title text, so make plausible, realistic guesses typical of that kind of bug rather than inventing suspiciously specific claims."}
+${knowledgeContext ? `\n${knowledgeContext}\n` : ''}
+For EACH title below (keep them in the same order, one output object per title), fill in:
+- page: a plausible page/screen name based on the title
+- module: a plausible feature area/module name
+- severity: Low, Medium, High, or Critical, based on how serious the title sounds
+- issue_type: one of Functional, UI/UX, Backend, Frontend, API, Performance, Security, Database, Other
+- description: 1-2 sentence overview of the bug
+- steps_to_reproduce: brief numbered-style steps as a single string
+- expected_result: what should happen
+- actual_result: what happens instead (usually a paraphrase of the title)
+
+Respond with ONLY a JSON array, no prose, no markdown fences, in this exact shape, one object per title, same order:
+[{"title": "...", "page": "...", "module": "...", "severity": "Low"|"Medium"|"High"|"Critical", "issue_type": "Functional"|"UI/UX"|"Backend"|"Frontend"|"API"|"Performance"|"Security"|"Database"|"Other", "description": "...", "steps_to_reproduce": "...", "expected_result": "...", "actual_result": "..."}]
+
+Bug titles:
+"""
+${titlesText}
+"""`;
+}
+
+bugAiCopyPromptBtn.addEventListener('click', async () => {
+  clearFormError('bug-ai-error');
+  const projectId = bugsSelect.value;
+  const project = projectsCache.find((p) => p.id === projectId);
+  const titlesText = bugAiTitles.value.trim();
+  if (!titlesText) {
+    showFormError('bug-ai-error', 'Enter at least one bug title above first (one per line).');
+    return;
+  }
+  const knowledgeContext = await fetchKnowledgeContext(projectId, titlesText);
+  const prompt = buildBugAiPrompt(project ? project.name : '', titlesText, knowledgeContext);
+  try {
+    await navigator.clipboard.writeText(prompt);
+  } catch {
+    showFormError('bug-ai-error', 'Could not copy automatically — select the text manually if needed.');
+    return;
+  }
+  const original = bugAiCopyPromptBtn.textContent;
+  bugAiCopyPromptBtn.textContent = 'Copied ✓ — now click Open Claude.ai';
+  setTimeout(() => { bugAiCopyPromptBtn.textContent = original; }, 2500);
+});
+
+function tryParseBugsJson(raw) {
+  let text = raw.trim();
+  text = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+  const start = text.indexOf('[');
+  if (start === -1) return null;
+  text = text.slice(start);
+
+  try {
+    return JSON.parse(text);
+  } catch { /* fall through to repair attempt below */ }
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  let lastGoodEnd = -1;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) { escape = false; continue; }
+    if (ch === '\\') { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') depth++;
+    if (ch === '}') {
+      depth--;
+      if (depth === 0) lastGoodEnd = i;
+    }
+  }
+  if (lastGoodEnd !== -1) {
+    try {
+      return JSON.parse(text.slice(0, lastGoodEnd + 1) + ']');
+    } catch { /* give up below */ }
+  }
+  return null;
+}
+
+bugAiParseBtn.addEventListener('click', () => {
+  clearFormError('bug-ai-error');
+  bugAiPreview.classList.add('hidden');
+  const raw = bugAiResponseText.value.trim();
+  if (!raw) {
+    showFormError('bug-ai-error', 'Paste the AI\'s reply above first.');
+    return;
+  }
+
+  const parsed = tryParseBugsJson(raw);
+  if (!parsed) {
+    showFormError('bug-ai-error', 'Couldn\'t read that reply — the paste may have been cut off. Try copying the AI\'s reply again from the very start ("[") to the very end ("]").');
+    return;
+  }
+  if (!Array.isArray(parsed) || !parsed.length) {
+    showFormError('bug-ai-error', 'That didn\'t look like a list of bugs. Try again.');
+    return;
+  }
+
+  const validSeverities = ['Low', 'Medium', 'High', 'Critical'];
+  const validIssueTypes = ['Functional', 'UI/UX', 'Backend', 'Frontend', 'API', 'Performance', 'Security', 'Database', 'Other'];
+
+  bugAiGeneratedBugs = parsed
+    .filter((b) => b && b.title)
+    .map((b) => ({
+      title: String(b.title).slice(0, 200),
+      page: b.page ? String(b.page).slice(0, 120) : 'Unknown',
+      module: b.module ? String(b.module).slice(0, 120) : null,
+      severity: validSeverities.includes(b.severity) ? b.severity : 'Medium',
+      issue_type: validIssueTypes.includes(b.issue_type) ? b.issue_type : 'Functional',
+      description: b.description ? String(b.description).slice(0, 1000) : null,
+      steps_to_reproduce: b.steps_to_reproduce ? String(b.steps_to_reproduce).slice(0, 1000) : null,
+      expected_result: b.expected_result ? String(b.expected_result).slice(0, 1000) : null,
+      actual_result: b.actual_result ? String(b.actual_result).slice(0, 1000) : null,
+    }));
+
+  if (!bugAiGeneratedBugs.length) {
+    showFormError('bug-ai-error', 'No valid bugs found in that reply.');
+    return;
+  }
+  renderBugAiPreview(bugAiGeneratedBugs);
+});
+
+function renderBugAiPreview(bugs) {
+  bugAiPreviewList.innerHTML = '';
+
+  const summaryEl = document.createElement('p');
+  summaryEl.className = 'ai-coverage-summary';
+  summaryEl.textContent = `${bugs.length} bug${bugs.length === 1 ? '' : 's'} ready to add`;
+  bugAiPreviewList.appendChild(summaryEl);
+
+  bugs.forEach((b, i) => {
+    const row = document.createElement('label');
+    row.className = 'ai-preview-item';
+    row.innerHTML = `
+      <input type="checkbox" class="bug-ai-check" data-idx="${i}" checked />
+      <div>
+        <div class="ai-preview-item-title">
+          ${escapeHtml(b.title)}
+          <span class="priority-pill priority-${escapeHtml(b.severity)}">${escapeHtml(b.severity)}</span>
+          <span class="pill" style="${pillStyle('#34D399')}">${escapeHtml(b.issue_type)}</span>
+        </div>
+        ${b.description ? `<div class="ai-preview-item-desc">${escapeHtml(b.description)}</div>` : ''}
+      </div>
+    `;
+    bugAiPreviewList.appendChild(row);
+  });
+  bugAiPreview.classList.remove('hidden');
+}
+
+document.getElementById('bug-ai-discard').addEventListener('click', () => {
+  bugAiGeneratedBugs = [];
+  bugAiPreview.classList.add('hidden');
+  bugAiTitles.value = '';
+  bugAiResponseText.value = '';
+});
+
+document.getElementById('bug-ai-add-selected').addEventListener('click', async () => {
+  clearFormError('bug-ai-error');
+  const projectId = bugsSelect.value;
+  if (!projectId) return;
+  const checks = bugAiPreviewList.querySelectorAll('.bug-ai-check');
+  const selected = [];
+  checks.forEach((cb) => {
+    if (cb.checked) selected.push(bugAiGeneratedBugs[Number(cb.dataset.idx)]);
+  });
+  if (!selected.length) return;
+
+  const rows = selected.map((b) => ({
+    project_id: projectId,
+    title: b.title,
+    page: b.page,
+    module: b.module,
+    severity: b.severity,
+    issue_type: b.issue_type,
+    status: 'Open',
+    description: b.description,
+    steps_to_reproduce: b.steps_to_reproduce,
+    expected_result: b.expected_result,
+    actual_result: b.actual_result,
+    reported_by: 'AI Draft',
+    developer_status: 'Not Started',
+    retest_status: 'Not Retested',
+    owner_id: currentUser ? currentUser.id : null,
+  }));
+
+  const { error } = await sb.from('bugs').insert(rows);
+  if (error) {
+    showFormError('bug-ai-error', error.message);
+    return;
+  }
+  const project = projectsCache.find((p) => p.id === projectId);
+  notify(`${actorLabel()} added ${rows.length} AI-drafted bug${rows.length === 1 ? '' : 's'} for "${project ? project.name : 'a project'}"`, 'bug', 'ai_generate');
+  celebrate(`${rows.length} bug${rows.length === 1 ? '' : 's'} added!`, '🐞');
+
+  bugAiGeneratedBugs = [];
+  bugAiPreview.classList.add('hidden');
+  bugAiTitles.value = '';
+  bugAiResponseText.value = '';
+  loadBugs(projectId);
+});
+
 // ---------- APK shares ----------
+
+const APK_MAX_BYTES = 50 * 1024 * 1024; // matches Supabase's default per-file upload limit
+
+function formatFileSize(bytes) {
+  if (!bytes && bytes !== 0) return '';
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// Storage object keys can't safely contain spaces or most punctuation, so
+// strip the file name down to something clean while keeping it readable
+// (and keeping the extension, so uploaded files still look right if
+// someone downloads them straight from the storage bucket).
+function sanitizeStorageFileName(name) {
+  return String(name || 'apk')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .slice(-120);
+}
+
+// Uploads a .apk/.aab straight into the "apk-files" Storage bucket (see
+// migration-v26.sql) and returns its public URL alongside the details we
+// store on the apk_shares row, so "remove" can later delete the file too.
+async function uploadApkFile(file, projectId) {
+  const path = `${projectId}/${Date.now()}-${sanitizeStorageFileName(file.name)}`;
+  const { error } = await sb.storage.from('apk-files').upload(path, file, {
+    cacheControl: '3600',
+    upsert: false,
+  });
+  if (error) throw error;
+  const { data: publicData } = sb.storage.from('apk-files').getPublicUrl(path);
+  return { path, publicUrl: publicData.publicUrl, name: file.name, size: file.size };
+}
 
 apkForm.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -2555,6 +3461,18 @@ apkForm.addEventListener('submit', async (e) => {
     flashFields(apkForm, 'field-error');
     return;
   }
+  const fileInput = document.getElementById('apk-file');
+  const file = fileInput.files && fileInput.files[0];
+  if (file && apkLinkVal) {
+    showFormError('apk-error', 'Use either an uploaded file or a link, not both.');
+    flashFields(apkForm, 'field-error');
+    return;
+  }
+  if (file && file.size > APK_MAX_BYTES) {
+    showFormError('apk-error', `That file is ${formatFileSize(file.size)} — over the ${formatFileSize(APK_MAX_BYTES)} upload limit. Raise the limit in Supabase (Storage → apk-files → Settings) or share a link instead.`);
+    flashFields(apkForm, 'field-error');
+    return;
+  }
 
   const payload = {
     project_id,
@@ -2566,8 +3484,36 @@ apkForm.addEventListener('submit', async (e) => {
     logged_by_email: currentUser ? currentUser.email : null,
     owner_id: currentUser ? currentUser.id : null,
   };
+
+  if (!confirmSave(`Log this APK entry${payload.version ? ` (${payload.version})` : ''}?`)) return;
+
+  const submitBtn = document.getElementById('apk-submit-btn');
+  let uploaded = null;
+  if (file) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Uploading…';
+    try {
+      uploaded = await uploadApkFile(file, project_id);
+    } catch (err) {
+      showFormError('apk-error', `Upload failed: ${err.message || err}`);
+      flashFields(apkForm, 'field-error');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Log APK';
+      return;
+    }
+    payload.apk_link = uploaded.publicUrl;
+    payload.file_path = uploaded.path;
+    payload.file_name = uploaded.name;
+    payload.file_size = uploaded.size;
+    submitBtn.textContent = 'Log APK';
+    submitBtn.disabled = false;
+  }
+
   const { error } = await sb.from('apk_shares').insert(payload);
   if (error) {
+    // Insert failed after a successful upload — clean up the orphaned file
+    // rather than leaving it in storage with nothing pointing to it.
+    if (uploaded) await sb.storage.from('apk-files').remove([uploaded.path]);
     showFormError('apk-error', error.message);
     flashFields(apkForm, 'field-error');
     return;
@@ -2592,6 +3538,7 @@ async function loadApkShares(projectId) {
     console.error(error);
     return;
   }
+  apkCache = data || [];
   renderApkShares(data);
 }
 
@@ -2614,6 +3561,9 @@ function renderApkShares(shares) {
   shares.forEach((a) => {
     const row = document.createElement('div');
     row.className = 'apk-row';
+    const linkLabel = a.file_name
+      ? `Download ${escapeHtml(a.file_name)}${a.file_size ? ` (${formatFileSize(a.file_size)})` : ''}`
+      : 'Download / link';
     row.innerHTML = `
       <div class="apk-row-checkbox-wrap"><input type="checkbox" class="row-checkbox" data-id="${a.id}" /></div>
       <div class="apk-row-main">
@@ -2621,12 +3571,17 @@ function renderApkShares(shares) {
           <span class="apk-version">${escapeHtml(a.version || 'Build')}</span>
           <span>${fmtDate(a.shared_date)}</span>
           ${a.shared_by ? `<span>by ${escapeHtml(a.shared_by)}</span>` : ''}
+          ${a.file_path ? `<span class="auto-badge" title="Uploaded to the dashboard">FILE</span>` : ''}
         </div>
-        ${a.apk_link ? `<a class="bugsheet-link" href="${escapeHtml(a.apk_link)}" target="_blank" rel="noopener">Download / link</a>` : ''}
+        ${a.apk_link ? `<a class="bugsheet-link" href="${escapeHtml(a.apk_link)}" target="_blank" rel="noopener">${linkLabel}</a>` : ''}
         ${a.notes ? `<div class="apk-row-notes">${escapeHtml(a.notes)}</div>` : ''}
       </div>
-      <button class="icon-btn" data-apk-delete="${a.id}">remove</button>
+      <div class="apk-row-actions">
+        <button class="icon-btn" data-apk-edit="${a.id}">edit</button>
+        <button class="icon-btn" data-apk-delete="${a.id}">remove</button>
+      </div>
     `;
+    row.querySelector('[data-apk-edit]').addEventListener('click', () => openApkModal(a.id));
     row.querySelector('[data-apk-delete]').addEventListener('click', async () => {
       if (!confirm('Remove this APK log entry?')) return;
       await flashRowRemoving(row);
@@ -2635,6 +3590,9 @@ function renderApkShares(shares) {
         toastError(error.message);
         return;
       }
+      // Clean up the uploaded file in storage too, so removed entries
+      // don't leave orphaned files behind counting against storage quota.
+      if (a.file_path) await sb.storage.from('apk-files').remove([a.file_path]);
       toast('APK entry removed.', { emoji: '🗑️' });
       showProjectDetails(detailsSelect.value);
     });
@@ -2643,6 +3601,157 @@ function renderApkShares(shares) {
 
   apkBulk.onRendered();
 }
+
+// ---------- APK share edit modal ----------
+
+const apkModal = document.getElementById('apk-modal');
+const apkEditForm = document.getElementById('apk-edit-form');
+
+function openApkModal(id) {
+  const a = apkCache.find((x) => x.id === id);
+  if (!a) return;
+  clearFormError('apk-edit-error');
+  apkEditForm.reset();
+  document.getElementById('ae-id').value = a.id;
+  document.getElementById('ae-file-path').value = a.file_path || '';
+  document.getElementById('ae-version').value = a.version || '';
+  document.getElementById('ae-date').value = a.shared_date || '';
+  document.getElementById('ae-shared-by').value = a.shared_by || '';
+  document.getElementById('ae-notes').value = a.notes || '';
+  // Only pre-fill the link field for link-based entries — file-based
+  // entries keep the link field free for pasting a replacement link
+  // (uploading a new file below is how you replace the file itself).
+  document.getElementById('ae-link').value = a.file_path ? '' : (a.apk_link || '');
+  const currentFileEl = document.getElementById('ae-current-file');
+  if (a.file_path) {
+    currentFileEl.textContent = `Current file: ${a.file_name || 'uploaded file'}${a.file_size ? ` (${formatFileSize(a.file_size)})` : ''}`;
+  } else if (a.apk_link) {
+    currentFileEl.textContent = `Current link: ${a.apk_link}`;
+  } else {
+    currentFileEl.textContent = 'No file or link on this entry yet.';
+  }
+  apkModal.classList.remove('hidden');
+}
+
+function closeApkModal() {
+  apkModal.classList.add('hidden');
+}
+
+document.getElementById('apk-modal-close').addEventListener('click', closeApkModal);
+apkModal.addEventListener('click', (e) => {
+  if (e.target === apkModal) closeApkModal();
+});
+
+apkEditForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearFormError('apk-edit-error');
+  const id = document.getElementById('ae-id').value;
+  const a = apkCache.find((x) => x.id === id);
+  if (!a) return;
+
+  const sharedDate = document.getElementById('ae-date').value;
+  if (!sharedDate) {
+    showFormError('apk-edit-error', 'Shared date is required.');
+    flashFields(apkEditForm, 'field-error');
+    return;
+  }
+  const apkLinkVal = document.getElementById('ae-link').value.trim();
+  if (!isValidUrl(apkLinkVal)) {
+    showFormError('apk-edit-error', 'APK link must be a valid http(s) URL, or leave it blank.');
+    flashFields(apkEditForm, 'field-error');
+    return;
+  }
+  const fileInput = document.getElementById('ae-file');
+  const file = fileInput.files && fileInput.files[0];
+  if (file && apkLinkVal) {
+    showFormError('apk-edit-error', 'Use either an uploaded file or a link, not both.');
+    flashFields(apkEditForm, 'field-error');
+    return;
+  }
+  if (file && file.size > APK_MAX_BYTES) {
+    showFormError('apk-edit-error', `That file is ${formatFileSize(file.size)} — over the ${formatFileSize(APK_MAX_BYTES)} upload limit. Raise the limit in Supabase (Storage → apk-files → Settings) or share a link instead.`);
+    flashFields(apkEditForm, 'field-error');
+    return;
+  }
+
+  const payload = {
+    version: document.getElementById('ae-version').value.trim() || null,
+    shared_date: sharedDate,
+    shared_by: document.getElementById('ae-shared-by').value.trim() || null,
+    notes: document.getElementById('ae-notes').value.trim() || null,
+  };
+
+  if (!confirmSave(`Save changes to this APK entry${payload.version ? ` (${payload.version})` : ''}?`)) return;
+
+  const submitBtn = document.getElementById('apk-edit-submit-btn');
+  let uploaded = null;
+  const oldFilePath = document.getElementById('ae-file-path').value || null;
+
+  if (file) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Uploading…';
+    try {
+      uploaded = await uploadApkFile(file, a.project_id);
+    } catch (err) {
+      showFormError('apk-edit-error', `Upload failed: ${err.message || err}`);
+      flashFields(apkEditForm, 'field-error');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Save entry';
+      return;
+    }
+    payload.apk_link = uploaded.publicUrl;
+    payload.file_path = uploaded.path;
+    payload.file_name = uploaded.name;
+    payload.file_size = uploaded.size;
+    submitBtn.textContent = 'Save entry';
+    submitBtn.disabled = false;
+  } else if (apkLinkVal) {
+    // Switching to (or updating) a link clears any previously uploaded file.
+    payload.apk_link = apkLinkVal;
+    payload.file_path = null;
+    payload.file_name = null;
+    payload.file_size = null;
+  }
+  // If neither a new file nor a link was provided, leave the existing
+  // file/link fields untouched (they're simply omitted from the payload).
+
+  const { error } = await sb.from('apk_shares').update(payload).eq('id', id);
+  if (error) {
+    // Update failed after a successful upload — clean up the orphaned file.
+    if (uploaded) await sb.storage.from('apk-files').remove([uploaded.path]);
+    showFormError('apk-edit-error', error.message);
+    flashFields(apkEditForm, 'field-error');
+    return;
+  }
+  // Once the row points at the new file (or link), it's safe to delete the
+  // old uploaded file so removed/replaced files don't linger in storage.
+  if (uploaded && oldFilePath) {
+    await sb.storage.from('apk-files').remove([oldFilePath]);
+  } else if (apkLinkVal && !file && oldFilePath) {
+    await sb.storage.from('apk-files').remove([oldFilePath]);
+  }
+
+  toast('APK entry updated.', { emoji: '💾' });
+  closeApkModal();
+  loadApkShares(a.project_id);
+});
+
+document.getElementById('apk-edit-delete').addEventListener('click', async () => {
+  const id = document.getElementById('ae-id').value;
+  if (!id) return;
+  const a = apkCache.find((x) => x.id === id);
+  if (!confirm('Remove this APK log entry?')) return;
+  const { error } = await sb.from('apk_shares').delete().eq('id', id);
+  if (error) {
+    showFormError('apk-edit-error', error.message);
+    return;
+  }
+  if (a && a.file_path) await sb.storage.from('apk-files').remove([a.file_path]);
+  toast('APK entry removed.', { emoji: '🗑️' });
+  closeApkModal();
+  if (a) loadApkShares(a.project_id);
+});
+
 
 function todayStr() {
   // Local calendar date, NOT toISOString() (which is UTC and rolls over
@@ -2730,6 +3839,7 @@ async function buildBatchWhatsAppMessage(reports, dateStr, autoOnly) {
       msg += `• Total Bugs (auto): ${liveCounts.totalBugs}\n`;
       msg += `• Bugs Opened (auto): ${liveCounts.openBugs}\n`;
       msg += `• Bugs Closed (auto): ${liveCounts.closedBugs}\n`;
+      msg += `• Bugs Reopened (auto): ${liveCounts.reopenedBugs}\n`;
       if (a.project.bugsheet) msg += `• Bug Sheet Link: ${a.project.bugsheet}\n`;
     }
   }
@@ -2768,7 +3878,8 @@ document.getElementById('share-day-btn').addEventListener('click', async () => {
     const bugStats = await getBugStatsForDay(p.id, dateStr);
     const hasActivity = bugStats.total || bugStats.closed || bugStats.reopened
       || bugStats.retest || bugStats.fixed || bugStats.inProgress
-      || bugStats.retestPass || bugStats.retestFail || bugStats.retestBlocked;
+      || bugStats.retestPass || bugStats.retestFail || bugStats.retestBlocked
+      || bugStats.otherUpdates;
     if (hasActivity) autoOnly.push({ project: p, bugStats });
   }
 
@@ -2784,140 +3895,7 @@ document.getElementById('share-day-btn').addEventListener('click', async () => {
   whatsappModal.classList.remove('hidden');
 });
 
-// ---------- AI test case generation (free — copy prompt, paste reply) ----------
-
-const aiDocText = document.getElementById('ai-doc-text');
-const aiResponseText = document.getElementById('ai-response-text');
-const aiCopyPromptBtn = document.getElementById('ai-copy-prompt');
-const aiParseBtn = document.getElementById('ai-parse-btn');
-const aiPreview = document.getElementById('ai-preview');
-const aiPreviewList = document.getElementById('ai-preview-list');
-let aiGeneratedCases = [];
-
-function buildAiPrompt(projectName, documentText) {
-  return `You are an expert QA test case writer preparing test cases for real-world, production use — as if a market end user will actually use this feature. Based on the requirements/document text below for the project "${projectName || 'this project'}", generate a THOROUGH, comprehensive set of manual test cases.
-
-You must cover these categories as relevant, not just the happy path — spread the test cases across them realistically based on what the document supports:
-- Functional — each distinct feature or requirement verified individually
-- Positive — valid inputs, normal expected usage, typical end-user flows
-- Negative — invalid inputs, wrong formats, missing required fields, unauthorized access, error handling
-- Edge Case — boundary values, empty/null inputs, maximum length/limits, special characters, duplicate submissions, concurrent actions
-- Security — auth bypass attempts, injection, data exposure, permission checks, session handling
-- Validation — field-level input validation, format checks, required-field enforcement
-- UI/UX — layout, responsiveness, clarity of feedback/errors, navigation flow
-- Performance — load times, behavior under slow/no network, large data sets
-- Accessibility — screen reader support, keyboard navigation, color contrast, labels
-- Compatibility — different devices, browsers, OS versions, screen sizes
-- Regression — verifying existing related functionality still works after this change
-- UAT — end-to-end scenarios matching real acceptance criteria a client/user would check
-
-Respond with ONLY a JSON array, no prose, no markdown fences, in this exact shape:
-[{"title": "short test case title", "description": "steps or scenario to verify, 1-3 sentences", "priority": "Low"|"Medium"|"High", "category": "Functional"|"Positive"|"Negative"|"Edge Case"|"Security"|"Validation"|"UI/UX"|"Performance"|"Accessibility"|"Compatibility"|"Regression"|"UAT"}]
-
-Aim for thorough coverage — typically 20-40 test cases depending on document size and complexity — distributed across the categories that are actually relevant to this document (not every category applies to every feature). Keep titles concise and descriptions actionable.
-
-Document:
-"""
-${documentText}
-"""`;
-}
-
-aiCopyPromptBtn.addEventListener('click', async () => {
-  clearFormError('ai-gen-error');
-  const project = projectsCache.find((p) => p.id === detailsSelect.value);
-  const documentText = aiDocText.value.trim();
-  if (!documentText) {
-    showFormError('ai-gen-error', 'Paste some requirements or document text above first.');
-    return;
-  }
-  const prompt = buildAiPrompt(project ? project.name : '', documentText);
-  try {
-    await navigator.clipboard.writeText(prompt);
-  } catch {
-    showFormError('ai-gen-error', 'Could not copy automatically — select the text manually if needed.');
-    return;
-  }
-  const original = aiCopyPromptBtn.textContent;
-  aiCopyPromptBtn.textContent = 'Copied ✓ — now click Open Claude.ai';
-  setTimeout(() => { aiCopyPromptBtn.textContent = original; }, 2500);
-});
-
-function tryParseTestCasesJson(raw) {
-  let text = raw.trim();
-  text = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
-  const start = text.indexOf('[');
-  if (start === -1) return null;
-  text = text.slice(start);
-
-  // Try a straightforward parse first (handles a clean, complete paste)
-  try {
-    return JSON.parse(text);
-  } catch { /* fall through to repair attempt below */ }
-
-  // The paste may have been cut off partway through. Find the last fully
-  // closed object in the array and salvage everything up to there.
-  let depth = 0;
-  let inString = false;
-  let escape = false;
-  let lastGoodEnd = -1;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (escape) { escape = false; continue; }
-    if (ch === '\\') { escape = true; continue; }
-    if (ch === '"') { inString = !inString; continue; }
-    if (inString) continue;
-    if (ch === '{') depth++;
-    if (ch === '}') {
-      depth--;
-      if (depth === 0) lastGoodEnd = i;
-    }
-  }
-  if (lastGoodEnd !== -1) {
-    try {
-      return JSON.parse(text.slice(0, lastGoodEnd + 1) + ']');
-    } catch { /* give up below */ }
-  }
-  return null;
-}
-
-aiParseBtn.addEventListener('click', () => {
-  clearFormError('ai-gen-error');
-  aiPreview.classList.add('hidden');
-  const raw = aiResponseText.value.trim();
-  if (!raw) {
-    showFormError('ai-gen-error', 'Paste the AI\'s reply above first.');
-    return;
-  }
-
-  const parsed = tryParseTestCasesJson(raw);
-  if (!parsed) {
-    showFormError('ai-gen-error', 'Couldn\'t read that reply — the paste may have been cut off. Try copying the AI\'s reply again from the very start ("[") to the very end ("]").');
-    return;
-  }
-  if (!Array.isArray(parsed) || !parsed.length) {
-    showFormError('ai-gen-error', 'That didn\'t look like a list of test cases. Try again.');
-    return;
-  }
-
-  aiGeneratedCases = parsed
-    .filter((t) => t && t.title)
-    .map((t) => ({
-      title: String(t.title).slice(0, 200),
-      description: t.description ? String(t.description).slice(0, 1000) : null,
-      priority: ['Low', 'Medium', 'High'].includes(t.priority) ? t.priority : 'Medium',
-      category: [
-        'Functional', 'Positive', 'Negative', 'Edge Case', 'Security',
-        'Validation', 'UI/UX', 'Performance', 'Accessibility',
-        'Compatibility', 'Regression', 'UAT',
-      ].includes(t.category) ? t.category : 'Functional',
-    }));
-
-  if (!aiGeneratedCases.length) {
-    showFormError('ai-gen-error', 'No valid test cases found in that reply.');
-    return;
-  }
-  renderAiPreview(aiGeneratedCases);
-});
+// ---------- Category color (used by test case list rendering) ----------
 
 function categoryColor(cat) {
   return {
@@ -2935,78 +3913,6 @@ function categoryColor(cat) {
     UAT: '#FACC15',
   }[cat] || '#7FA0A6';
 }
-
-function renderAiPreview(cases) {
-  aiPreviewList.innerHTML = '';
-
-  const counts = {};
-  cases.forEach((c) => { counts[c.category] = (counts[c.category] || 0) + 1; });
-  const summaryEl = document.createElement('p');
-  summaryEl.className = 'ai-coverage-summary';
-  summaryEl.textContent = `${cases.length} test cases — ` +
-    Object.entries(counts).map(([cat, n]) => `${cat}: ${n}`).join(' · ');
-  aiPreviewList.appendChild(summaryEl);
-
-  cases.forEach((c, i) => {
-    const row = document.createElement('label');
-    row.className = 'ai-preview-item';
-    row.innerHTML = `
-      <input type="checkbox" class="ai-preview-check" data-idx="${i}" checked />
-      <div>
-        <div class="ai-preview-item-title">
-          ${escapeHtml(c.title)}
-          <span class="priority-pill priority-${escapeHtml(c.priority)}">${escapeHtml(c.priority)}</span>
-          <span class="pill" style="${pillStyle(categoryColor(c.category))}">${escapeHtml(c.category)}</span>
-        </div>
-        ${c.description ? `<div class="ai-preview-item-desc">${escapeHtml(c.description)}</div>` : ''}
-      </div>
-    `;
-    aiPreviewList.appendChild(row);
-  });
-  aiPreview.classList.remove('hidden');
-}
-
-document.getElementById('ai-discard').addEventListener('click', () => {
-  aiGeneratedCases = [];
-  aiPreview.classList.add('hidden');
-  aiDocText.value = '';
-  aiResponseText.value = '';
-});
-
-document.getElementById('ai-add-selected').addEventListener('click', async () => {
-  const projectId = detailsSelect.value;
-  const checks = aiPreviewList.querySelectorAll('.ai-preview-check');
-  const selected = [];
-  checks.forEach((cb) => {
-    if (cb.checked) selected.push(aiGeneratedCases[Number(cb.dataset.idx)]);
-  });
-  if (!selected.length) return;
-
-  const rows = selected.map((c) => ({
-    project_id: projectId,
-    title: c.title,
-    description: c.description,
-    priority: c.priority,
-    category: c.category,
-    status: 'Not Run',
-    owner_id: currentUser ? currentUser.id : null,
-  }));
-
-  const { error } = await sb.from('test_cases').insert(rows);
-  if (error) {
-    showFormError('ai-gen-error', error.message);
-    return;
-  }
-  const project = projectsCache.find((p) => p.id === projectId);
-  notify(`${actorLabel()} added ${rows.length} AI-suggested test case${rows.length === 1 ? '' : 's'} for "${project ? project.name : 'a project'}"`, 'test_case', 'ai_generate');
-  celebrate(`${rows.length} test case${rows.length === 1 ? '' : 's'} added!`, '🤖');
-
-  aiGeneratedCases = [];
-  aiPreview.classList.add('hidden');
-  aiDocText.value = '';
-  aiResponseText.value = '';
-  loadTestCases(projectId);
-});
 
 const reportForm = document.getElementById('report-form');
 const reportsList = document.getElementById('reports-list');
@@ -3157,6 +4063,7 @@ async function submitReportForm() {
     logged_by_email: currentUser ? currentUser.email : null,
     owner_id: currentUser ? currentUser.id : null,
   };
+  if (!confirmSave('Submit this daily report?')) return;
   const { error } = await sb.from('daily_reports').insert(payload);
   if (error) {
     showFormError('report-error', error.message);
@@ -3234,6 +4141,7 @@ async function getProjectLiveCounts(projectId) {
   const functionalityBugs = totalBugs - uiBugs;
   const closedBugs = bugs.filter((b) => b.status === 'Closed').length;
   const openBugs = totalBugs - closedBugs;
+  const reopenedBugs = bugs.filter((b) => b.status === 'Reopened').length;
   // "Major" = Critical or High severity — there's no separate "Major" value
   // in the bugs.severity list (Low/Medium/High/Critical), so this combines
   // the two most severe levels. Adjust here if your team defines it differently.
@@ -3246,7 +4154,7 @@ async function getProjectLiveCounts(projectId) {
   const testCasesBlocked = testCases.filter((t) => t.status === 'Blocked').length;
 
   return {
-    totalBugs, uiBugs, functionalityBugs, openBugs, closedBugs, majorBugs, criticalBugs,
+    totalBugs, uiBugs, functionalityBugs, openBugs, closedBugs, reopenedBugs, majorBugs, criticalBugs,
     testCasesTotal, testCasesPass, testCasesFail, testCasesBlocked,
   };
 }
@@ -3258,7 +4166,7 @@ function formatLiveCountsLine(c) {
   if (c.testCasesFail) tcParts.push(`${c.testCasesFail} fail`);
   if (c.testCasesBlocked) tcParts.push(`${c.testCasesBlocked} blocked`);
   const tcLine = `Test cases: ${c.testCasesTotal}${tcParts.length ? ` (${tcParts.join(', ')})` : ''}`;
-  const bugLine = `Bugs total: ${c.totalBugs} (${c.openBugs} open, ${c.closedBugs} closed, ${c.majorBugs} major) — UI/UX: ${c.uiBugs}, Functionality: ${c.functionalityBugs}`;
+  const bugLine = `Bugs total: ${c.totalBugs} (${c.openBugs} open, ${c.closedBugs} closed, ${c.reopenedBugs} reopened, ${c.majorBugs} major) — UI/UX: ${c.uiBugs}, Functionality: ${c.functionalityBugs}`;
   return `${tcLine} · ${bugLine}`;
 }
 
@@ -3295,7 +4203,7 @@ async function getBugStatsForDay(projectId, dateStr) {
   const empty = {
     total: 0, bySeverity: {}, titles: [],
     closed: 0, reopened: 0, retest: 0, fixed: 0, inProgress: 0,
-    retestPass: 0, retestFail: 0, retestBlocked: 0,
+    retestPass: 0, retestFail: 0, retestBlocked: 0, otherUpdates: 0,
   };
   // One query covers both "created today" (newly identified) and "touched
   // today" (status/retest status/dev status moved — e.g. to Retest, Fixed,
@@ -3333,9 +4241,15 @@ async function getBugStatsForDay(projectId, dateStr) {
   const retestPass = touchedToday('retest_status', 'Pass');
   const retestFail = touchedToday('retest_status', 'Fail');
   const retestBlocked = touchedToday('retest_status', 'Blocked');
+  // Catches everything else: an existing bug edited today (severity,
+  // description, steps, comments, notes, etc.) whose status stayed 'Open' —
+  // the one status value none of the buckets above track. Without this,
+  // "I updated bugs today" produced no activity at all when the bug's
+  // status wasn't also moved to one of the tracked values.
+  const otherUpdates = rows.filter((b) => b.status === 'Open' && inDay(b.updated_at) && !inDay(b.created_at)).length;
   return {
     total: identified.length, bySeverity, titles: identified.map((b) => b.title),
-    closed, reopened, retest, fixed, inProgress, retestPass, retestFail, retestBlocked,
+    closed, reopened, retest, fixed, inProgress, retestPass, retestFail, retestBlocked, otherUpdates,
   };
 }
 
@@ -3352,6 +4266,7 @@ function formatBugStatsLine(stats) {
     if (s.retestPass) extras.push(`${s.retestPass} retest passed`);
     if (s.retestFail) extras.push(`${s.retestFail} retest failed`);
     if (s.retestBlocked) extras.push(`${s.retestBlocked} retest blocked`);
+    if (s.otherUpdates) extras.push(`${s.otherUpdates} updated`);
     return extras;
   };
   if (!stats || !stats.total) {
@@ -3390,6 +4305,7 @@ function formatDailyUpdateBlock(payload, project, bugStats, liveCounts, deadline
     msg += `• Total Bugs (auto): ${liveCounts.totalBugs}\n`;
     msg += `• Bugs Opened (auto): ${liveCounts.openBugs}\n`;
     msg += `• Bugs Closed (auto): ${liveCounts.closedBugs}\n`;
+    msg += `• Bugs Reopened (auto): ${liveCounts.reopenedBugs}\n`;
   }
   const bugsheetLink = (project && project.bugsheet) || payload.bugsheet;
   if (bugsheetLink) msg += `• Bug Sheet Link: ${bugsheetLink}\n`;
@@ -3526,6 +4442,7 @@ async function renderReports(reports) {
           <div class="auto-stat"><span class="auto-stat-label">Total Bugs <span class="auto-badge">AUTO</span></span><span class="auto-stat-value">${liveCounts.totalBugs}</span></div>
           <div class="auto-stat"><span class="auto-stat-label">Bugs Opened <span class="auto-badge">AUTO</span></span><span class="auto-stat-value">${liveCounts.openBugs}</span></div>
           <div class="auto-stat"><span class="auto-stat-label">Bugs Closed <span class="auto-badge">AUTO</span></span><span class="auto-stat-value">${liveCounts.closedBugs}</span></div>
+          <div class="auto-stat"><span class="auto-stat-label">Bugs Reopened <span class="auto-badge">AUTO</span></span><span class="auto-stat-value">${liveCounts.reopenedBugs}</span></div>
         </div>
         <div class="auto-hint">Bug counts are live — they auto-update whenever a bug is added, or its status changes.</div>
         ${bugsheetLive ? `<div>Bug sheet link: <a class="bugsheet-link" href="${escapeHtml(bugsheetLive)}" target="_blank" rel="noopener">${escapeHtml(bugsheetLive)}</a> <span class="auto-badge" title="From Project Details — updates automatically">AUTO</span></div>` : ''}
@@ -3588,7 +4505,8 @@ async function renderAutoOnlyReportCards(existingReports) {
     const bugStats = await getBugStatsForDay(p.id, dateFilter);
     const hasActivity = bugStats.total || bugStats.closed || bugStats.reopened
       || bugStats.retest || bugStats.fixed || bugStats.inProgress
-      || bugStats.retestPass || bugStats.retestFail || bugStats.retestBlocked;
+      || bugStats.retestPass || bugStats.retestFail || bugStats.retestBlocked
+      || bugStats.otherUpdates;
     if (!hasActivity) continue;
     const liveCounts = await getProjectLiveCounts(p.id);
     autoCards.push({ project: p, date: dateFilter, bugStats, liveCounts });
@@ -3614,6 +4532,7 @@ async function renderAutoOnlyReportCards(existingReports) {
           <div class="auto-stat"><span class="auto-stat-label">Total Bugs <span class="auto-badge">AUTO</span></span><span class="auto-stat-value">${liveCounts.totalBugs}</span></div>
           <div class="auto-stat"><span class="auto-stat-label">Bugs Opened <span class="auto-badge">AUTO</span></span><span class="auto-stat-value">${liveCounts.openBugs}</span></div>
           <div class="auto-stat"><span class="auto-stat-label">Bugs Closed <span class="auto-badge">AUTO</span></span><span class="auto-stat-value">${liveCounts.closedBugs}</span></div>
+          <div class="auto-stat"><span class="auto-stat-label">Bugs Reopened <span class="auto-badge">AUTO</span></span><span class="auto-stat-value">${liveCounts.reopenedBugs}</span></div>
         </div>
         ${project.bugsheet ? `<div>Bug sheet link: <a class="bugsheet-link" href="${escapeHtml(project.bugsheet)}" target="_blank" rel="noopener">${escapeHtml(project.bugsheet)}</a></div>` : ''}
         <div class="auto-hint">Bug counts are live — they auto-update whenever a bug is added, or its status changes.</div>
@@ -3701,6 +4620,7 @@ reportEditForm.addEventListener('submit', async (e) => {
     notes: document.getElementById('re-notes').value.trim() || null,
   };
 
+  if (!confirmSave('Save changes to this report?')) return;
   const { error } = await sb.from('daily_reports').update(payload).eq('id', id);
   if (error) {
     showFormError('report-edit-error', error.message);
@@ -3907,6 +4827,31 @@ document.getElementById('download-projects-btn').addEventListener('click', () =>
   downloadSheet('Projects', rows, 'Projects');
 });
 
+// Projects tab → downloads the FULL detail sheet (every field shown on the
+// Project Details tab) for every project currently matching the Tester
+// filter, one row per project, all in a single .xlsx. With no Tester
+// selected this covers every project.
+document.getElementById('download-projects-details-btn').addEventListener('click', () => {
+  const filtered = getFilteredProjects(projectsCache);
+  if (!filtered.length) {
+    toastError('No projects to download for this filter.');
+    return;
+  }
+  const rows = filtered.map((p) => {
+    const row = { 'Project': p.name };
+    detailFieldGroups.forEach((f) => {
+      if (f.isHeader) return;
+      row[f.label] = p[f.key] || '';
+    });
+    return row;
+  });
+  const adminFilter = document.getElementById('admin-filter-projects').value;
+  const memberLabel = isLeader() && adminFilter
+    ? (teamCache.find((m) => m.email === adminFilter)?.display_name || adminFilter)
+    : 'All Testers';
+  downloadSheet(`${safeFileName(memberLabel)} - All Project Details`, rows, 'Project Details');
+});
+
 // Project Details tab → downloads only the currently selected project's full detail sheet.
 document.getElementById('download-details-btn').addEventListener('click', () => {
   const id = detailsSelect.value;
@@ -3923,9 +4868,9 @@ document.getElementById('download-details-btn').addEventListener('click', () => 
   downloadSheet(`${safeFileName(p.name)} - Project Details`, [row], 'Project Details');
 });
 
-// Test execution panel → downloads only the currently selected project's test cases.
+// Test execution tab → downloads only the currently selected project's test cases.
 document.getElementById('download-tc-btn').addEventListener('click', () => {
-  const id = detailsSelect.value;
+  const id = tcSelect.value;
   const p = projectsCache.find((x) => x.id === id);
   const rows = tcCache.map((c) => ({
     'Title': c.title,
@@ -3984,6 +4929,7 @@ document.getElementById('download-reports-btn').addEventListener('click', async 
       'Total Bugs (auto)': liveCounts.totalBugs,
       'Bugs Opened (auto)': liveCounts.openBugs,
       'Bugs Closed (auto)': liveCounts.closedBugs,
+      'Bugs Reopened (auto)': liveCounts.reopenedBugs,
       'Bug Sheet Link': (liveProject && liveProject.bugsheet) || r.bugsheet || '',
       'Sign Off': r.sign_off ? 'Yes' : 'No',
       'Sign Off Date': r.sign_off_date || '',
@@ -4045,3 +4991,43 @@ document.getElementById('download-reports-btn').addEventListener('click', async 
     });
   });
 })();
+
+
+// Universal search/filter injection
+function setupUniversalFilters(){
+ // Each list renders its rows/cards with its own class name (not generic
+ // "tr"/".card"/"li"), so the filter has to match the real markup per page.
+ // projects uses the tbody id directly so the <thead> row is never touched.
+ const targets={
+   'projects-tbody':'tr',
+   'tc-list':'.tc-row',
+   'apk-list':'.apk-row',
+   'bug-list':'.tc-row',
+   'reports-list':'.report-card',
+   'team-list':'.team-row',
+   'audit-list':'.audit-item',
+   'notif-page-list':'.notif-item',
+ };
+ Object.keys(targets).forEach(id=>{
+   const el=document.getElementById(id);
+   if(!el||document.getElementById(id+'-search')) return;
+   const itemSelector=targets[id];
+   // Insert above the whole table (not the tbody) for the projects list so
+   // the search box doesn't end up wedged between <thead> and <tbody>.
+   const anchor=el.closest('table')||el;
+   const i=document.createElement('input');
+   i.type='text';
+   i.id=id+'-search';
+   i.className='universal-search-input';
+   i.placeholder='Search...';
+   anchor.parentNode.insertBefore(i,anchor);
+   i.addEventListener('input',()=>{
+     const q=i.value.trim().toLowerCase();
+     el.querySelectorAll(itemSelector).forEach(r=>{
+       const text=(r.innerText||r.textContent||'').toLowerCase();
+       r.style.display=(!q||text.includes(q))?'':'none';
+     });
+   });
+ });
+}
+setTimeout(setupUniversalFilters,1500);
