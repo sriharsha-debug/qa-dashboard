@@ -5,6 +5,16 @@ const whoName = document.getElementById('who-name');
 const loginForm = document.getElementById('login-form');
 const loginError = document.getElementById('login-error');
 
+// Browsers auto-restore the last scroll position on reload / back-forward
+// navigation. For a single-page dashboard like this, that means a reload
+// can render the page already scrolled to wherever it was last time,
+// instead of at the top — looking like it "opens in the middle". Taking
+// manual control of scroll restoration stops that.
+if ('scrollRestoration' in history) {
+  history.scrollRestoration = 'manual';
+}
+window.scrollTo(0, 0);
+
 // Subtle, professional press feedback on every button in the app: a soft
 // ripple expands from the click point and fades out. Delegated to one
 // document-level listener so it works for buttons rendered dynamically on
@@ -303,6 +313,7 @@ async function onLogin(user) {
   currentUser = user;
   gate.classList.add('hidden');
   app.classList.remove('hidden');
+  window.scrollTo(0, 0);
   await ensureProfile(user);
   // Show the signed-in user's profile name beside Project Tracker.
   // Keep the signed-in email in its original top-right location.
