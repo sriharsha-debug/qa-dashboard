@@ -30,6 +30,50 @@ function confirmSave(message) {
   return confirm(message);
 }
 
+// ---------- Animated loading states ----------
+// Every tab that fetches from Supabase shows a shimmering skeleton (or a
+// spinner block for non-list sections) while the request is in flight, then
+// the normal render*() call overwrites it with real content. A thin bar at
+// the top of the page also animates during any tab switch / fetch.
+
+const pageLoaderEl = document.getElementById('page-loader');
+let pageLoaderCount = 0;
+
+function pageLoaderStart() {
+  pageLoaderCount++;
+  if (pageLoaderEl) pageLoaderEl.classList.add('is-active');
+}
+
+function pageLoaderStop() {
+  pageLoaderCount = Math.max(0, pageLoaderCount - 1);
+  if (pageLoaderCount === 0 && pageLoaderEl) pageLoaderEl.classList.remove('is-active');
+}
+
+// Renders `rows` shimmering skeleton cards into a flex/list-style container.
+function setListLoading(containerId, rows = 3) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  el.innerHTML = Array.from({ length: rows }, () => '<div class="skeleton-card"></div>').join('');
+}
+
+// Renders shimmering skeleton rows into a <tbody>, spanning every column.
+function setTableLoading(tbodyId, colspan, rows = 4) {
+  const el = document.getElementById(tbodyId);
+  if (!el) return;
+  el.innerHTML = Array.from(
+    { length: rows },
+    () => `<tr class="skeleton-row"><td colspan="${colspan}"><div class="skeleton-bar"></div></td></tr>`
+  ).join('');
+}
+
+// Renders a small centered spinner + label into a container (used for
+// smaller / single-item sections rather than lists).
+function setBlockLoading(containerId, label = 'Loading…') {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  el.innerHTML = `<div class="section-loader"><span class="loader-spinner"></span><span>${label}</span></div>`;
+}
+
 let projectsCache = [];
 let statusesCache = [];
 let teamCache = [];
@@ -394,11 +438,14 @@ let notifPageNum = 1;
 const NOTIF_PAGE_SIZE = 15;
 
 async function loadNotificationsPage() {
+  setListLoading('notif-page-list', 4);
+  pageLoaderStart();
   const { data, error } = await sb
     .from('notifications')
     .select('*')
     .order('created_at', { ascending: false })
     .limit(200);
+  pageLoaderStop();
   if (error) {
     console.error(error);
     return;
@@ -545,7 +592,11 @@ document.addEventListener('click', (e) => {
 // ---------- Team tab ----------
 
 async function loadTeam() {
+  setListLoading('team-list', 3);
+  setListLoading('settings-team-list', 3);
+  pageLoaderStart();
   const { data, error } = await sb.from('profiles').select('*').order('created_at', { ascending: true });
+  pageLoaderStop();
   if (error) {
     console.error(error);
     return;
@@ -819,6 +870,8 @@ function auditChangedFields(row) {
 async function loadAuditLogs() {
   document.getElementById('audit-clear-btn')?.classList.toggle('hidden', !isLeader());
   if (!isLeader()) return;
+  setListLoading('audit-list', 4);
+  pageLoaderStart();
   let query = sb.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(500);
   const action = document.getElementById('audit-filter-action')?.value || '';
   const table = document.getElementById('audit-filter-table')?.value || '';
@@ -828,6 +881,7 @@ async function loadAuditLogs() {
   if (user) query = query.ilike('actor_email', `%${user}%`);
 
   const { data, error } = await query;
+  pageLoaderStop();
   if (error) {
     console.error(error);
     return;
@@ -1028,10 +1082,13 @@ const filterProjectSelect = document.getElementById('filter-project');
 document.getElementById('open-add-modal').addEventListener('click', () => openEditModal(null));
 
 async function loadProjects() {
+  setTableLoading('projects-tbody', 8);
+  pageLoaderStart();
   const { data, error } = await sb
     .from('projects')
     .select('*')
     .order('created_at', { ascending: false });
+  pageLoaderStop();
   if (error) {
     console.error(error);
     return;
@@ -1210,10 +1267,13 @@ if (statusForm) statusForm.addEventListener('submit', async (e) => {
 });
 
 async function loadStatuses() {
+  setListLoading('statuses-list', 3);
+  pageLoaderStart();
   const { data, error } = await sb
     .from('statuses')
     .select('*')
     .order('sort_order', { ascending: true });
+  pageLoaderStop();
   if (error) {
     console.error(error);
     return;
@@ -1745,11 +1805,14 @@ tcForm.addEventListener('submit', async (e) => {
 });
 
 async function loadTestCases(projectId) {
+  setListLoading('tc-list', 3);
+  pageLoaderStart();
   const { data, error } = await sb
     .from('test_cases')
     .select('*')
     .eq('project_id', projectId)
     .order('created_at', { ascending: true });
+  pageLoaderStop();
   if (error) {
     console.error(error);
     return;
@@ -2203,11 +2266,14 @@ document.getElementById('bug-edit-delete').addEventListener('click', async () =>
 });
 
 async function loadBugs(projectId) {
+  setListLoading('bug-list', 3);
+  pageLoaderStart();
   const { data, error } = await sb
     .from('bugs')
     .select('*')
     .eq('project_id', projectId)
     .order('created_at', { ascending: true });
+  pageLoaderStop();
   if (error) {
     console.error(error);
     return;
@@ -2810,11 +2876,19 @@ const quickNotesAiReplyStatus = document.getElementById('quick-notes-ai-reply-st
 
 async function loadQuickNotes() {
   if (!currentUser) return;
+  [quickNotesContent, quickNotesAiReply, tcQuickDocContent, tcQuickDocAiReply].forEach((el) => {
+    if (el) { el.disabled = true; el.placeholder = 'Loading…'; }
+  });
+  pageLoaderStart();
   const { data, error } = await sb
     .from('quick_notes')
     .select('notes_content, ai_reply_content, tc_project_id, tc_document_content, tc_ai_reply_content')
     .eq('owner_id', currentUser.id)
     .maybeSingle();
+  pageLoaderStop();
+  [quickNotesContent, quickNotesAiReply, tcQuickDocContent, tcQuickDocAiReply].forEach((el) => {
+    if (el) { el.disabled = false; el.placeholder = ''; }
+  });
   if (error) {
     console.error('Failed to load quick notes:', error.message);
     return;
@@ -3017,12 +3091,15 @@ function resetKbForm() {
 kbFormCancel.addEventListener('click', resetKbForm);
 
 async function loadKnowledgeEntries(projectId) {
+  setListLoading('kb-list', 3);
+  pageLoaderStart();
   const { data, error } = await sb
     .from('project_knowledge')
     .select('*')
     .eq('project_id', projectId)
     .order('app_segment', { ascending: true })
     .order('created_at', { ascending: false });
+  pageLoaderStop();
   if (error) {
     console.error(error);
     return;
@@ -3528,12 +3605,15 @@ apkForm.addEventListener('submit', async (e) => {
 });
 
 async function loadApkShares(projectId) {
+  setListLoading('apk-list', 3);
+  pageLoaderStart();
   const { data, error } = await sb
     .from('apk_shares')
     .select('*')
     .eq('project_id', projectId)
     .order('shared_date', { ascending: false })
     .order('created_at', { ascending: false });
+  pageLoaderStop();
   if (error) {
     console.error(error);
     return;
@@ -4374,6 +4454,8 @@ document.getElementById('filter-clear').addEventListener('click', () => {
 });
 
 async function loadReports() {
+  setListLoading('reports-list', 3);
+  pageLoaderStart();
   let query = sb
     .from('daily_reports')
     .select('*, projects(name)')
@@ -4388,6 +4470,7 @@ async function loadReports() {
   if (isLeader() && adminEmail) query = query.eq('logged_by_email', adminEmail);
 
   const { data, error } = await query;
+  pageLoaderStop();
   if (error) {
     console.error(error);
     return;
