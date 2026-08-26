@@ -1697,6 +1697,18 @@ select option:focus {
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  /* Prevent the browser from preserving/adjusting the scroll anchor when
+     tab content is replaced asynchronously. Each dashboard tab should
+     always open from the top of the page. */
+  overflow-anchor: none;
+}
+
+body,
+.app,
+.app-body,
+.tab-content,
+.tab-panel {
+  overflow-anchor: none;
 }
 
 img, svg, video, canvas {

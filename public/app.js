@@ -13,7 +13,42 @@ const loginError = document.getElementById('login-error');
 if ('scrollRestoration' in history) {
   history.scrollRestoration = 'manual';
 }
-window.scrollTo(0, 0);
+
+// Browsers can restore the previous scroll position after the initial
+// script has already run (especially when returning with Back/Forward).
+// Keep the dashboard anchored at the top whenever a page is opened.
+function resetPageScroll() {
+  const scroller = document.scrollingElement || document.documentElement;
+  if (scroller) scroller.scrollTop = 0;
+  if (document.body) document.body.scrollTop = 0;
+  if (document.documentElement) document.documentElement.scrollTop = 0;
+  const tabContentEl = document.querySelector('.tab-content');
+  if (tabContentEl) tabContentEl.scrollTop = 0;
+  const appEl = document.querySelector('.app');
+  if (appEl) appEl.scrollTop = 0;
+  window.scrollTo(0, 0);
+}
+
+// A single resetPageScroll() call can lose the race against things that
+// shift scroll position slightly later than expected — a fetch resolving,
+// an image finishing its layout, a focused element the browser decides to
+// reveal. Rather than guess which one is responsible, keep re-forcing the
+// scroll to the top on every animation frame for a short window so nothing
+// async can win that race. Cheap and invisible once we're already at 0.
+let scrollLockUntil = 0;
+function forceScrollTopForAWhile(durationMs = 700) {
+  scrollLockUntil = performance.now() + durationMs;
+  function tick() {
+    resetPageScroll();
+    if (performance.now() < scrollLockUntil) {
+      requestAnimationFrame(tick);
+    }
+  }
+  requestAnimationFrame(tick);
+}
+
+forceScrollTopForAWhile();
+window.addEventListener('pageshow', () => forceScrollTopForAWhile());
 
 // Subtle, professional press feedback on every button in the app: a soft
 // ripple expands from the click point and fades out. Delegated to one
@@ -1040,6 +1075,13 @@ document.querySelectorAll('.sidebar-group-label').forEach((label) => {
 
 document.querySelectorAll('.tab').forEach((tab) => {
   tab.addEventListener('click', () => {
+    // If a field on the previous tab still has focus, some browsers will
+    // scroll to keep it in view once its panel becomes visible/hidden
+    // again later. Drop focus before swapping panels so nothing pulls
+    // the new tab's scroll position away from the top.
+    if (document.activeElement && typeof document.activeElement.blur === 'function') {
+      document.activeElement.blur();
+    }
     document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
     document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
     tab.classList.add('active');
@@ -1049,8 +1091,10 @@ document.querySelectorAll('.tab').forEach((tab) => {
     // Switching tabs swaps which panel is visible, but the page itself
     // (not a separate inner container) is what scrolls — so without this,
     // a new tab opens wherever the previous tab had been scrolled to,
-    // instead of at its own top.
-    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    // instead of at its own top. Keep re-forcing it for a short window so
+    // nothing that loads/renders slightly later (fetched data, images,
+    // focus handling) can drag it back down after the initial reset.
+    forceScrollTopForAWhile();
     refreshTab(tab.dataset.tab);
   });
 });
