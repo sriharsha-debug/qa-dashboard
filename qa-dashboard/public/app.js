@@ -972,6 +972,11 @@ document.querySelectorAll('.tab').forEach((tab) => {
     document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
     const group = tab.closest('.sidebar-group');
     if (group) group.classList.remove('collapsed');
+    // Switching tabs swaps which panel is visible, but the page itself
+    // (not a separate inner container) is what scrolls — so without this,
+    // a new tab opens wherever the previous tab had been scrolled to,
+    // instead of at its own top.
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
     refreshTab(tab.dataset.tab);
   });
 });
