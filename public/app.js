@@ -1927,7 +1927,7 @@ function renderTestCases(cases, projectId) {
       <div class="tc-row-top">
         <div class="tc-row-checkbox-wrap"><input type="checkbox" class="row-checkbox" data-id="${c.id}" /></div>
         <div>
-          <div class="tc-row-title">${escapeHtml(c.title)}</div>
+          <div class="tc-row-title"><button type="button" class="project-link" data-tc-edit="${c.id}">${escapeHtml(c.title)}</button></div>
           <div class="tc-row-meta">
             <span class="priority-pill priority-${escapeHtml(c.priority || 'Medium')}">${escapeHtml(c.priority || 'Medium')}</span>
             <span class="pill" style="${pillStyle(categoryColor(c.category || 'Functional'))}">${escapeHtml(c.category || 'Functional')}</span>
@@ -1986,8 +1986,88 @@ function renderTestCases(cases, projectId) {
     });
   });
 
+  tcList.querySelectorAll('[data-tc-edit]').forEach((btn) => {
+    btn.addEventListener('click', () => openTcModal(btn.dataset.tcEdit));
+  });
+
   tcBulk.onRendered();
 }
+
+// ---------- Test case detail / edit modal ----------
+
+const tcModal = document.getElementById('tc-modal');
+const tcEditForm = document.getElementById('tc-edit-form');
+
+function openTcModal(id) {
+  const c = tcCache.find((x) => x.id === id);
+  if (!c) return;
+  clearFormError('tc-edit-error');
+  document.getElementById('tce-id').value = c.id;
+  document.getElementById('tce-title').value = c.title || '';
+  document.getElementById('tce-priority').value = c.priority || 'Medium';
+  document.getElementById('tce-category').value = c.category || 'Functional';
+  document.getElementById('tce-status').value = c.status || 'Not Run';
+  document.getElementById('tce-last-run-date').value = c.last_run_date || '';
+  document.getElementById('tce-description').value = c.description || '';
+  document.getElementById('tce-notes').value = c.notes || '';
+  tcModal.classList.remove('hidden');
+}
+
+function closeTcModal() {
+  tcModal.classList.add('hidden');
+}
+
+document.getElementById('tc-modal-close').addEventListener('click', closeTcModal);
+tcModal.addEventListener('click', (e) => {
+  if (e.target === tcModal) closeTcModal();
+});
+
+tcEditForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearFormError('tc-edit-error');
+  const id = document.getElementById('tce-id').value;
+  const title = document.getElementById('tce-title').value.trim();
+  if (!title || title.length < 3) {
+    showFormError('tc-edit-error', 'Test case title must be at least 3 characters.');
+    return;
+  }
+  const newStatus = document.getElementById('tce-status').value;
+  const payload = {
+    title,
+    priority: document.getElementById('tce-priority').value,
+    category: document.getElementById('tce-category').value,
+    status: newStatus,
+    last_run_date: document.getElementById('tce-last-run-date').value || null,
+    description: document.getElementById('tce-description').value.trim() || null,
+    notes: document.getElementById('tce-notes').value.trim() || null,
+    updated_at: new Date().toISOString(),
+  };
+  if (!confirmSave(`Save changes to test case "${title}"?`)) return;
+  const { error } = await sb.from('test_cases').update(payload).eq('id', id);
+  if (error) {
+    showFormError('tc-edit-error', error.message);
+    return;
+  }
+  notify(`${actorLabel()} updated test case "${title}"`, 'test_case', 'update');
+  toast('Test case updated.', { emoji: '✅' });
+  closeTcModal();
+  loadTestCases(tcSelect.value);
+});
+
+document.getElementById('tc-edit-delete').addEventListener('click', async () => {
+  const id = document.getElementById('tce-id').value;
+  const title = document.getElementById('tce-title').value.trim();
+  if (!id) return;
+  if (!confirm(`Remove test case "${title}"?`)) return;
+  const { error } = await sb.from('test_cases').delete().eq('id', id);
+  if (error) {
+    showFormError('tc-edit-error', error.message);
+    return;
+  }
+  toast('Test case removed.', { emoji: '🗑️' });
+  closeTcModal();
+  loadTestCases(tcSelect.value);
+});
 
 // ---------- Bugs (own tab, own project selector) ----------
 
@@ -3357,6 +3437,7 @@ ${knowledgeContext ? `\n${knowledgeContext}\n` : ''}
 For EACH title below (keep them in the same order, one output object per title), fill in:
 - page: a plausible page/screen name based on the title
 - module: a plausible feature area/module name
+- sub_module: a more specific sub-area within that module
 - severity: Low, Medium, High, or Critical, based on how serious the title sounds
 - issue_type: one of Functional, UI/UX, Backend, Frontend, API, Performance, Security, Database, Other
 - description: 1-2 sentence overview of the bug
@@ -3365,7 +3446,7 @@ For EACH title below (keep them in the same order, one output object per title),
 - actual_result: what happens instead (usually a paraphrase of the title)
 
 Respond with ONLY a JSON array, no prose, no markdown fences, in this exact shape, one object per title, same order:
-[{"title": "...", "page": "...", "module": "...", "severity": "Low"|"Medium"|"High"|"Critical", "issue_type": "Functional"|"UI/UX"|"Backend"|"Frontend"|"API"|"Performance"|"Security"|"Database"|"Other", "description": "...", "steps_to_reproduce": "...", "expected_result": "...", "actual_result": "..."}]
+[{"title": "...", "page": "...", "module": "...", "sub_module": "...", "severity": "Low"|"Medium"|"High"|"Critical", "issue_type": "Functional"|"UI/UX"|"Backend"|"Frontend"|"API"|"Performance"|"Security"|"Database"|"Other", "description": "...", "steps_to_reproduce": "...", "expected_result": "...", "actual_result": "..."}]
 
 Bug titles:
 """
@@ -3452,19 +3533,32 @@ bugAiParseBtn.addEventListener('click', () => {
   const validSeverities = ['Low', 'Medium', 'High', 'Critical'];
   const validIssueTypes = ['Functional', 'UI/UX', 'Backend', 'Frontend', 'API', 'Performance', 'Security', 'Database', 'Other'];
 
+  // Bug IDs aren't asked of the AI (it has no idea what numbering this
+  // project is already on) — generate them the same way the manual "Add
+  // bug" form does, continuing on from this project's most recent bug and
+  // incrementing once per AI-drafted bug so the whole batch gets sequential
+  // IDs (e.g. "BUG-014" -> "BUG-015", "BUG-016", ...).
+  let nextId = nextBugIdSuggestion(bugCache);
+
   bugAiGeneratedBugs = parsed
     .filter((b) => b && b.title)
-    .map((b) => ({
-      title: String(b.title).slice(0, 200),
-      page: b.page ? String(b.page).slice(0, 120) : 'Unknown',
-      module: b.module ? String(b.module).slice(0, 120) : null,
-      severity: validSeverities.includes(b.severity) ? b.severity : 'Medium',
-      issue_type: validIssueTypes.includes(b.issue_type) ? b.issue_type : 'Functional',
-      description: b.description ? String(b.description).slice(0, 1000) : null,
-      steps_to_reproduce: b.steps_to_reproduce ? String(b.steps_to_reproduce).slice(0, 1000) : null,
-      expected_result: b.expected_result ? String(b.expected_result).slice(0, 1000) : null,
-      actual_result: b.actual_result ? String(b.actual_result).slice(0, 1000) : null,
-    }));
+    .map((b) => {
+      const row = {
+        title: String(b.title).slice(0, 200),
+        bug_id: nextId,
+        page: b.page ? String(b.page).slice(0, 120) : 'Unknown',
+        module: b.module ? String(b.module).slice(0, 120) : null,
+        sub_module: b.sub_module ? String(b.sub_module).slice(0, 200) : null,
+        severity: validSeverities.includes(b.severity) ? b.severity : 'Medium',
+        issue_type: validIssueTypes.includes(b.issue_type) ? b.issue_type : 'Functional',
+        description: b.description ? String(b.description).slice(0, 1000) : null,
+        steps_to_reproduce: b.steps_to_reproduce ? String(b.steps_to_reproduce).slice(0, 1000) : null,
+        expected_result: b.expected_result ? String(b.expected_result).slice(0, 1000) : null,
+        actual_result: b.actual_result ? String(b.actual_result).slice(0, 1000) : null,
+      };
+      nextId = nextBugIdSuggestion([{ bug_id: nextId }]);
+      return row;
+    });
 
   if (!bugAiGeneratedBugs.length) {
     showFormError('bug-ai-error', 'No valid bugs found in that reply.');
@@ -3488,9 +3582,10 @@ function renderBugAiPreview(bugs) {
       <input type="checkbox" class="bug-ai-check" data-idx="${i}" checked />
       <div>
         <div class="ai-preview-item-title">
-          ${escapeHtml(b.title)}
+          ${b.bug_id ? `[${escapeHtml(b.bug_id)}] ` : ''}${escapeHtml(b.title)}
           <span class="priority-pill priority-${escapeHtml(b.severity)}">${escapeHtml(b.severity)}</span>
           <span class="pill" style="${pillStyle('#34D399')}">${escapeHtml(b.issue_type)}</span>
+          ${b.sub_module ? `<span class="pill" style="${pillStyle('#38BDF8')}">Sub module: ${escapeHtml(b.sub_module)}</span>` : ''}
         </div>
         ${b.description ? `<div class="ai-preview-item-desc">${escapeHtml(b.description)}</div>` : ''}
       </div>
@@ -3521,8 +3616,10 @@ document.getElementById('bug-ai-add-selected').addEventListener('click', async (
   const rows = selected.map((b) => ({
     project_id: projectId,
     title: b.title,
+    bug_id: b.bug_id,
     page: b.page,
     module: b.module,
+    sub_module: b.sub_module,
     severity: b.severity,
     issue_type: b.issue_type,
     status: 'Open',

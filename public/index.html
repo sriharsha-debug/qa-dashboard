@@ -1207,6 +1207,67 @@
     </div>
   </div>
 
+  <!-- Test case detail / edit modal -->
+  <div id="tc-modal" class="modal-overlay hidden">
+    <div class="modal modal-large">
+      <div class="modal-head">
+        <h2>Test case details</h2>
+        <button id="tc-modal-close" class="icon-btn">close</button>
+      </div>
+      <form id="tc-edit-form" class="grid-form">
+        <input type="hidden" id="tce-id" />
+        <label class="span-2">Test case title
+          <input type="text" id="tce-title" required maxlength="200" />
+        </label>
+        <label>Priority
+          <select id="tce-priority">
+            <option value="Low">Low</option>
+            <option value="Medium">Medium</option>
+            <option value="High">High</option>
+          </select>
+        </label>
+        <label>Category
+          <select id="tce-category">
+            <option value="Functional">Functional</option>
+            <option value="Positive">Positive</option>
+            <option value="Negative">Negative</option>
+            <option value="Edge Case">Edge Case</option>
+            <option value="Security">Security</option>
+            <option value="Validation">Validation</option>
+            <option value="UI/UX">UI/UX</option>
+            <option value="Performance">Performance</option>
+            <option value="Accessibility">Accessibility</option>
+            <option value="Compatibility">Compatibility</option>
+            <option value="Regression">Regression</option>
+            <option value="UAT">UAT</option>
+          </select>
+        </label>
+        <label>Status
+          <select id="tce-status">
+            <option value="Not Run">Not Run</option>
+            <option value="Pass">Pass</option>
+            <option value="Fail">Fail</option>
+            <option value="Blocked">Blocked</option>
+          </select>
+        </label>
+        <label>Last run date
+          <input type="date" id="tce-last-run-date" />
+        </label>
+        <label class="span-2">Description
+          <textarea id="tce-description" rows="3" maxlength="1000"></textarea>
+        </label>
+        <label class="span-2">Notes
+          <textarea id="tce-notes" rows="2" maxlength="1000"></textarea>
+        </label>
+        <p id="tc-edit-error" class="login-error hidden span-2"></p>
+        <div class="span-2 form-actions">
+          <button type="button" id="tc-edit-delete" class="btn btn-ghost">Remove test case</button>
+          <button type="submit" class="btn btn-primary">Save test case</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- APK share edit modal -->
   <div id="apk-modal" class="modal-overlay hidden">
     <div class="modal modal-large">
