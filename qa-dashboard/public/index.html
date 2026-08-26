@@ -57,8 +57,6 @@
             <p class="empty-state" id="notif-empty">No activity yet.</p>
           </div>
         </div>
-        <span id="who-email" class="who-email"></span>
-        <button id="logout" class="btn btn-ghost">Sign out</button>
       </div>
     </header>
 
@@ -77,7 +75,7 @@
 
         <div class="sidebar-group" data-group="qa">
           <button type="button" class="sidebar-group-label">
-            <span>Bugs &amp; Testing</span><span class="group-chevron">▾</span>
+            <span>QA</span><span class="group-chevron">▾</span>
           </button>
           <div class="sidebar-group-items">
             <button class="tab" data-tab="bugs">Bugs</button>
@@ -99,10 +97,15 @@
 
         <div class="sidebar-group" data-group="account">
           <button type="button" class="sidebar-group-label">
-            <span>Account</span><span class="group-chevron">▾</span>
+            <span>Accounts</span><span class="group-chevron">▾</span>
           </button>
           <div class="sidebar-group-items">
+            <div class="sidebar-account-email">
+              <span class="sidebar-account-label">Email</span>
+              <span id="who-email" class="who-email"></span>
+            </div>
             <button class="tab" data-tab="settings">Settings</button>
+            <button id="logout" type="button" class="tab sidebar-signout">Sign out</button>
           </div>
         </div>
       </nav>
@@ -1243,6 +1246,20 @@
           <button type="submit" class="btn btn-primary" id="apk-edit-submit-btn">Save entry</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Global CRUD confirmation dialog -->
+  <div id="action-confirm-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="action-confirm-title">
+    <div class="modal action-confirm-modal">
+      <div class="modal-head">
+        <h2 id="action-confirm-title">Confirm action</h2>
+      </div>
+      <p id="action-confirm-message" class="action-confirm-message">Are you sure you want to continue?</p>
+      <div class="form-actions action-confirm-actions">
+        <button type="button" id="action-confirm-cancel" class="btn btn-ghost">Cancel</button>
+        <button type="button" id="action-confirm-ok" class="btn btn-primary">Confirm</button>
+      </div>
     </div>
   </div>
 

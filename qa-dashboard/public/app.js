@@ -9,6 +9,172 @@ const loginError = document.getElementById('login-error');
 // ripple expands from the click point and fades out. Delegated to one
 // document-level listener so it works for buttons rendered dynamically on
 // any tab, not just the ones present at page load.
+// ---------- Global CRUD confirmation dialog ----------
+// All create/update/edit/delete/retrieve/destructive account actions pass
+// through this single confirmation UI. The delegated capture listener also
+// covers buttons rendered dynamically inside tables and cards.
+const actionConfirmModal = document.getElementById('action-confirm-modal');
+const actionConfirmTitle = document.getElementById('action-confirm-title');
+const actionConfirmMessage = document.getElementById('action-confirm-message');
+const actionConfirmCancel = document.getElementById('action-confirm-cancel');
+const actionConfirmOk = document.getElementById('action-confirm-ok');
+let actionConfirmResolver = null;
+let actionConfirmBusy = false;
+
+function closeActionConfirm(result) {
+  if (!actionConfirmModal) return;
+  actionConfirmModal.classList.add('hidden');
+  document.removeEventListener('keydown', actionConfirmKeydown);
+  const resolve = actionConfirmResolver;
+  actionConfirmResolver = null;
+  actionConfirmBusy = false;
+  if (resolve) resolve(result);
+}
+
+function actionConfirmKeydown(e) {
+  if (!actionConfirmModal || actionConfirmModal.classList.contains('hidden')) return;
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    closeActionConfirm(false);
+  }
+}
+
+function showActionConfirm({ title = 'Confirm action', message = 'Are you sure you want to continue?', confirmText = 'Confirm' } = {}) {
+  if (!actionConfirmModal) return Promise.resolve(true);
+  if (actionConfirmResolver) closeActionConfirm(false);
+  actionConfirmTitle.textContent = title;
+  actionConfirmMessage.textContent = message;
+  actionConfirmOk.textContent = confirmText;
+  actionConfirmModal.classList.remove('hidden');
+  actionConfirmBusy = true;
+  actionConfirmOk.focus();
+  document.addEventListener('keydown', actionConfirmKeydown);
+  return new Promise((resolve) => { actionConfirmResolver = resolve; });
+}
+
+actionConfirmCancel?.addEventListener('click', () => closeActionConfirm(false));
+actionConfirmOk?.addEventListener('click', () => closeActionConfirm(true));
+actionConfirmModal?.addEventListener('click', (e) => {
+  if (e.target === actionConfirmModal) closeActionConfirm(false);
+});
+
+function confirmationForElement(el) {
+  if (!el) return null;
+  const id = (el.id || '').toLowerCase();
+  const text = (el.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const type = (el.getAttribute('type') || '').toLowerCase();
+  const form = el.closest('form');
+  const formId = (form?.id || '').toLowerCase();
+
+  // Explicitly marked controls always win.
+  const explicit = el.dataset.confirmAction;
+  if (explicit) {
+    const messages = {
+      signout: ['Sign out', 'Are you sure you want to sign out of your account?', 'Sign out'],
+      create: ['Confirm creation', 'Are you sure you want to create this item?', 'Create'],
+      update: ['Confirm update', 'Are you sure you want to save these changes?', 'Save changes'],
+      edit: ['Confirm edit', 'Do you want to open this item for editing?', 'Edit'],
+      delete: ['Confirm deletion', 'Are you sure you want to delete this item? This action cannot be undone.', 'Delete'],
+      retrieve: ['Confirm retrieval', 'Are you sure you want to retrieve the latest data?', 'Retrieve'],
+    };
+    const cfg = messages[explicit];
+    if (cfg) return { title: cfg[0], message: cfg[1], confirmText: cfg[2] };
+  }
+
+  if (id === 'logout') return { title: 'Sign out', message: 'Are you sure you want to sign out of your account?', confirmText: 'Sign out' };
+
+  // Destructive / CRUD buttons, including dynamically rendered row actions.
+  if (id.includes('bulk-delete') || id.includes('edit-delete') || id.includes('delete') ||
+      /\b(remove|delete|clear all|clear old|discard)\b/.test(text)) {
+    return { title: 'Confirm deletion', message: 'Are you sure you want to continue? This action may remove data and cannot be undone.', confirmText: 'Continue' };
+  }
+  if (/\b(save|add|create|log|update|upload|submit|apply)\b/.test(text) && !/download/.test(text)) {
+    return { title: 'Confirm changes', message: 'Are you sure you want to save these changes?', confirmText: 'Save' };
+  }
+  if (/\b(edit|open for edit)\b/.test(text) && !id.includes('filter')) {
+    return { title: 'Edit item', message: 'Do you want to open this item for editing?', confirmText: 'Edit' };
+  }
+  if (id.includes('fetch') || id.includes('retrieve') || id.includes('refresh-counts') ||
+      /\b(fetch from link|refresh from live data|retrieve)\b/.test(text)) {
+    return { title: 'Confirm retrieval', message: 'Are you sure you want to retrieve the latest data?', confirmText: 'Retrieve' };
+  }
+
+  // Form submission is a create/update operation unless it is authentication.
+  if (el.tagName === 'FORM' || (form && type === 'submit')) {
+    if (/login|password/.test(formId)) return null;
+    const editing = /edit|profile|password/.test(formId) || !!form.querySelector('input[type="hidden"][id$="-edit-id"], input[type="hidden"][id$="-id"]');
+    return editing
+      ? { title: 'Confirm update', message: 'Are you sure you want to save these changes?', confirmText: 'Save changes' }
+      : { title: 'Confirm creation', message: 'Are you sure you want to create this item?', confirmText: 'Create' };
+  }
+  return null;
+}
+
+// Existing code contains a few legacy native confirm() calls. The custom
+// dialog is shown before those handlers run; this bypass flag prevents a
+// second native browser dialog after the user has already confirmed here.
+const nativeConfirm = window.confirm.bind(window);
+let allowConfirmedNativeConfirm = false;
+window.confirm = (message) => allowConfirmedNativeConfirm ? true : nativeConfirm(message);
+
+async function runConfirmedElement(el, originalEvent) {
+  const cfg = confirmationForElement(el);
+  if (!cfg || el.dataset.confirmBypass === '1') return true;
+  originalEvent.preventDefault();
+  originalEvent.stopImmediatePropagation();
+  const ok = await showActionConfirm(cfg);
+  if (!ok) return false;
+
+  el.dataset.confirmBypass = '1';
+  const relatedForm = el.type === 'submit' ? el.form : null;
+  if (relatedForm) relatedForm.dataset.confirmBypass = '1';
+  allowConfirmedNativeConfirm = true;
+  try {
+    if (el.tagName === 'FORM') {
+      el.requestSubmit();
+    } else if (el.type === 'submit' && relatedForm) {
+      relatedForm.requestSubmit(el);
+    } else {
+      el.click();
+    }
+  } finally {
+    setTimeout(() => {
+      delete el.dataset.confirmBypass;
+      if (relatedForm) delete relatedForm.dataset.confirmBypass;
+      allowConfirmedNativeConfirm = false;
+    }, 0);
+  }
+  return false;
+}
+
+document.addEventListener('click', async (e) => {
+  if (actionConfirmBusy) return;
+  const target = e.target.closest('button, a');
+  if (!target) return;
+  await runConfirmedElement(target, e);
+}, true);
+
+document.addEventListener('submit', async (e) => {
+  if (actionConfirmBusy) return;
+  const form = e.target;
+  if (!(form instanceof HTMLFormElement) || form.dataset.confirmBypass === '1') return;
+  const cfg = confirmationForElement(form);
+  if (!cfg) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  const ok = await showActionConfirm(cfg);
+  if (!ok) return;
+  form.dataset.confirmBypass = '1';
+  allowConfirmedNativeConfirm = true;
+  try { form.requestSubmit(e.submitter || undefined); }
+  finally {
+    setTimeout(() => {
+      delete form.dataset.confirmBypass;
+      allowConfirmedNativeConfirm = false;
+    }, 0);
+  }
+}, true);
+
 document.addEventListener('click', (e) => {
   const btn = e.target.closest('.btn');
   if (!btn) return;
@@ -958,9 +1124,27 @@ function refreshTab(tabName) {
   }
 }
 
+// Sidebar navigation groups behave like real dropdown menus.
+// Only one section is expanded at a time, while selecting a child page
+// automatically keeps its parent section open.
+const sidebarGroups = Array.from(document.querySelectorAll('.sidebar-group'));
+
+function openSidebarGroup(group) {
+  sidebarGroups.forEach((g) => {
+    if (g !== group) g.classList.add('collapsed');
+  });
+  if (group) group.classList.remove('collapsed');
+}
+
 document.querySelectorAll('.sidebar-group-label').forEach((label) => {
   label.addEventListener('click', () => {
-    label.closest('.sidebar-group').classList.toggle('collapsed');
+    const group = label.closest('.sidebar-group');
+    const wasCollapsed = group.classList.contains('collapsed');
+    if (wasCollapsed) {
+      openSidebarGroup(group);
+    } else {
+      group.classList.add('collapsed');
+    }
   });
 });
 
@@ -972,14 +1156,18 @@ document.querySelectorAll('.tab').forEach((tab) => {
     document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
     const group = tab.closest('.sidebar-group');
     if (group) group.classList.remove('collapsed');
-    // Switching tabs swaps which panel is visible, but the page itself
-    // (not a separate inner container) is what scrolls — so without this,
-    // a new tab opens wherever the previous tab had been scrolled to,
-    // instead of at its own top.
-    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
     refreshTab(tab.dataset.tab);
   });
 });
+
+// Start with the current Projects section expanded and the other sections
+// collapsed. The active section changes automatically when another page is selected.
+const initialActiveTab = document.querySelector('.tab.active');
+if (initialActiveTab) {
+  const activeGroup = initialActiveTab.closest('.sidebar-group');
+  sidebarGroups.forEach((g) => g.classList.add('collapsed'));
+  if (activeGroup) activeGroup.classList.remove('collapsed');
+}
 
 // ---------- Background auto-refresh ----------
 // Silently re-pulls the currently visible tab's data every few seconds,
