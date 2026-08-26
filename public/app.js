@@ -1581,7 +1581,10 @@ function renderDetailsSelect() {
   showProjectDetails(targetId);
 }
 
-detailsSelect.addEventListener('change', () => showProjectDetails(detailsSelect.value));
+detailsSelect.addEventListener('change', () => {
+  window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  showProjectDetails(detailsSelect.value);
+});
 
 async function showProjectDetails(id) {
   const p = projectsCache.find((x) => x.id === id);
@@ -1738,7 +1741,10 @@ function renderTcSelect() {
   showTestExecutionForProject(targetId);
 }
 
-tcSelect.addEventListener('change', () => showTestExecutionForProject(tcSelect.value));
+tcSelect.addEventListener('change', () => {
+  window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  showTestExecutionForProject(tcSelect.value);
+});
 
 function showTestExecutionForProject(id) {
   if (!id) return;
@@ -2005,7 +2011,10 @@ function renderBugsSelect() {
   showBugsForProject(targetId);
 }
 
-bugsSelect.addEventListener('change', () => showBugsForProject(bugsSelect.value));
+bugsSelect.addEventListener('change', () => {
+  window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  showBugsForProject(bugsSelect.value);
+});
 
 function showBugsForProject(id) {
   if (!id) return;
@@ -3061,7 +3070,10 @@ function renderKnowledgeSelect() {
   showKnowledgeForProject(targetId);
 }
 
-kbSelect.addEventListener('change', () => showKnowledgeForProject(kbSelect.value));
+kbSelect.addEventListener('change', () => {
+  window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  showKnowledgeForProject(kbSelect.value);
+});
 
 function showKnowledgeForProject(id) {
   if (!id) return;
