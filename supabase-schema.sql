@@ -378,3 +378,88 @@ alter table bugs add constraint bugs_issue_type_check
 
 alter table bugs add column if not exists reported_date date;
 alter table bugs add column if not exists closed_date date;
+
+
+-- Migration v24: Prevent duplicate Daily Log entries
+-- See migration-v24.sql for details/comments.
+
+create unique index if not exists idx_daily_reports_no_dupes
+  on daily_reports (project_id, report_date, logged_by_email);
+
+
+-- Migration v27: quick_notes table for the dashboard-embedded "notepad"
+-- See migration-v27.sql for details/comments.
+--
+-- Backs the two textboxes on the Bugs tab: one where you type
+-- ### BUG / ### PROJECT blocks (same format as the local notes-file
+-- automation), and one where you paste an AI reply back. The local
+-- qa-automation watcher script polls this table instead of a local
+-- file when running in "dashboard notes" mode.
+--
+-- One row per user (owner_id is unique) — it's a personal scratchpad,
+-- not shared between team members.
+
+create table if not exists quick_notes (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null unique references auth.users(id) on delete cascade,
+  notes_content text not null default '',
+  ai_reply_content text not null default '',
+  updated_at timestamptz not null default now()
+);
+
+alter table quick_notes enable row level security;
+drop policy if exists "quick_notes_owner" on quick_notes;
+create policy "quick_notes_owner" on quick_notes
+  for all
+  using (owner_id = auth.uid())
+  with check (owner_id = auth.uid());
+
+
+-- Migration v28: test-case "quick doc" columns on quick_notes
+-- See migration-v28.sql for details/comments.
+--
+-- Backs the script-driven test case panel on the Test Execution tab:
+-- paste requirements text + save, the local qa-automation watchDashboard
+-- script (npm run watch-dashboard) picks it up, copies the AI prompt to
+-- your clipboard, opens Claude.ai, and finishes once you paste the reply
+-- into the matching reply box.
+
+alter table quick_notes
+  add column if not exists tc_project_id uuid references projects(id) on delete set null,
+  add column if not exists tc_document_content text not null default '',
+  add column if not exists tc_ai_reply_content text not null default '';
+
+
+-- Migration v29: project_knowledge table (Knowledge Base tab)
+-- See migration-v29.sql for details/comments.
+--
+-- Backs the "Knowledge Base" tab: per-project training content
+-- (requirements, functionality notes, flows) split up by which
+-- application it belongs to (e.g. User App, Vendor App, Admin Panel,
+-- Sub Admin Panel, or any custom name you type in). Every AI prompt the
+-- dashboard/automation builds for that project — bug-detail generation
+-- and test-case generation — automatically pulls this in as context,
+-- so replies are grounded in your real app instead of generic guesses.
+
+create table if not exists project_knowledge (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid references auth.users(id),
+  project_id uuid not null references projects(id) on delete cascade,
+  app_segment text not null default 'Common / Cross-App',
+  doc_type text not null default 'Requirement',
+  title text not null,
+  content text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_project_knowledge_project on project_knowledge(project_id);
+create index if not exists idx_project_knowledge_segment on project_knowledge(project_id, app_segment);
+
+alter table project_knowledge enable row level security;
+
+drop policy if exists "project_knowledge_owner_or_leader" on project_knowledge;
+create policy "project_knowledge_owner_or_leader" on project_knowledge
+  for all
+  using (owner_id = auth.uid() or is_team_leader())
+  with check (owner_id = auth.uid() or is_team_leader());
