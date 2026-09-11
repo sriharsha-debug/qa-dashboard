@@ -5,11 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Project Tracker — QA Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css" />
 <link rel="icon" type="image/svg+xml" href="favicon.svg" />
-
 <!-- PWA: installable "app" support -->
 <link rel="manifest" href="manifest.webmanifest" />
 <meta name="theme-color" content="#0E5B63" />
@@ -17,47 +15,20 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="QA Dashboard" />
-
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="config.js"></script>
 <script>
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("/sw.js").catch(() => {
-        // Non-fatal: dashboard still works as a normal site if this fails.
-      });
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
     });
   }
 </script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="config.js"></script>
 </head>
 <body>
 
-  <!-- Ambient background mechanism: slowly turning gears standing in for
-       the old drifting colour blobs, fixed behind all content and never
-       intercepting clicks. Adjacent gears rotate in opposite directions,
-       like they're actually meshed and driving each other. -->
-  <div class="bg-mechanism" aria-hidden="true">
-    <svg class="gear gear-1" viewBox="0 0 100 100"><use href="#gear-shape"/></svg>
-    <svg class="gear gear-2" viewBox="0 0 100 100"><use href="#gear-shape"/></svg>
-    <svg class="gear gear-3" viewBox="0 0 100 100"><use href="#gear-shape"/></svg>
-    <svg class="gear gear-4" viewBox="0 0 100 100"><use href="#gear-shape"/></svg>
-    <svg width="0" height="0" style="position:absolute">
-      <defs>
-        <g id="gear-shape">
-          <path d="M50 6 L56 6 L58 16 C63 17.3 67.6 19.6 71.6 22.5 L81 18 L88 28 L81.4 35 C83 39.5 84 44.2 84 49 L84 51 C84 55.8 83 60.5 81.4 65 L88 72 L81 82 L71.6 77.5 C67.6 80.4 63 82.7 58 84 L56 94 L44 94 L42 84 C37 82.7 32.4 80.4 28.4 77.5 L19 82 L12 72 L18.6 65 C17 60.5 16 55.8 16 51 L16 49 C16 44.2 17 39.5 18.6 35 L12 28 L19 18 L28.4 22.5 C32.4 19.6 37 17.3 42 16 L44 6 Z" fill="currentColor"/>
-          <circle cx="50" cy="50" r="16" fill="var(--paper)"/>
-        </g>
-      </defs>
-    </svg>
-  </div>
-
-  <div id="page-loader" aria-hidden="true">
-    <div class="loader">
-      <div class="loader-ring"></div>
-      <div class="loader-dot"></div>
-    </div>
-  </div>
+  <div id="page-loader"></div>
 
   <!-- Gate: shown until the user is signed in -->
   <div id="gate" class="gate">
@@ -102,18 +73,13 @@
             <p class="empty-state" id="notif-empty">No activity yet.</p>
           </div>
         </div>
+        <span id="who-email" class="who-email"></span>
+        <button id="logout" class="btn btn-ghost">Sign out</button>
       </div>
     </header>
 
     <div class="app-body">
       <nav class="sidebar">
-        <div class="sidebar-seal" aria-hidden="true">
-          <span class="sidebar-seal-mark">QA</span>
-          <span class="sidebar-seal-text">
-            <span class="sidebar-seal-title">Inspection Ledger</span>
-            <span class="sidebar-seal-sub">Project Tracker</span>
-          </span>
-        </div>
         <div class="sidebar-group" data-group="projects">
           <button type="button" class="sidebar-group-label">
             <span>Projects</span><span class="group-chevron">▾</span>
@@ -152,12 +118,7 @@
             <span>Account</span><span class="group-chevron">▾</span>
           </button>
           <div class="sidebar-group-items">
-            <div class="sidebar-account-info">
-              <span class="sidebar-account-icon" aria-hidden="true">✉</span>
-              <span id="who-email" class="who-email"></span>
-            </div>
             <button class="tab" data-tab="settings">Settings</button>
-            <button id="logout" class="tab tab-danger">Sign out</button>
           </div>
         </div>
       </nav>
@@ -588,36 +549,22 @@
           </div>
 
           <div class="ai-gen-box">
-            <p class="gate-copy" style="margin:0 0 14px;text-align:left;">
-              Describe the feature you want covered. Copy the prompt, paste it into
-              Claude.ai (a free account works fine), paste the reply back below, and review before
-              adding — this doesn't use any API key or cost anything.
-            </p>
-            <div class="grid-form">
-              <label class="span-2">Feature description
-                <textarea id="tc-ai-description" rows="4" placeholder="e.g. Password reset flow: user requests a reset link by email, clicks the link, sets a new password, and is redirected to login."></textarea>
-              </label>
-              <div class="span-2 form-actions" style="justify-content:flex-start;">
-                <button type="button" id="tc-ai-copy-prompt" class="btn btn-primary">Copy prompt</button>
-                <a id="tc-ai-open-claude" class="btn btn-ghost" href="https://claude.ai/new" target="_blank" rel="noopener">Open Claude.ai</a>
-              </div>
+            <p class="detail-label">Generate test cases via automation script (no button clicking)</p>
+            <p class="ai-gen-hint">Paste requirements/document text below and click Save. If your
+              <code>qa-automation</code> script is running (<code>npm run watch-dashboard</code>),
+              it automatically copies the prompt and opens Claude.ai for you — paste the reply
+              into the box below that and save, and the test cases get added on their own.</p>
+            <textarea id="tc-quick-doc-content" rows="3" placeholder="Paste requirements or document text here"></textarea>
+            <div class="form-actions" style="justify-content:flex-start; gap:10px;">
+              <button type="button" id="tc-quick-doc-save" class="btn btn-primary">Save document</button>
+              <span id="tc-quick-doc-status" class="count"></span>
             </div>
-            <p id="tc-ai-error" class="login-error hidden"></p>
-            <div class="grid-form">
-              <label class="span-2">Paste Claude's reply here
-                <textarea id="tc-ai-response-text" rows="4" placeholder="Paste the JSON reply from Claude here"></textarea>
-              </label>
-              <div class="span-2 form-actions" style="justify-content:flex-start;">
-                <button type="button" id="tc-ai-parse-btn" class="btn btn-primary">Parse response</button>
-              </div>
-            </div>
-            <div id="tc-ai-preview" class="ai-preview hidden">
-              <p class="detail-label">Review and add</p>
-              <div id="tc-ai-preview-list" class="ai-preview-list"></div>
-              <div class="form-actions" style="justify-content:flex-start; gap:10px;">
-                <button type="button" id="tc-ai-add-selected" class="btn btn-primary">Add selected to Test Cases</button>
-                <button type="button" id="tc-ai-discard" class="btn btn-ghost">Discard</button>
-              </div>
+
+            <p class="detail-label ai-response-label">AI reply (paste here)</p>
+            <textarea id="tc-quick-doc-ai-reply" rows="4" placeholder="Paste Claude's JSON reply here"></textarea>
+            <div class="form-actions" style="justify-content:flex-start; gap:10px;">
+              <button type="button" id="tc-quick-doc-ai-reply-save" class="btn btn-primary">Save reply</button>
+              <span id="tc-quick-doc-ai-reply-status" class="count"></span>
             </div>
           </div>
 
@@ -1373,24 +1320,6 @@
           <button type="submit" class="btn btn-primary" id="apk-edit-submit-btn">Save entry</button>
         </div>
       </form>
-    </div>
-  </div>
-
-  <!-- Themed confirmation dialog, replacing the browser's native confirm()
-       popup. Centered on the page, styled like the rest of the app's glass
-       modals rather than a plain OS dialog. Content is filled in by
-       showConfirmModal() in app.js. -->
-  <div id="confirm-modal" class="modal-overlay hidden">
-    <div class="modal confirm-modal">
-      <div id="confirm-modal-icon-badge" class="confirm-modal-icon-badge">
-        <span id="confirm-modal-icon" class="confirm-modal-icon">⚠️</span>
-      </div>
-      <div id="confirm-modal-eyebrow" class="confirm-modal-eyebrow">Confirm action</div>
-      <p id="confirm-modal-message" class="confirm-modal-message"></p>
-      <div class="confirm-modal-actions">
-        <button type="button" id="confirm-modal-cancel" class="btn btn-ghost">Cancel</button>
-        <button type="button" id="confirm-modal-ok" class="btn btn-danger">Remove</button>
-      </div>
     </div>
   </div>
 
